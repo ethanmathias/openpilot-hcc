@@ -9,7 +9,7 @@
   <p>
     Use this link in the <b>custom URL</b> to install this fork:<br>
     <a href="https://smiskol.com/fork/ethanmathias/openpilot">
-      https://smiskol.com/fork/ethanmathias/openpilot_hcc
+      https://smiskol.com/fork/ethanmathias/openpilot
     </a>
   </p>
 
