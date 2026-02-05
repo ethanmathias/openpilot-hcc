@@ -29,6 +29,8 @@ source .venv/bin/activate
 
 **4. Build openpilot**
 ``` bash
+
+export PATH=/usr/bin:/usr/lib/x86_64-linux-gnu/qt5/bin:$PATH (this is only for the dell pc since it defaults to old Qt)
 scons -u -j$(nproc)
 ```
 
