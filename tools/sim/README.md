@@ -8,7 +8,9 @@ First, start openpilot.
 ``` bash
 # Run locally
 ./tools/sim/launch_openpilot.sh
+to launch in big screen on pc run BIG=1 ./tools/sim/launch_openpilot.sh
 ```
+note: run the openpilot and bridge in two seperate terminal windows.
 
 ## Bridge usage
 ```
