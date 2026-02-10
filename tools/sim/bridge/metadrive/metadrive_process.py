@@ -10,11 +10,15 @@ from metadrive.engine.core.engine_core import EngineCore
 from metadrive.engine.core.image_buffer import ImageBuffer
 from metadrive.envs.metadrive_env import MetaDriveEnv
 from metadrive.obs.image_obs import ImageObservation
+from metadrive.component.vehicle.vehicle_type import DefaultVehicle
+from metadrive.policy.idm_policy import IDMPolicy
 
 from openpilot.common.realtime import Ratekeeper
 
 from openpilot.tools.sim.lib.common import vec3
 from openpilot.tools.sim.lib.camerad import W, H
+
+LEAD_DISTANCE = 35.0
 
 C3_POSITION = Vec3(0.0, 0, 1.22)
 C3_HPR = Vec3(0, 0,0)
@@ -48,43 +52,7 @@ def apply_metadrive_patches(arrive_dest_done=True):
   if not arrive_dest_done:
     MetaDriveEnv._is_arrive_destination = arrive_destination_patch
 
-##
-  def apply_metadrive_patches(arrive_dest_done=True):
-  # ---- Patch add_image_sensor safely ----
-  _orig_add_image_sensor = EngineCore.add_image_sensor  # keep original
 
-  def add_image_sensor_patched(self, name: str, cls, args):
-    # If it's not an ImageBuffer sensor class, don't touch it.
-    # (Traffic can cause additional sensors to be created/registered.)
-    try:
-      is_image_buffer_cls = issubclass(cls, ImageBuffer)
-    except TypeError:
-      is_image_buffer_cls = False
-
-    if not is_image_buffer_cls:
-      return _orig_add_image_sensor(self, name, cls, args)
-
-    # Only enable CUDA for the ego cameras you actually read
-    ego_cuda_sensors = {"rgb_road", "rgb_wide"}
-    use_cuda = bool(self.global_config.get("image_on_cuda", False)) and (name in ego_cuda_sensors)
-
-    sensor = cls(*args, self, cuda=use_cuda)
-    self.sensors[name] = sensor
-
-  EngineCore.add_image_sensor = add_image_sensor_patched
-
-  # ---- Disable built-in observation stack ----
-  def observe_patched(self, *args, **kwargs):
-    return self.state
-  ImageObservation.observe = observe_patched
-
-  # ---- Disable destination if requested ----
-  def arrive_destination_patch(self, *args, **kwargs):
-    return False
-  if not arrive_dest_done:
-    MetaDriveEnv._is_arrive_destination = arrive_destination_patch
-
-##
 
 def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera_array, image_lock,
                       controls_recv: Connection, simulation_state_send: Connection, vehicle_state_send: Connection,
@@ -98,6 +66,29 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
     wide_road_image = np.frombuffer(wide_camera_array.get_obj(), dtype=np.uint8).reshape((H, W, 3))
 
   env = MetaDriveEnv(config)
+  lead_vehicle_id = None
+
+  def spawn_lead_vehicle():
+    nonlocal lead_vehicle_id
+    if lead_vehicle_id is not None:
+      env.engine.clear_objects([lead_vehicle_id])
+      lead_vehicle_id = None
+
+    forward = np.array([math.cos(env.vehicle.heading_theta), math.sin(env.vehicle.heading_theta)])
+    lead_pos = env.vehicle.position + forward * LEAD_DISTANCE
+    lead = env.engine.spawn_object(
+      DefaultVehicle,
+      position=lead_pos.tolist(),
+      heading=env.vehicle.heading_theta,
+      vehicle_config=dict(
+        spawn_velocity=10.0,
+        enable_reverse=False,
+        render_vehicle=False,
+      ),
+    )
+    env.engine.add_policy(lead.id, IDMPolicy, lead, env.engine.generate_seed())
+    lead_vehicle_id = lead.id
+    return lead
 
   def get_current_lane_info(vehicle):
     _, lane_info, on_lane = vehicle.navigation._get_current_lane(vehicle)
@@ -107,6 +98,7 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
   def reset():
     env.reset()
     env.vehicle.config["max_speed_km_h"] = 1000
+    spawn_lead_vehicle()
     lane_idx_prev, _ = get_current_lane_info(env.vehicle)
 
     simulation_state = metadrive_simulation_state(
