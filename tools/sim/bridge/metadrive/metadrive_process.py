@@ -12,15 +12,11 @@ from metadrive.envs.metadrive_env import MetaDriveEnv
 from metadrive.obs.image_obs import ImageObservation
 from metadrive.component.vehicle.vehicle_type import DefaultVehicle
 from metadrive.policy.idm_policy import IDMPolicy
-from metadrive.component.vehicle.vehicle_type import DefaultVehicle
-from metadrive.policy.idm_policy import IDMPolicy
 
 from openpilot.common.realtime import Ratekeeper
 
 from openpilot.tools.sim.lib.common import vec3
 from openpilot.tools.sim.lib.camerad import W, H
-
-LEAD_DISTANCE = 35.0
 
 C3_POSITION = Vec3(0.0, 0, 1.22)
 C3_HPR = Vec3(0, 0,0)
@@ -91,9 +87,9 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
       heading=env.vehicle.heading_theta,
       random_seed=env.engine.generate_seed(),
       vehicle_config=dict(
-        enable_reverse=False,
         render_vehicle=False,
-        enable_lane_change=False,
+        spawn_velocity=forward.tolist(),
+        spawn_velocity_car_frame=False,
       ),
     )
     lead.set_velocity(forward, LEAD_SPEED, in_local_frame=False)
