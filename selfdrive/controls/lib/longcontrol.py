@@ -3,6 +3,8 @@ from cereal import car
 from openpilot.common.realtime import DT_CTRL
 from openpilot.selfdrive.controls.lib.drive_helpers import CONTROL_N
 from openpilot.common.pid import PIDController
+from openpilot.common.params import Params
+from openpilot.selfdrive.controls.lib.hccc_controller import hCCC
 from openpilot.selfdrive.modeld.constants import ModelConstants
 
 CONTROL_N_T_IDX = ModelConstants.T_IDXS[:CONTROL_N]
@@ -52,14 +54,34 @@ class LongControl:
                              (CP.longitudinalTuning.kiBP, CP.longitudinalTuning.kiV),
                              rate=1 / DT_CTRL)
     self.last_output_accel = 0.0
+    self.params = Params()
+    self.use_hccc = False
+    self.hccc = None
+    self._refresh_hccc(force_reset=True)
 
   def reset(self):
     self.pid.reset()
+    self._refresh_hccc(force_reset=True)
 
-  def update(self, active, CS, a_target, should_stop, accel_limits):
+  def _hccc_enabled(self):
+    cp_flag = getattr(self.CP, 'enableHCCC', None)
+    if cp_flag is not None:
+      return cp_flag
+    return self.params.get_bool("EnableHCCC")
+
+  def _refresh_hccc(self, force_reset=False):
+    enabled = self._hccc_enabled()
+    if not enabled:
+      self.hccc = None
+    elif self.hccc is None or force_reset:
+      self.hccc = hCCC(dt=DT_CTRL, max_deceleration=self.CP.stopAccel, max_acceleration=self.CP.startAccel)
+    self.use_hccc = enabled
+
+  def update(self, active, CS, a_target, should_stop, accel_limits, lead=None):
     """Update longitudinal control. This updates the state machine and runs a PID loop"""
     self.pid.neg_limit = accel_limits[0]
     self.pid.pos_limit = accel_limits[1]
+    self._refresh_hccc()
 
     self.long_control_state = long_control_state_trans(self.CP, active, self.long_control_state, CS.vEgo,
                                                        should_stop, CS.brakePressed,
@@ -80,9 +102,16 @@ class LongControl:
       self.reset()
 
     else:  # LongCtrlState.pid
-      error = a_target - CS.aEgo
-      output_accel = self.pid.update(error, speed=CS.vEgo,
-                                     feedforward=a_target)
+      hccc_output = None
+      if self.use_hccc and self.hccc is not None:
+        hccc_output = self.hccc.run_step(CS, lead)
+
+      if hccc_output is not None:
+        output_accel = hccc_output
+      else:
+        error = a_target - CS.aEgo
+        output_accel = self.pid.update(error, speed=CS.vEgo,
+                                       feedforward=a_target)
 
     self.last_output_accel = np.clip(output_accel, accel_limits[0], accel_limits[1])
     return self.last_output_accel
