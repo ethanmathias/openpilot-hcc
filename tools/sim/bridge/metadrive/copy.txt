@@ -1,0 +1,27 @@
+Process metadrive process:
+Traceback (most recent call last):
+  File "/usr/lib/python3.12/multiprocessing/process.py", line 314, in _bootstrap
+    self.run()
+  File "/usr/lib/python3.12/multiprocessing/process.py", line 108, in run
+    self._target(*self._args, **self._kwargs)
+  File "/home/linklab/ethan-openpilot/openpilot-hcc/openpilot/tools/sim/bridge/metadrive/metadrive_process.py", line 113, in metadrive_process
+    lane_idx_prev = reset()
+                    ^^^^^^^
+  File "/home/linklab/ethan-openpilot/openpilot-hcc/openpilot/tools/sim/bridge/metadrive/metadrive_process.py", line 101, in reset
+    spawn_lead_vehicle()
+  File "/home/linklab/ethan-openpilot/openpilot-hcc/openpilot/tools/sim/bridge/metadrive/metadrive_process.py", line 79, in spawn_lead_vehicle
+    lead = env.engine.spawn_object(
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/linklab/ethan-openpilot/openpilot-hcc/.venv/lib/python3.12/site-packages/metadrive/engine/base_engine.py", line 137, in spawn_object
+    obj = object_class(**kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/linklab/ethan-openpilot/openpilot-hcc/.venv/lib/python3.12/site-packages/metadrive/component/vehicle/base_vehicle.py", line 197, in __init__
+    self.reset(position=position, heading=heading, vehicle_config=vehicle_config)
+  File "/home/linklab/ethan-openpilot/openpilot-hcc/.venv/lib/python3.12/site-packages/metadrive/component/vehicle/base_vehicle.py", line 397, in reset
+    self.set_velocity(self.config["spawn_velocity"], in_local_frame=self.config["spawn_velocity_car_frame"])
+  File "/home/linklab/ethan-openpilot/openpilot-hcc/.venv/lib/python3.12/site-packages/metadrive/component/vehicle/base_vehicle.py", line 829, in set_velocity
+    super(BaseVehicle, self).set_velocity(direction, *args, **kwargs)
+  File "/home/linklab/ethan-openpilot/openpilot-hcc/.venv/lib/python3.12/site-packages/metadrive/base_class/base_object.py", line 325, in set_velocity
+    LVector3(direction[0] * norm_ratio, direction[1] * norm_ratio,
+             ~~~~~~~~~^^^
+TypeError: 'float' object is not subscriptable
