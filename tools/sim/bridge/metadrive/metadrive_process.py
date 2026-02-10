@@ -56,6 +56,7 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
   lead_vehicle_distance = float(config.pop("lead_vehicle_distance", 35.0))
   lead_vehicle_throttle = float(config.pop("lead_vehicle_throttle", 0.0))
   lead_vehicle_lateral_offset = float(config.pop("lead_vehicle_lateral_offset", 0.0))
+  lead_vehicle_render = bool(config.pop("lead_vehicle_render", True))
   apply_metadrive_patches(arrive_dest_done)
 
   road_image = np.frombuffer(camera_array.get_obj(), dtype=np.uint8).reshape((H, W, 3))
@@ -88,22 +89,38 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
       lateral_direction = np.array([-heading[1], heading[0]], dtype=np.float64)
       lead_position += lateral_direction * lead_vehicle_lateral_offset
 
-    lead_config = dict(env.config["vehicle_config"])
-    lead_config["render_vehicle"] = True
-    for config_key in ("show_navi_mark", "show_dest_mark", "show_line_to_dest", "show_line_to_navi_mark"):
-      if config_key in lead_config:
-        lead_config[config_key] = False
-    if "navigation_module" in lead_config:
-      lead_config["navigation_module"] = None
-    if "navigation" in lead_config:
-      lead_config["navigation"] = None
+    def build_lead_config(render_vehicle):
+      lead_config = dict(env.config["vehicle_config"])
+      lead_config["render_vehicle"] = render_vehicle
+      lead_config["random_agent_model"] = False
+      for config_key in ("show_navi_mark", "show_dest_mark", "show_line_to_dest", "show_line_to_navi_mark"):
+        if config_key in lead_config:
+          lead_config[config_key] = False
+      if "navigation_module" in lead_config:
+        lead_config["navigation_module"] = None
+      if "navigation" in lead_config:
+        lead_config["navigation"] = None
+      return lead_config
 
-    lead_vehicle = env.engine.spawn_object(
-      ego_vehicle.__class__,
-      vehicle_config=lead_config,
-      position=lead_position.tolist(),
-      heading=float(ego_vehicle.heading_theta),
-    )
+    def spawn_with_config(lead_config):
+      return env.engine.spawn_object(
+        ego_vehicle.__class__,
+        vehicle_config=lead_config,
+        position=lead_position.tolist(),
+        heading=float(ego_vehicle.heading_theta),
+      )
+
+    try:
+      lead_vehicle = spawn_with_config(build_lead_config(lead_vehicle_render))
+    except OSError as e:
+      if lead_vehicle_render:
+        print(f"[WARNING] Lead vehicle model asset missing ({e}). Retrying with lead rendering disabled.")
+        try:
+          lead_vehicle = spawn_with_config(build_lead_config(False))
+        except Exception as fallback_e:
+          print(f"[WARNING] Failed to spawn lead vehicle even with rendering disabled: {fallback_e}")
+      else:
+        print(f"[WARNING] Failed to spawn lead vehicle: {e}")
 
   def reset():
     env.reset()
