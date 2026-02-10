@@ -12,6 +12,8 @@ from metadrive.envs.metadrive_env import MetaDriveEnv
 from metadrive.obs.image_obs import ImageObservation
 from metadrive.component.vehicle.vehicle_type import DefaultVehicle
 from metadrive.policy.idm_policy import IDMPolicy
+from metadrive.component.vehicle.vehicle_type import DefaultVehicle
+from metadrive.policy.idm_policy import IDMPolicy
 
 from openpilot.common.realtime import Ratekeeper
 
@@ -22,6 +24,9 @@ LEAD_DISTANCE = 35.0
 
 C3_POSITION = Vec3(0.0, 0, 1.22)
 C3_HPR = Vec3(0, 0,0)
+LEAD_DISTANCE = 35.0
+LEAD_SPEED = 10.0
+LEAD_SPEED_INTERVAL = 5.0
 
 
 metadrive_simulation_state = namedtuple("metadrive_simulation_state", ["running", "done", "done_info"])
@@ -67,6 +72,10 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
 
   env = MetaDriveEnv(config)
   lead_vehicle_id = None
+  last_lead_speed_change = time.monotonic()
+
+  def unit_forward(heading: float):
+    return np.array([math.cos(heading), math.sin(heading)])
 
   def spawn_lead_vehicle():
     nonlocal lead_vehicle_id
@@ -74,22 +83,38 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
       env.engine.clear_objects([lead_vehicle_id])
       lead_vehicle_id = None
 
-    forward = np.array([math.cos(env.vehicle.heading_theta), math.sin(env.vehicle.heading_theta)])
+    forward = unit_forward(env.vehicle.heading_theta)
     lead_pos = env.vehicle.position + forward * LEAD_DISTANCE
     lead = env.engine.spawn_object(
       DefaultVehicle,
       position=lead_pos.tolist(),
       heading=env.vehicle.heading_theta,
+      random_seed=env.engine.generate_seed(),
       vehicle_config=dict(
-        spawn_velocity=forward.tolist(),
-        spawn_velocity_car_frame=False,
         enable_reverse=False,
         render_vehicle=False,
+        enable_lane_change=False,
       ),
     )
+    lead.set_velocity(forward, LEAD_SPEED, in_local_frame=False)
     env.engine.add_policy(lead.id, IDMPolicy, lead, env.engine.generate_seed())
     lead_vehicle_id = lead.id
     return lead
+
+  def update_lead_vehicle():
+    nonlocal last_lead_speed_change
+    if lead_vehicle_id is None:
+      return
+    now = time.monotonic()
+    if now - last_lead_speed_change >= LEAD_SPEED_INTERVAL:
+      last_lead_speed_change = now
+    forward = unit_forward(env.vehicle.heading_theta)
+    lead_obj = env.engine.get_objects([lead_vehicle_id]).get(lead_vehicle_id)
+    if lead_obj is None:
+      spawn_lead_vehicle()
+      return
+    lead_obj.set_position((env.vehicle.position + forward * LEAD_DISTANCE).tolist())
+    lead_obj.set_velocity(forward, LEAD_SPEED, in_local_frame=False)
 
   def get_current_lane_info(vehicle):
     _, lane_info, on_lane = vehicle.navigation._get_current_lane(vehicle)
@@ -156,6 +181,7 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
       start_time = time.monotonic()
 
     if rk.frame % 5 == 0:
+      update_lead_vehicle()
       _, _, terminated, _, _ = env.step(vc)
       timeout = True if start_time is not None and time.monotonic() - start_time >= test_duration else False
       lane_idx_curr, on_lane = get_current_lane_info(env.vehicle)
