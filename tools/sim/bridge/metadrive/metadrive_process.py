@@ -52,6 +52,10 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
                       controls_recv: Connection, simulation_state_send: Connection, vehicle_state_send: Connection,
                       exit_event, op_engaged, test_duration, test_run):
   arrive_dest_done = config.pop("arrive_dest_done", True)
+  lead_vehicle_enabled = config.pop("lead_vehicle_enabled", False)
+  lead_vehicle_distance = float(config.pop("lead_vehicle_distance", 35.0))
+  lead_vehicle_throttle = float(config.pop("lead_vehicle_throttle", 0.0))
+  lead_vehicle_lateral_offset = float(config.pop("lead_vehicle_lateral_offset", 0.0))
   apply_metadrive_patches(arrive_dest_done)
 
   road_image = np.frombuffer(camera_array.get_obj(), dtype=np.uint8).reshape((H, W, 3))
@@ -60,15 +64,51 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
     wide_road_image = np.frombuffer(wide_camera_array.get_obj(), dtype=np.uint8).reshape((H, W, 3))
 
   env = MetaDriveEnv(config)
+  lead_vehicle = None
 
   def get_current_lane_info(vehicle):
     _, lane_info, on_lane = vehicle.navigation._get_current_lane(vehicle)
     lane_idx = lane_info[2] if lane_info is not None else None
     return lane_idx, on_lane
 
+  def spawn_lead_vehicle():
+    nonlocal lead_vehicle
+    lead_vehicle = None
+
+    if not lead_vehicle_enabled:
+      return
+
+    ego_vehicle = env.vehicle
+    ego_position = np.array(ego_vehicle.position, dtype=np.float64)
+    heading = np.array([math.cos(ego_vehicle.heading_theta), math.sin(ego_vehicle.heading_theta)], dtype=np.float64)
+    lead_position = ego_position + heading * lead_vehicle_distance
+
+    if abs(lead_vehicle_lateral_offset) > 1e-3:
+      # Positive offset places the lead to ego's left.
+      lateral_direction = np.array([-heading[1], heading[0]], dtype=np.float64)
+      lead_position += lateral_direction * lead_vehicle_lateral_offset
+
+    lead_config = dict(env.config["vehicle_config"])
+    lead_config["render_vehicle"] = True
+    for config_key in ("show_navi_mark", "show_dest_mark", "show_line_to_dest", "show_line_to_navi_mark"):
+      if config_key in lead_config:
+        lead_config[config_key] = False
+    if "navigation_module" in lead_config:
+      lead_config["navigation_module"] = None
+    if "navigation" in lead_config:
+      lead_config["navigation"] = None
+
+    lead_vehicle = env.engine.spawn_object(
+      ego_vehicle.__class__,
+      vehicle_config=lead_config,
+      position=lead_position.tolist(),
+      heading=float(ego_vehicle.heading_theta),
+    )
+
   def reset():
     env.reset()
     env.vehicle.config["max_speed_km_h"] = 1000
+    spawn_lead_vehicle()
     lane_idx_prev, _ = get_current_lane_info(env.vehicle)
 
     simulation_state = metadrive_simulation_state(
@@ -125,6 +165,8 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
       start_time = time.monotonic()
 
     if rk.frame % 5 == 0:
+      if lead_vehicle is not None:
+        lead_vehicle.before_step([0.0, lead_vehicle_throttle])
       _, _, terminated, _, _ = env.step(vc)
       timeout = True if start_time is not None and time.monotonic() - start_time >= test_duration else False
       lane_idx_curr, on_lane = get_current_lane_info(env.vehicle)
