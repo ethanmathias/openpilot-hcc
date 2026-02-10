@@ -85,7 +85,7 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
       position=lead_pos.tolist(),
       heading=env.vehicle.heading_theta,
       name="lead_vehicle",
-      random_seed=env.np_random.randint(0, 2**31 - 1),
+      random_seed=env.engine.np_random.randint(0, 2**31 - 1),
       vehicle_config=dict(
         enable_reverse=False,
         render_vehicle=False,
