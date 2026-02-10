@@ -80,7 +80,7 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
       lead_vehicle = None
     forward = get_forward_vector(env.vehicle.heading_theta)
     lead_pos = env.vehicle.position + forward * LEAD_DISTANCE
-    lead_vehicle = env.spawn_object(
+    lead_vehicle = env.engine.spawn_object(
       TrafficDefaultVehicle,
       position=lead_pos.tolist(),
       heading=env.vehicle.heading_theta,
