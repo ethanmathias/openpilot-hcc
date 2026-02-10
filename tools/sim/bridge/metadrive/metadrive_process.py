@@ -48,6 +48,44 @@ def apply_metadrive_patches(arrive_dest_done=True):
   if not arrive_dest_done:
     MetaDriveEnv._is_arrive_destination = arrive_destination_patch
 
+##
+  def apply_metadrive_patches(arrive_dest_done=True):
+  # ---- Patch add_image_sensor safely ----
+  _orig_add_image_sensor = EngineCore.add_image_sensor  # keep original
+
+  def add_image_sensor_patched(self, name: str, cls, args):
+    # If it's not an ImageBuffer sensor class, don't touch it.
+    # (Traffic can cause additional sensors to be created/registered.)
+    try:
+      is_image_buffer_cls = issubclass(cls, ImageBuffer)
+    except TypeError:
+      is_image_buffer_cls = False
+
+    if not is_image_buffer_cls:
+      return _orig_add_image_sensor(self, name, cls, args)
+
+    # Only enable CUDA for the ego cameras you actually read
+    ego_cuda_sensors = {"rgb_road", "rgb_wide"}
+    use_cuda = bool(self.global_config.get("image_on_cuda", False)) and (name in ego_cuda_sensors)
+
+    sensor = cls(*args, self, cuda=use_cuda)
+    self.sensors[name] = sensor
+
+  EngineCore.add_image_sensor = add_image_sensor_patched
+
+  # ---- Disable built-in observation stack ----
+  def observe_patched(self, *args, **kwargs):
+    return self.state
+  ImageObservation.observe = observe_patched
+
+  # ---- Disable destination if requested ----
+  def arrive_destination_patch(self, *args, **kwargs):
+    return False
+  if not arrive_dest_done:
+    MetaDriveEnv._is_arrive_destination = arrive_destination_patch
+
+##
+
 def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera_array, image_lock,
                       controls_recv: Connection, simulation_state_send: Connection, vehicle_state_send: Connection,
                       exit_event, op_engaged, test_duration, test_run):
