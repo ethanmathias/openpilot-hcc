@@ -81,7 +81,8 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
       position=lead_pos.tolist(),
       heading=env.vehicle.heading_theta,
       vehicle_config=dict(
-        spawn_velocity=10.0,
+        spawn_velocity=forward.tolist(),
+        spawn_velocity_car_frame=False,
         enable_reverse=False,
         render_vehicle=False,
       ),
