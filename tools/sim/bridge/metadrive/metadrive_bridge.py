@@ -50,8 +50,8 @@ def create_map(track_size=60):
 def get_hccc_step_scenario():
   mph_to_ms = 0.44704
   v0 = 0.0
-  v10 = 10.0 * mph_to_ms
-  v30 = 30.0 * mph_to_ms
+  v10 = 5.0 * mph_to_ms
+  v30 = 10.0 * mph_to_ms
   return {
     "enabled": True,
     "visual_lead": True,
@@ -61,7 +61,7 @@ def get_hccc_step_scenario():
     "initial_v_lead": v0,
     "y_rel": 0.0,
     # Keep transitions smooth and slower so hCCC response is easier to observe.
-    "max_accel": 1.0,
+    "max_accel": 0.5,
     "max_decel": 1.2,
     # (time_seconds, target_speed_mps)
     "speed_profile": [
