@@ -56,7 +56,7 @@ def get_hccc_step_scenario():
     "visual_lead": True,
     "visual_lead_overlay": True,
     "lead_start_delay_s": 10.0,
-    "initial_d_rel": 45.0,
+    "initial_d_rel": 8.0,
     "initial_v_lead": v10,
     "y_rel": 0.0,
     # Keep transitions smooth and slower so hCCC response is easier to observe.
