@@ -204,12 +204,24 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
       out_of_lane = lane_idx_curr != lane_idx_prev or not on_lane
       lane_idx_prev = lane_idx_curr
 
-      if terminated or ((out_of_lane or timeout) and test_run):
-        if terminated:
-          done_result = env.done_function("default_agent")
-        elif out_of_lane:
+      if terminated:
+        done_result = env.done_function("default_agent")
+        if test_run:
+          simulation_state = metadrive_simulation_state(
+            running=False,
+            done=done_result[0],
+            done_info=done_result[1],
+          )
+          simulation_state_send.send(simulation_state)
+        else:
+          # In interactive usage, reset instead of tearing down the full bridge.
+          lane_idx_prev, lead_state, lead_measurement = reset()
+          start_time = None
+          continue
+      elif (out_of_lane or timeout) and test_run:
+        if out_of_lane:
           done_result = (True, {"out_of_lane" : True})
-        elif timeout:
+        else:
           done_result = (True, {"timeout" : True})
 
         simulation_state = metadrive_simulation_state(
