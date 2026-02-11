@@ -21,7 +21,62 @@ C3_HPR = Vec3(0, 0,0)
 
 
 metadrive_simulation_state = namedtuple("metadrive_simulation_state", ["running", "done", "done_info"])
-metadrive_vehicle_state = namedtuple("metadrive_vehicle_state", ["velocity", "position", "bearing", "steering_angle"])
+metadrive_vehicle_state = namedtuple("metadrive_vehicle_state", ["velocity", "position", "bearing", "steering_angle",
+                                                                 "lead_status", "lead_d_rel", "lead_y_rel", "lead_v_rel", "lead_a_rel"])
+
+
+def _get_lead_measurement(enabled=False, d_rel=0.0, y_rel=0.0, v_rel=0.0, a_rel=0.0):
+  return {
+    "status": bool(enabled),
+    "d_rel": float(d_rel),
+    "y_rel": float(y_rel),
+    "v_rel": float(v_rel),
+    "a_rel": float(a_rel),
+  }
+
+
+def _create_hccc_lead_state(hccc_scenario):
+  enabled = bool(hccc_scenario.get("enabled", False))
+  return {
+    "enabled": enabled,
+    "d_rel": float(hccc_scenario.get("initial_d_rel", 0.0)),
+    "y_rel": float(hccc_scenario.get("y_rel", 0.0)),
+    "v_lead": float(hccc_scenario.get("initial_v_lead", 0.0)),
+    "prev_v_rel": 0.0,
+    "last_step_mono": None,
+    "start_time": time.monotonic(),
+  }
+
+
+def _get_profile_target_speed(profile, elapsed_s):
+  if len(profile) == 0:
+    return 0.0
+
+  times = [float(p[0]) for p in profile]
+  speeds = [float(p[1]) for p in profile]
+  return float(np.interp(elapsed_s, times, speeds))
+
+
+def _update_virtual_hccc_lead(hccc_scenario, lead_state, ego_speed, dt):
+  if not lead_state["enabled"]:
+    return _get_lead_measurement(False)
+
+  dt = max(dt, 1e-3)
+  profile = hccc_scenario.get("speed_profile", [])
+  target_v_lead = _get_profile_target_speed(profile, time.monotonic() - lead_state["start_time"])
+
+  max_accel = float(hccc_scenario.get("max_accel", 2.0))
+  max_decel = float(hccc_scenario.get("max_decel", 3.0))
+  dv = np.clip(target_v_lead - lead_state["v_lead"], -max_decel * dt, max_accel * dt)
+  lead_state["v_lead"] = max(0.0, lead_state["v_lead"] + float(dv))
+
+  v_rel = lead_state["v_lead"] - ego_speed
+  a_rel = (v_rel - lead_state["prev_v_rel"]) / dt
+  lead_state["prev_v_rel"] = v_rel
+
+  lead_state["d_rel"] = max(2.0, lead_state["d_rel"] + v_rel * dt)
+
+  return _get_lead_measurement(True, lead_state["d_rel"], lead_state["y_rel"], v_rel, a_rel)
 
 def apply_metadrive_patches(arrive_dest_done=True):
   # By default, metadrive won't try to use cuda images unless it's used as a sensor for vehicles, so patch that in
@@ -52,6 +107,7 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
                       controls_recv: Connection, simulation_state_send: Connection, vehicle_state_send: Connection,
                       exit_event, op_engaged, test_duration, test_run):
   arrive_dest_done = config.pop("arrive_dest_done", True)
+  hccc_scenario = config.pop("hccc_scenario", {"enabled": False})
   apply_metadrive_patches(arrive_dest_done)
 
   road_image = np.frombuffer(camera_array.get_obj(), dtype=np.uint8).reshape((H, W, 3))
@@ -78,9 +134,12 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
     )
     simulation_state_send.send(simulation_state)
 
-    return lane_idx_prev
+    lead_state = _create_hccc_lead_state(hccc_scenario)
+    lead_measurement = _get_lead_measurement(False)
 
-  lane_idx_prev = reset()
+    return lane_idx_prev, lead_state, lead_measurement
+
+  lane_idx_prev, lead_state, lead_measurement = reset()
   start_time = None
 
   def get_cam_as_rgb(cam):
@@ -103,7 +162,12 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
       velocity=vec3(x=float(env.vehicle.velocity[0]), y=float(env.vehicle.velocity[1]), z=0),
       position=env.vehicle.position,
       bearing=float(math.degrees(env.vehicle.heading_theta)),
-      steering_angle=env.vehicle.steering * env.vehicle.MAX_STEERING
+      steering_angle=env.vehicle.steering * env.vehicle.MAX_STEERING,
+      lead_status=lead_measurement["status"],
+      lead_d_rel=lead_measurement["d_rel"],
+      lead_y_rel=lead_measurement["y_rel"],
+      lead_v_rel=lead_measurement["v_rel"],
+      lead_a_rel=lead_measurement["a_rel"],
     )
     vehicle_state_send.send(vehicle_state)
 
@@ -117,7 +181,7 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
       vc = [steer_metadrive, gas]
 
       if should_reset:
-        lane_idx_prev = reset()
+        lane_idx_prev, lead_state, lead_measurement = reset()
         start_time = None
 
     is_engaged = op_engaged.is_set()
@@ -126,6 +190,15 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
 
     if rk.frame % 5 == 0:
       _, _, terminated, _, _ = env.step(vc)
+      step_mono = time.monotonic()
+      if lead_state["last_step_mono"] is None:
+        lead_dt = 0.05
+      else:
+        lead_dt = step_mono - lead_state["last_step_mono"]
+      lead_state["last_step_mono"] = step_mono
+      ego_speed = float(np.linalg.norm([env.vehicle.velocity[0], env.vehicle.velocity[1]]))
+      lead_measurement = _update_virtual_hccc_lead(hccc_scenario, lead_state, ego_speed, lead_dt)
+
       timeout = True if start_time is not None and time.monotonic() - start_time >= test_duration else False
       lane_idx_curr, on_lane = get_current_lane_info(env.vehicle)
       out_of_lane = lane_idx_curr != lane_idx_prev or not on_lane

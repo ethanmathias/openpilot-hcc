@@ -15,7 +15,7 @@ note: run the openpilot and bridge in two seperate terminal windows.
 ## Bridge usage
 ```
 $ ./run_bridge.py -h
-usage: run_bridge.py [-h] [--joystick] [--high_quality] [--dual_camera]
+usage: run_bridge.py [-h] [--joystick] [--high_quality] [--dual_camera] [--scenario {default,hccc_step}]
 Bridge between the simulator and openpilot.
 
 options:
@@ -23,6 +23,7 @@ options:
   --joystick
   --high_quality
   --dual_camera
+  --scenario {default,hccc_step}
 ```
 
 #### Bridge Controls:
@@ -50,3 +51,13 @@ Start bridge processes located in tools/sim:
 ``` bash
 ./run_bridge.py
 ```
+
+### hCCC test scenario
+To run a deterministic lead-vehicle profile for hCCC testing:
+``` bash
+./run_bridge.py --scenario hccc_step
+```
+This scenario injects a virtual lead into `liveTracks` (used by `radard`) with a speed step profile:
+- starts at ~22 m/s
+- slows to ~10 m/s
+- then recovers back to ~22 m/s

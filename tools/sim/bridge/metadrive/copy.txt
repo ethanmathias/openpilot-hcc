@@ -1,43 +1,13 @@
-----------------------------------------------------------
-[INFO] Environment: MetaDriveEnv
-[INFO] MetaDrive version: 0.4.2.4
-[INFO] Sensors: [lidar: Lidar(), side_detector: SideDetector(), lane_line_detector: LaneLineDetector(), rgb_road: RGBCameraRoad(1928, 1208)]
-[INFO] Render Mode: offscreen
-[INFO] Horizon (Max steps per agent): None
-[INFO] Assets version: 0.4.2.4
-[INFO] Known Pipes: glxGraphicsPipe
-[INFO] Assets version: 0.4.2.4
-[INFO] Known Pipes: glxGraphicsPipe
-[WARNING] You are using too large buffer! The height is 1208, and width is 1928. It may lower the sample efficiency! Consider reducing buffer size or use cuda image by set [image_on_cuda=True]. (base_camera.py:49)
-[INFO] Start Scenario Index: 0, Num Scenarios : 1
-[WARNING] env.vehicle will be deprecated soon. Use env.agent instead (base_env.py:733)
-:loader(error): Couldn't load file /home/linklab/ethan-openpilot/openpilot-hcc/.venv/lib/python3.12/site-packages/metadrive/assets/models/ferra/right_tire_front.gltf: does not exist.
-Process metadrive process:
-Traceback (most recent call last):
-  File "/usr/lib/python3.12/multiprocessing/process.py", line 314, in _bootstrap
-    self.run()
-  File "/usr/lib/python3.12/multiprocessing/process.py", line 108, in run
-    self._target(*self._args, **self._kwargs)
-  File "/home/linklab/ethan-openpilot/openpilot-hcc/openpilot/tools/sim/bridge/metadrive/metadrive_process.py", line 123, in metadrive_process
-    lane_idx_prev = reset()
-                    ^^^^^^^
-  File "/home/linklab/ethan-openpilot/openpilot-hcc/openpilot/tools/sim/bridge/metadrive/metadrive_process.py", line 111, in reset
-    spawn_lead_vehicle()
-  File "/home/linklab/ethan-openpilot/openpilot-hcc/openpilot/tools/sim/bridge/metadrive/metadrive_process.py", line 101, in spawn_lead_vehicle
-    lead_vehicle = env.engine.spawn_object(
-                   ^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/linklab/ethan-openpilot/openpilot-hcc/.venv/lib/python3.12/site-packages/metadrive/engine/base_engine.py", line 137, in spawn_object
-    obj = object_class(**kwargs)
-          ^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/linklab/ethan-openpilot/openpilot-hcc/.venv/lib/python3.12/site-packages/metadrive/component/vehicle/base_vehicle.py", line 149, in __init__
-    self.wheels = self._create_wheel()
-                  ^^^^^^^^^^^^^^^^^^^^
-  File "/home/linklab/ethan-openpilot/openpilot-hcc/.venv/lib/python3.12/site-packages/metadrive/component/vehicle/base_vehicle.py", line 666, in _create_wheel
-    wheel = self._add_wheel(pos, radius, True if k < 2 else False, True if k == 0 or k == 2 else False)
-            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/linklab/ethan-openpilot/openpilot-hcc/.venv/lib/python3.12/site-packages/metadrive/component/vehicle/base_vehicle.py", line 677, in _add_wheel
-    wheel_model = self.loader.loadModel(model_path)
-                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/linklab/ethan-openpilot/openpilot-hcc/.venv/lib/python3.12/site-packages/direct/showbase/Loader.py", line 308, in loadModel
-    raise IOError(message)
-OSError: Could not load model file(s): ['/home/linklab/ethan-openpilot/openpilot-hcc/.venv/lib/python3.12/site-packages/metadrive/assets/models/ferra/right_tire_front.gltf']
+How to run on your MetaDrive PC
+
+Terminal 1:
+./tools/sim/launch_openpilot.sh
+Terminal 2:
+./tools/sim/run_bridge.py --scenario hccc_step
+This runs a deterministic lead profile (~22 m/s -> ~10 m/s -> ~22 m/s) via liveTracks, so radard produces radarState.leadOne for your hCCC logic.
+
+Validation done
+
+Syntax check passed for modified Python files:
+python3 -m py_compile on all touched .py files in tools/sim.
+I could not run full simulator runtime tests in this environment (MetaDrive not installed here).

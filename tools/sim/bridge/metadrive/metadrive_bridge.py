@@ -47,15 +47,38 @@ def create_map(track_size=60):
   )
 
 
+def get_hccc_step_scenario():
+  return {
+    "enabled": True,
+    "initial_d_rel": 45.0,
+    "initial_v_lead": 22.0,
+    "y_rel": 0.0,
+    "max_accel": 2.0,
+    "max_decel": 3.0,
+    # (time_seconds, target_speed_mps)
+    "speed_profile": [
+      (0.0, 22.0),
+      (8.0, 22.0),
+      (14.0, 10.0),
+      (22.0, 10.0),
+      (30.0, 22.0),
+    ],
+  }
+
+
 class MetaDriveBridge(SimulatorBridge):
   TICKS_PER_FRAME = 5
 
-  def __init__(self, dual_camera, high_quality, test_duration=math.inf, test_run=False):
+  def __init__(self, dual_camera, high_quality, test_duration=math.inf, test_run=False, scenario="default"):
     super().__init__(dual_camera, high_quality)
 
     self.should_render = False
     self.test_run = test_run
     self.test_duration = test_duration if self.test_run else math.inf
+    self.scenario = scenario
+
+    if self.scenario == "hccc_step":
+      self.params.put_bool("EnableHCCC", True)
 
   def spawn_world(self, queue: Queue):
     sensors = {
@@ -64,6 +87,9 @@ class MetaDriveBridge(SimulatorBridge):
 
     if self.dual_camera:
       sensors["rgb_wide"] = (RGBCameraWide, W, H)
+
+    map_track_size = 200 if self.scenario == "hccc_step" else 60
+    hccc_scenario = get_hccc_step_scenario() if self.scenario == "hccc_step" else {"enabled": False}
 
     config = dict(
       use_render=self.should_render,
@@ -82,12 +108,13 @@ class MetaDriveBridge(SimulatorBridge):
       crash_object_done=False,
       arrive_dest_done=False,
       traffic_density=0.0, # traffic is incredibly expensive
-      map_config=create_map(),
+      map_config=create_map(track_size=map_track_size),
       decision_repeat=1,
       physics_world_step_size=self.TICKS_PER_FRAME/100,
       preload_models=False,
       show_logo=False,
-      anisotropic_filtering=False
+      anisotropic_filtering=False,
+      hccc_scenario=hccc_scenario,
     )
 
     return MetaDriveWorld(queue, config, self.test_duration, self.test_run, self.dual_camera)
