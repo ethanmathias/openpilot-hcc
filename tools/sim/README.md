@@ -15,7 +15,7 @@ note: run the openpilot and bridge in two seperate terminal windows.
 ## Bridge usage
 ```
 $ ./run_bridge.py -h
-usage: run_bridge.py [-h] [--joystick] [--high_quality] [--dual_camera] [--scenario {default,hccc_step}]
+usage: run_bridge.py [-h] [--joystick] [--high_quality] [--dual_camera] [--scenario {default,hccc_step}] [--manual_no_lead]
 Bridge between the simulator and openpilot.
 
 options:
@@ -24,6 +24,7 @@ options:
   --high_quality
   --dual_camera
   --scenario {default,hccc_step}
+  --manual_no_lead
 ```
 
 #### Bridge Controls:
@@ -61,3 +62,10 @@ This scenario injects a virtual lead into `liveTracks` (used by `radard`) with a
 - starts at ~22 m/s
 - slows to ~10 m/s
 - then recovers back to ~22 m/s
+
+### Manual no-lead driving (WASD only)
+To drive manually without auto-engage and without any virtual lead:
+``` bash
+./run_bridge.py --scenario default --manual_no_lead
+```
+Use `W/A/S/D` keys to drive.

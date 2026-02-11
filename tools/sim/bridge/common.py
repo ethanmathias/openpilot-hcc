@@ -37,7 +37,7 @@ def rk_loop(function, hz, exit_event: threading.Event):
 class SimulatorBridge(ABC):
   TICKS_PER_FRAME = 5
 
-  def __init__(self, dual_camera, high_quality):
+  def __init__(self, dual_camera, high_quality, force_engage_on_startup=True):
     set_params_enabled()
     self.params = Params()
     self.params.put_bool("AlphaLongitudinalEnabled", True)
@@ -58,6 +58,7 @@ class SimulatorBridge(ABC):
 
     self.past_startup_engaged = False
     self.startup_button_prev = True
+    self.force_engage_on_startup = force_engage_on_startup
 
     self.test_run = False
 
@@ -178,7 +179,7 @@ Ignition: {self.simulator_state.ignition} Engaged: {self.simulator_state.is_enga
         steer_op = self.simulated_car.sm['carControl'].actuators.steeringAngleDeg
 
         self.past_startup_engaged = True
-      elif not self.past_startup_engaged and self.simulated_car.sm['selfdriveState'].engageable:
+      elif self.force_engage_on_startup and not self.past_startup_engaged and self.simulated_car.sm['selfdriveState'].engageable:
         self.simulator_state.cruise_button = CruiseButtons.DECEL_SET if self.startup_button_prev else CruiseButtons.MAIN # force engagement on startup
         self.startup_button_prev = not self.startup_button_prev
 

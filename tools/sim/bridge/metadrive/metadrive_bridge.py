@@ -69,8 +69,9 @@ def get_hccc_step_scenario():
 class MetaDriveBridge(SimulatorBridge):
   TICKS_PER_FRAME = 5
 
-  def __init__(self, dual_camera, high_quality, test_duration=math.inf, test_run=False, scenario="default"):
-    super().__init__(dual_camera, high_quality)
+  def __init__(self, dual_camera, high_quality, test_duration=math.inf, test_run=False, scenario="default",
+               force_engage_on_startup=True):
+    super().__init__(dual_camera, high_quality, force_engage_on_startup=force_engage_on_startup)
 
     self.should_render = False
     self.test_run = test_run
@@ -79,6 +80,8 @@ class MetaDriveBridge(SimulatorBridge):
 
     if self.scenario == "hccc_step":
       self.params.put_bool("EnableHCCC", True)
+    elif not force_engage_on_startup:
+      self.params.put_bool("EnableHCCC", False)
 
   def spawn_world(self, queue: Queue):
     sensors = {
