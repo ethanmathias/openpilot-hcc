@@ -1,7 +1,14 @@
 import math
+import os
 import time
 import numpy as np
 from pathlib import Path
+
+# Avoid automatic asset upgrade checks/downloads when starting the bridge.
+# MetaDrive versions use slightly different flag names, so set a few known variants.
+os.environ.setdefault("METADRIVE_DISABLE_ASSET_UPDATE", "1")
+os.environ.setdefault("METADRIVE_DISABLE_ASSET_CHECK", "1")
+os.environ.setdefault("METADRIVE_SKIP_ASSET_DOWNLOAD", "1")
 
 from collections import namedtuple
 from panda3d.core import Vec3, NodePath
@@ -248,6 +255,29 @@ def _draw_virtual_lead_overlay(image, lead_measurement, overlay_state):
   _blend_color(image[y0:y1, x1 - border:x1], [255, 255, 255], 0.80 * alpha)
 
 def apply_metadrive_patches(arrive_dest_done=True):
+  # Disable MetaDrive auto asset pull/update checks at runtime.
+  # Different versions expose different helpers, so patch defensively.
+  try:
+    import metadrive.pull_asset as pull_asset_mod
+    if not getattr(pull_asset_mod, "_op_disable_auto_asset_update", False):
+      def _no_asset_update(*args, **kwargs):
+        return None
+
+      def _asset_up_to_date(*args, **kwargs):
+        return False
+
+      for fn_name in ("pull_asset", "pull_asset_if_needed", "auto_update_asset", "update_asset", "download_asset"):
+        if hasattr(pull_asset_mod, fn_name):
+          setattr(pull_asset_mod, fn_name, _no_asset_update)
+
+      for fn_name in ("is_asset_outdated", "asset_outdated", "is_asset_update_needed", "need_update"):
+        if hasattr(pull_asset_mod, fn_name):
+          setattr(pull_asset_mod, fn_name, _asset_up_to_date)
+
+      pull_asset_mod._op_disable_auto_asset_update = True
+  except Exception:
+    pass
+
   # Some MetaDrive wheels reference optional assets (e.g. ferra/right_tire_front.gltf).
   # Fallback to an empty model node instead of crashing when those files are missing.
   try:
