@@ -150,6 +150,39 @@ def _sync_visual_hccc_lead(env, visual_lead, lead_measurement):
   except Exception:
     pass
 
+
+def _draw_virtual_lead_overlay(image, lead_measurement):
+  if not lead_measurement["status"]:
+    return
+
+  h, w, _ = image.shape
+  d_rel = max(2.0, float(lead_measurement["d_rel"]))
+  y_rel = float(lead_measurement["y_rel"])
+
+  box_h = int(np.clip(520.0 / d_rel, 18, 120))
+  box_w = int(box_h * 1.8)
+
+  x_center = int(w * 0.5 + np.clip(y_rel * 12.0, -w * 0.35, w * 0.35))
+  y_center = int(h * 0.44 + np.clip((45.0 - d_rel) * 2.0, -h * 0.12, h * 0.30))
+
+  x0 = max(0, x_center - box_w // 2)
+  x1 = min(w, x_center + box_w // 2)
+  y0 = max(0, y_center - box_h // 2)
+  y1 = min(h, y_center + box_h // 2)
+  if x1 <= x0 or y1 <= y0:
+    return
+
+  roi = image[y0:y1, x0:x1]
+  tint = np.array([230, 55, 55], dtype=np.float32)
+  roi_float = roi.astype(np.float32)
+  roi[:] = np.clip(0.70 * roi_float + 0.30 * tint, 0, 255).astype(np.uint8)
+
+  border = 2
+  image[y0:y0 + border, x0:x1] = [255, 255, 255]
+  image[y1 - border:y1, x0:x1] = [255, 255, 255]
+  image[y0:y1, x0:x0 + border] = [255, 255, 255]
+  image[y0:y1, x1 - border:x1] = [255, 255, 255]
+
 def apply_metadrive_patches(arrive_dest_done=True):
   # By default, metadrive won't try to use cuda images unless it's used as a sensor for vehicles, so patch that in
   def add_image_sensor_patched(self, name: str, cls, args):
@@ -315,6 +348,8 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
       if dual_camera:
         wide_road_image[...] = get_cam_as_rgb("rgb_wide")
       road_image[...] = get_cam_as_rgb("rgb_road")
+      if bool(hccc_scenario.get("visual_lead_overlay", False)):
+        _draw_virtual_lead_overlay(road_image, lead_measurement)
       image_lock.release()
 
     rk.keep_time()
