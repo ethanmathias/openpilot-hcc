@@ -21,6 +21,7 @@ from openpilot.selfdrive.pandad import can_capnp_to_list, can_list_to_can_capnp
 from openpilot.selfdrive.car.cruise import VCruiseHelper
 
 REPLAY = "REPLAY" in os.environ
+SIMULATION = "SIMULATION" in os.environ
 
 EventName = log.OnroadEvent.EventName
 
@@ -65,7 +66,11 @@ class Car:
   def __init__(self, CI=None, RI=None) -> None:
     self.can_sock = messaging.sub_sock('can', timeout=20)
     self.sm = messaging.SubMaster(['pandaStates', 'carControl', 'onroadEvents'])
-    self.pm = messaging.PubMaster(['sendcan', 'carState', 'carParams', 'carOutput', 'liveTracks'])
+    self.publish_live_tracks = not SIMULATION
+    pub_services = ['sendcan', 'carState', 'carParams', 'carOutput']
+    if self.publish_live_tracks:
+      pub_services.append('liveTracks')
+    self.pm = messaging.PubMaster(pub_services)
 
     self.can_rcv_cum_timeout_counter = 0
 
@@ -215,7 +220,7 @@ class Car:
     cs_send.carState.cumLagMs = -self.rk.remaining * 1000.
     self.pm.send('carState', cs_send)
 
-    if RD is not None:
+    if self.publish_live_tracks and RD is not None:
       tracks_msg = messaging.new_message('liveTracks')
       tracks_msg.valid = not any(RD.errors.to_dict().values())
       tracks_msg.liveTracks = RD

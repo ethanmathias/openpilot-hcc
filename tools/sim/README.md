@@ -25,6 +25,8 @@ options:
   --dual_camera
   --scenario {default,hccc_step}
   --manual_no_lead
+
+  SIMULATION=1 ./tools/sim/run_bridge.py
 ```
 
 #### Bridge Controls:
