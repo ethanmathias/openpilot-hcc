@@ -1,6 +1,7 @@
 import math
 import time
 import numpy as np
+from pathlib import Path
 
 from collections import namedtuple
 from panda3d.core import Vec3, NodePath
@@ -27,6 +28,15 @@ C3_HPR = Vec3(0, 0,0)
 metadrive_simulation_state = namedtuple("metadrive_simulation_state", ["running", "done", "done_info"])
 metadrive_vehicle_state = namedtuple("metadrive_vehicle_state", ["velocity", "position", "bearing", "steering_angle",
                                                                  "lead_status", "lead_d_rel", "lead_y_rel", "lead_v_rel", "lead_a_rel"])
+
+
+def _has_ferra_assets():
+  try:
+    import metadrive
+    assets_dir = Path(metadrive.__file__).resolve().parent / "assets" / "models" / "ferra"
+  except Exception:
+    return False
+  return assets_dir.is_dir() and (assets_dir / "right_tire_front.gltf").exists()
 
 
 def _get_lead_measurement(enabled=False, d_rel=0.0, y_rel=0.0, v_rel=0.0, a_rel=0.0):
@@ -294,6 +304,21 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
                       exit_event, op_engaged, test_duration, test_run):
   arrive_dest_done = config.pop("arrive_dest_done", True)
   hccc_scenario = config.pop("hccc_scenario", {"enabled": False})
+  ferra_assets_ok = _has_ferra_assets()
+  if ferra_assets_ok and hccc_scenario.get("enabled", False):
+    vehicle_cfg = config.setdefault("vehicle_config", {})
+    vehicle_cfg["render_vehicle"] = True
+    hccc_scenario["visual_lead"] = True
+    hccc_scenario["visual_lead_overlay"] = False
+  if not ferra_assets_ok:
+    vehicle_cfg = config.setdefault("vehicle_config", {})
+    if vehicle_cfg.get("render_vehicle", False):
+      print("warning: MetaDrive ferra assets missing; disabling render_vehicle")
+      vehicle_cfg["render_vehicle"] = False
+    if hccc_scenario.get("visual_lead", False):
+      print("warning: MetaDrive ferra assets missing; using overlay lead visualization")
+      hccc_scenario["visual_lead"] = False
+      hccc_scenario["visual_lead_overlay"] = True
   apply_metadrive_patches(arrive_dest_done)
 
   road_image = np.frombuffer(camera_array.get_obj(), dtype=np.uint8).reshape((H, W, 3))
