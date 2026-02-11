@@ -65,7 +65,8 @@ This uses a single-lane, very long looped map.
 This scenario injects a lead profile into `liveTracks` (used by `radard`) and draws a visible lead target overlay ahead of ego in the road camera view.
 The lead follows a slower profile with holds:
 - 10s start delay before lead is active
-- hold 10 mph
+- hold stopped (0 mph)
+- gradual ramp to 10 mph, then hold
 - gradual ramp to 30 mph, then hold
 - gradual ramp down to 10 mph, then hold
 - gradual ramp back to 30 mph, then hold

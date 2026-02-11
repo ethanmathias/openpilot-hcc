@@ -165,19 +165,61 @@ def _sync_visual_hccc_lead(env, visual_lead, lead_measurement):
     pass
 
 
-def _draw_virtual_lead_overlay(image, lead_measurement):
-  if not lead_measurement["status"]:
+def _create_overlay_state():
+  return {
+    "initialized": False,
+    "x": 0.0,
+    "y": 0.0,
+    "w": 0.0,
+    "h": 0.0,
+    "alpha": 0.0,
+  }
+
+
+def _blend_color(region, color, alpha):
+  if alpha <= 0.0 or region.size == 0:
     return
+  color_arr = np.array(color, dtype=np.float32)
+  region_float = region.astype(np.float32)
+  region[:] = np.clip((1.0 - alpha) * region_float + alpha * color_arr, 0, 255).astype(np.uint8)
+
+
+def _draw_virtual_lead_overlay(image, lead_measurement, overlay_state):
+  status = bool(lead_measurement["status"])
 
   h, w, _ = image.shape
-  d_rel = max(2.0, float(lead_measurement["d_rel"]))
-  y_rel = float(lead_measurement["y_rel"])
+  d_rel = max(2.0, float(lead_measurement["d_rel"])) if status else 2.0
+  y_rel = float(lead_measurement["y_rel"]) if status else 0.0
 
-  box_h = int(np.clip(520.0 / d_rel, 18, 120))
-  box_w = int(box_h * 1.8)
+  target_h = float(np.clip(520.0 / d_rel, 18, 120))
+  target_w = float(target_h * 1.8)
+  target_x = float(w * 0.5 + np.clip(y_rel * 12.0, -w * 0.35, w * 0.35))
+  target_y = float(h * 0.44 + np.clip((45.0 - d_rel) * 2.0, -h * 0.12, h * 0.30))
 
-  x_center = int(w * 0.5 + np.clip(y_rel * 12.0, -w * 0.35, w * 0.35))
-  y_center = int(h * 0.44 + np.clip((45.0 - d_rel) * 2.0, -h * 0.12, h * 0.30))
+  if status and not overlay_state["initialized"]:
+    overlay_state["x"] = target_x
+    overlay_state["y"] = target_y
+    overlay_state["w"] = target_w
+    overlay_state["h"] = target_h
+    overlay_state["initialized"] = True
+  elif status:
+    pos_alpha = 0.22
+    size_alpha = 0.18
+    overlay_state["x"] += pos_alpha * (target_x - overlay_state["x"])
+    overlay_state["y"] += pos_alpha * (target_y - overlay_state["y"])
+    overlay_state["w"] += size_alpha * (target_w - overlay_state["w"])
+    overlay_state["h"] += size_alpha * (target_h - overlay_state["h"])
+
+  alpha_target = 1.0 if status else 0.0
+  overlay_state["alpha"] += 0.25 * (alpha_target - overlay_state["alpha"])
+  alpha = float(np.clip(overlay_state["alpha"], 0.0, 1.0))
+  if alpha < 0.03 or not overlay_state["initialized"]:
+    return
+
+  box_w = int(max(8.0, overlay_state["w"]))
+  box_h = int(max(8.0, overlay_state["h"]))
+  x_center = int(overlay_state["x"])
+  y_center = int(overlay_state["y"])
 
   x0 = max(0, x_center - box_w // 2)
   x1 = min(w, x_center + box_w // 2)
@@ -187,15 +229,13 @@ def _draw_virtual_lead_overlay(image, lead_measurement):
     return
 
   roi = image[y0:y1, x0:x1]
-  tint = np.array([230, 55, 55], dtype=np.float32)
-  roi_float = roi.astype(np.float32)
-  roi[:] = np.clip(0.70 * roi_float + 0.30 * tint, 0, 255).astype(np.uint8)
+  _blend_color(roi, [230, 55, 55], 0.30 * alpha)
 
   border = 2
-  image[y0:y0 + border, x0:x1] = [255, 255, 255]
-  image[y1 - border:y1, x0:x1] = [255, 255, 255]
-  image[y0:y1, x0:x0 + border] = [255, 255, 255]
-  image[y0:y1, x1 - border:x1] = [255, 255, 255]
+  _blend_color(image[y0:y0 + border, x0:x1], [255, 255, 255], 0.80 * alpha)
+  _blend_color(image[y1 - border:y1, x0:x1], [255, 255, 255], 0.80 * alpha)
+  _blend_color(image[y0:y1, x0:x0 + border], [255, 255, 255], 0.80 * alpha)
+  _blend_color(image[y0:y1, x1 - border:x1], [255, 255, 255], 0.80 * alpha)
 
 def apply_metadrive_patches(arrive_dest_done=True):
   # By default, metadrive won't try to use cuda images unless it's used as a sensor for vehicles, so patch that in
@@ -265,9 +305,10 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
       a_rel=0.0,
     )
 
-    return lane_idx_prev, lead_state, lead_measurement, visual_lead
+    overlay_state = _create_overlay_state()
+    return lane_idx_prev, lead_state, lead_measurement, visual_lead, overlay_state
 
-  lane_idx_prev, lead_state, lead_measurement, visual_lead = reset()
+  lane_idx_prev, lead_state, lead_measurement, visual_lead, overlay_state = reset()
   start_time = None
 
   def get_cam_as_rgb(cam):
@@ -309,7 +350,7 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
       vc = [steer_metadrive, gas]
 
       if should_reset:
-        lane_idx_prev, lead_state, lead_measurement, visual_lead = reset()
+        lane_idx_prev, lead_state, lead_measurement, visual_lead, overlay_state = reset()
         start_time = None
 
     is_engaged = op_engaged.is_set()
@@ -344,7 +385,7 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
           simulation_state_send.send(simulation_state)
         else:
           # In interactive usage, reset instead of tearing down the full bridge.
-          lane_idx_prev, lead_state, lead_measurement, visual_lead = reset()
+          lane_idx_prev, lead_state, lead_measurement, visual_lead, overlay_state = reset()
           start_time = None
           continue
       elif (out_of_lane or timeout) and test_run:
@@ -364,7 +405,7 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
         wide_road_image[...] = get_cam_as_rgb("rgb_wide")
       road_image[...] = get_cam_as_rgb("rgb_road")
       if bool(hccc_scenario.get("visual_lead_overlay", False)):
-        _draw_virtual_lead_overlay(road_image, lead_measurement)
+        _draw_virtual_lead_overlay(road_image, lead_measurement, overlay_state)
       image_lock.release()
 
     rk.keep_time()
