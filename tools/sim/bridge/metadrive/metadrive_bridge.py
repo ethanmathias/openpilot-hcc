@@ -55,6 +55,7 @@ def get_hccc_step_scenario():
     "enabled": True,
     "visual_lead": True,
     "visual_lead_overlay": True,
+    "lead_start_delay_s": 10.0,
     "initial_d_rel": 45.0,
     "initial_v_lead": v10,
     "y_rel": 0.0,

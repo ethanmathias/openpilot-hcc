@@ -41,14 +41,19 @@ def _get_lead_measurement(enabled=False, d_rel=0.0, y_rel=0.0, v_rel=0.0, a_rel=
 
 def _create_hccc_lead_state(hccc_scenario):
   enabled = bool(hccc_scenario.get("enabled", False))
+  now = time.monotonic()
+  lead_start_delay_s = float(hccc_scenario.get("lead_start_delay_s", 0.0))
   return {
     "enabled": enabled,
+    "lead_start_delay_s": lead_start_delay_s,
     "d_rel": float(hccc_scenario.get("initial_d_rel", 0.0)),
     "y_rel": float(hccc_scenario.get("y_rel", 0.0)),
     "v_lead": float(hccc_scenario.get("initial_v_lead", 0.0)),
     "prev_v_rel": 0.0,
     "last_step_mono": None,
-    "start_time": time.monotonic(),
+    "start_time": now,
+    "profile_start_time": now + lead_start_delay_s,
+    "started": lead_start_delay_s <= 0.0,
   }
 
 
@@ -65,9 +70,18 @@ def _update_virtual_hccc_lead(hccc_scenario, lead_state, ego_speed, dt):
   if not lead_state["enabled"]:
     return _get_lead_measurement(False)
 
+  now = time.monotonic()
+  if not lead_state["started"]:
+    if now < lead_state["profile_start_time"]:
+      lead_state["prev_v_rel"] = 0.0
+      return _get_lead_measurement(False)
+    lead_state["started"] = True
+    lead_state["profile_start_time"] = now
+    lead_state["prev_v_rel"] = 0.0
+
   dt = max(dt, 1e-3)
   profile = hccc_scenario.get("speed_profile", [])
-  target_v_lead = _get_profile_target_speed(profile, time.monotonic() - lead_state["start_time"])
+  target_v_lead = _get_profile_target_speed(profile, now - lead_state["profile_start_time"])
 
   max_accel = float(hccc_scenario.get("max_accel", 2.0))
   max_decel = float(hccc_scenario.get("max_decel", 3.0))
@@ -242,8 +256,9 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
     lead_state = _create_hccc_lead_state(hccc_scenario)
     lead_measurement = _get_lead_measurement(False)
     visual_lead = _spawn_visual_hccc_lead(env, hccc_scenario, lead_state)
+    lead_active = bool(lead_state["enabled"] and lead_state["started"])
     lead_measurement = _get_lead_measurement(
-      enabled=lead_state["enabled"],
+      enabled=lead_active,
       d_rel=lead_state["d_rel"],
       y_rel=lead_state["y_rel"],
       v_rel=lead_state["v_lead"] - float(np.linalg.norm([env.vehicle.velocity[0], env.vehicle.velocity[1]])),
