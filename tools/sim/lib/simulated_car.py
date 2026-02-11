@@ -122,7 +122,7 @@ class SimulatedCar:
       self.send_can_messages(simulator_state)
       self.send_live_tracks(simulator_state)
 
-      if self.idx % 50 == 0: # only send panda states at 2hz
+      if self.idx % 10 == 0: # send panda states at 10hz to match service expectation
         self.send_panda_state(simulator_state)
 
       self.idx += 1
