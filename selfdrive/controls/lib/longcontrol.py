@@ -10,6 +10,8 @@ from openpilot.selfdrive.modeld.constants import ModelConstants
 CONTROL_N_T_IDX = ModelConstants.T_IDXS[:CONTROL_N]
 
 LongCtrlState = car.CarControl.Actuators.LongControlState
+HCCC_MAX_DECEL = -3.0
+HCCC_MAX_ACCEL = 3.0
 
 
 def long_control_state_trans(CP, active, long_control_state, v_ego,
@@ -74,7 +76,7 @@ class LongControl:
     if not enabled:
       self.hccc = None
     elif self.hccc is None or force_reset:
-      self.hccc = hCCC(dt=DT_CTRL, max_deceleration=self.CP.stopAccel, max_acceleration=self.CP.startAccel)
+      self.hccc = hCCC(dt=DT_CTRL, max_deceleration=HCCC_MAX_DECEL, max_acceleration=HCCC_MAX_ACCEL)
     self.use_hccc = enabled
 
   def update(self, active, CS, a_target, should_stop, accel_limits, lead=None):
@@ -82,6 +84,7 @@ class LongControl:
     self.pid.neg_limit = accel_limits[0]
     self.pid.pos_limit = accel_limits[1]
     self._refresh_hccc()
+    hccc_output = None
 
     self.long_control_state = long_control_state_trans(self.CP, active, self.long_control_state, CS.vEgo,
                                                        should_stop, CS.brakePressed,
@@ -102,7 +105,6 @@ class LongControl:
       self.reset()
 
     else:  # LongCtrlState.pid
-      hccc_output = None
       if self.use_hccc and self.hccc is not None:
         hccc_output = self.hccc.run_step(CS, lead)
 
@@ -113,5 +115,8 @@ class LongControl:
         output_accel = self.pid.update(error, speed=CS.vEgo,
                                        feedforward=a_target)
 
-    self.last_output_accel = np.clip(output_accel, accel_limits[0], accel_limits[1])
+    if hccc_output is not None:
+      self.last_output_accel = np.clip(output_accel, HCCC_MAX_DECEL, HCCC_MAX_ACCEL)
+    else:
+      self.last_output_accel = np.clip(output_accel, accel_limits[0], accel_limits[1])
     return self.last_output_accel
