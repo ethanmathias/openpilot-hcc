@@ -62,7 +62,7 @@ To run a deterministic lead-vehicle profile for hCCC testing:
 ```
 This uses a single-lane, very long looped map.
 
-This scenario injects a lead profile into `liveTracks` (used by `radard`) and draws a visible lead target overlay ahead of ego in the road camera view.
+This scenario injects a lead profile into `liveTracks` (used by `radard`) and renders a visible lead car ahead of ego.
 The lead follows a slower profile with holds:
 - 10s start delay before lead is active
 - hold stopped (0 mph)

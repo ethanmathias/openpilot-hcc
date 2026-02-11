@@ -3,7 +3,7 @@ import time
 import numpy as np
 
 from collections import namedtuple
-from panda3d.core import Vec3
+from panda3d.core import Vec3, NodePath
 from multiprocessing.connection import Connection
 
 from metadrive.engine.core.engine_core import EngineCore
@@ -238,6 +238,33 @@ def _draw_virtual_lead_overlay(image, lead_measurement, overlay_state):
   _blend_color(image[y0:y1, x1 - border:x1], [255, 255, 255], 0.80 * alpha)
 
 def apply_metadrive_patches(arrive_dest_done=True):
+  # Some MetaDrive wheels reference optional assets (e.g. ferra/right_tire_front.gltf).
+  # Fallback to an empty model node instead of crashing when those files are missing.
+  try:
+    from direct.showbase.Loader import Loader
+    if not getattr(Loader.loadModel, "_op_missing_asset_patch", False):
+      original_load_model = Loader.loadModel
+      missing_logged = set()
+
+      def load_model_patched(self, model_path, *args, **kwargs):
+        try:
+          return original_load_model(self, model_path, *args, **kwargs)
+        except IOError:
+          paths = model_path if isinstance(model_path, (list, tuple)) else [model_path]
+          path_strs = tuple(str(p) for p in paths)
+          is_metadrive_asset = any("metadrive/assets/models" in p for p in path_strs)
+          if is_metadrive_asset:
+            if path_strs not in missing_logged:
+              print(f"warning: missing MetaDrive model asset {path_strs}; using empty placeholder")
+              missing_logged.add(path_strs)
+            return NodePath("missing_model_placeholder")
+          raise
+
+      load_model_patched._op_missing_asset_patch = True
+      Loader.loadModel = load_model_patched
+  except Exception:
+    pass
+
   # By default, metadrive won't try to use cuda images unless it's used as a sensor for vehicles, so patch that in
   def add_image_sensor_patched(self, name: str, cls, args):
     if self.global_config["image_on_cuda"]:# and name == self.global_config["vehicle_config"]["image_source"]:

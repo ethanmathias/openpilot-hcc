@@ -55,7 +55,7 @@ def get_hccc_step_scenario():
   return {
     "enabled": True,
     "visual_lead": True,
-    "visual_lead_overlay": True,
+    "visual_lead_overlay": False,
     "lead_start_delay_s": 10.0,
     "initial_d_rel": 8.0,
     "initial_v_lead": v0,
@@ -122,9 +122,8 @@ class MetaDriveBridge(SimulatorBridge):
       use_render=self.should_render,
       vehicle_config=dict(
         enable_reverse=False,
-        # Some MetaDrive installs miss optional vehicle model assets (e.g. ferra wheel glTF),
-        # so keep mesh rendering disabled for stability.
-        render_vehicle=False,
+        # Render actual vehicle meshes for hccc_step (lead + ego visual debugging).
+        render_vehicle=self.scenario == "hccc_step",
         image_source="rgb_road",
       ),
       sensors=sensors,
