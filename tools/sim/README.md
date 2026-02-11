@@ -60,7 +60,8 @@ To run a deterministic lead-vehicle profile for hCCC testing:
 ``` bash
 ./run_bridge.py --scenario hccc_step
 ```
-This scenario injects a virtual lead into `liveTracks` (used by `radard`) with a speed step profile:
+This scenario injects a lead profile into `liveTracks` (used by `radard`) and also spawns a visible lead car ahead of ego.
+The lead follows a speed step profile:
 - starts at ~22 m/s
 - slows to ~10 m/s
 - then recovers back to ~22 m/s

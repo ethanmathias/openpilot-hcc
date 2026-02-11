@@ -10,6 +10,10 @@ from metadrive.engine.core.engine_core import EngineCore
 from metadrive.engine.core.image_buffer import ImageBuffer
 from metadrive.envs.metadrive_env import MetaDriveEnv
 from metadrive.obs.image_obs import ImageObservation
+try:
+  from metadrive.component.vehicle.vehicle_type import DefaultVehicle
+except Exception:
+  DefaultVehicle = None
 
 from openpilot.common.realtime import Ratekeeper
 
@@ -78,6 +82,74 @@ def _update_virtual_hccc_lead(hccc_scenario, lead_state, ego_speed, dt):
 
   return _get_lead_measurement(True, lead_state["d_rel"], lead_state["y_rel"], v_rel, a_rel)
 
+
+def _compute_lead_position(ego_position, ego_heading, d_rel, y_rel):
+  c = math.cos(float(ego_heading))
+  s = math.sin(float(ego_heading))
+  x = float(ego_position[0]) + c * float(d_rel) - s * float(y_rel)
+  y = float(ego_position[1]) + s * float(d_rel) + c * float(y_rel)
+  return [x, y]
+
+
+def _spawn_visual_hccc_lead(env, hccc_scenario, lead_state):
+  if not lead_state["enabled"] or not bool(hccc_scenario.get("visual_lead", False)):
+    return None
+  if DefaultVehicle is None:
+    print("warning: DefaultVehicle import failed; visual lead disabled")
+    return None
+
+  lead_pos = _compute_lead_position(env.vehicle.position, env.vehicle.heading_theta, lead_state["d_rel"], lead_state["y_rel"])
+  lead_heading = float(env.vehicle.heading_theta)
+  lead_cfg = dict(env.vehicle.config)
+  lead_cfg["enable_reverse"] = False
+  lead_cfg["show_navi_mark"] = False
+
+  try:
+    return env.engine.spawn_object(DefaultVehicle, vehicle_config=lead_cfg, position=lead_pos, heading=lead_heading)
+  except TypeError:
+    try:
+      return env.engine.spawn_object(DefaultVehicle, vehicle_config=lead_cfg, position=lead_pos, heading_theta=lead_heading)
+    except Exception:
+      print("warning: failed to spawn visual lead vehicle")
+      return None
+  except Exception:
+    print("warning: failed to spawn visual lead vehicle")
+    return None
+
+
+def _sync_visual_hccc_lead(env, visual_lead, lead_measurement):
+  if visual_lead is None or not lead_measurement["status"]:
+    return
+
+  ego_heading = float(env.vehicle.heading_theta)
+  ego_pos = env.vehicle.position
+  lead_pos = _compute_lead_position(ego_pos, ego_heading, lead_measurement["d_rel"], lead_measurement["y_rel"])
+
+  try:
+    visual_lead.set_position(lead_pos)
+  except Exception:
+    return
+
+  try:
+    if hasattr(visual_lead, "set_heading_theta"):
+      visual_lead.set_heading_theta(ego_heading)
+    elif hasattr(visual_lead, "heading_theta"):
+      visual_lead.heading_theta = ego_heading
+  except Exception:
+    pass
+
+  v_lead = max(0.0, float(np.linalg.norm([env.vehicle.velocity[0], env.vehicle.velocity[1]]) + lead_measurement["v_rel"]))
+  fwd = np.asarray([math.cos(ego_heading), math.sin(ego_heading)])
+  try:
+    visual_lead.set_velocity(fwd, v_lead)
+  except TypeError:
+    try:
+      visual_lead.set_velocity(fwd * v_lead)
+    except Exception:
+      pass
+  except Exception:
+    pass
+
 def apply_metadrive_patches(arrive_dest_done=True):
   # By default, metadrive won't try to use cuda images unless it's used as a sensor for vehicles, so patch that in
   def add_image_sensor_patched(self, name: str, cls, args):
@@ -136,10 +208,18 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
 
     lead_state = _create_hccc_lead_state(hccc_scenario)
     lead_measurement = _get_lead_measurement(False)
+    visual_lead = _spawn_visual_hccc_lead(env, hccc_scenario, lead_state)
+    lead_measurement = _get_lead_measurement(
+      enabled=lead_state["enabled"],
+      d_rel=lead_state["d_rel"],
+      y_rel=lead_state["y_rel"],
+      v_rel=lead_state["v_lead"] - float(np.linalg.norm([env.vehicle.velocity[0], env.vehicle.velocity[1]])),
+      a_rel=0.0,
+    )
 
-    return lane_idx_prev, lead_state, lead_measurement
+    return lane_idx_prev, lead_state, lead_measurement, visual_lead
 
-  lane_idx_prev, lead_state, lead_measurement = reset()
+  lane_idx_prev, lead_state, lead_measurement, visual_lead = reset()
   start_time = None
 
   def get_cam_as_rgb(cam):
@@ -181,7 +261,7 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
       vc = [steer_metadrive, gas]
 
       if should_reset:
-        lane_idx_prev, lead_state, lead_measurement = reset()
+        lane_idx_prev, lead_state, lead_measurement, visual_lead = reset()
         start_time = None
 
     is_engaged = op_engaged.is_set()
@@ -198,6 +278,7 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
       lead_state["last_step_mono"] = step_mono
       ego_speed = float(np.linalg.norm([env.vehicle.velocity[0], env.vehicle.velocity[1]]))
       lead_measurement = _update_virtual_hccc_lead(hccc_scenario, lead_state, ego_speed, lead_dt)
+      _sync_visual_hccc_lead(env, visual_lead, lead_measurement)
 
       timeout = True if start_time is not None and time.monotonic() - start_time >= test_duration else False
       lane_idx_curr, on_lane = get_current_lane_info(env.vehicle)
@@ -215,7 +296,7 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
           simulation_state_send.send(simulation_state)
         else:
           # In interactive usage, reset instead of tearing down the full bridge.
-          lane_idx_prev, lead_state, lead_measurement = reset()
+          lane_idx_prev, lead_state, lead_measurement, visual_lead = reset()
           start_time = None
           continue
       elif (out_of_lane or timeout) and test_run:

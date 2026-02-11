@@ -50,6 +50,7 @@ def create_map(track_size=60):
 def get_hccc_step_scenario():
   return {
     "enabled": True,
+    "visual_lead": True,
     "initial_d_rel": 45.0,
     "initial_v_lead": 22.0,
     "y_rel": 0.0,
@@ -73,7 +74,8 @@ class MetaDriveBridge(SimulatorBridge):
                force_engage_on_startup=True):
     super().__init__(dual_camera, high_quality, force_engage_on_startup=force_engage_on_startup)
 
-    self.should_render = False
+    # Keep CI/tests headless, but render in normal interactive runs.
+    self.should_render = not test_run
     self.test_run = test_run
     self.test_duration = test_duration if self.test_run else math.inf
     self.scenario = scenario
@@ -98,7 +100,7 @@ class MetaDriveBridge(SimulatorBridge):
       use_render=self.should_render,
       vehicle_config=dict(
         enable_reverse=False,
-        render_vehicle=False,
+        render_vehicle=self.scenario == "hccc_step",
         image_source="rgb_road",
       ),
       sensors=sensors,
