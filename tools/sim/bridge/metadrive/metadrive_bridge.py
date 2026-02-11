@@ -122,8 +122,7 @@ class MetaDriveBridge(SimulatorBridge):
       use_render=self.should_render,
       vehicle_config=dict(
         enable_reverse=False,
-        # Render actual vehicle meshes for hccc_step (lead + ego visual debugging).
-        render_vehicle=self.scenario == "hccc_step",
+        render_vehicle=False,
         image_source="rgb_road",
       ),
       sensors=sensors,
