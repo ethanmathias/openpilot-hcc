@@ -60,11 +60,14 @@ To run a deterministic lead-vehicle profile for hCCC testing:
 ``` bash
 ./run_bridge.py --scenario hccc_step
 ```
+This uses a single-lane, very long looped map.
+
 This scenario injects a lead profile into `liveTracks` (used by `radard`) and draws a visible lead target overlay ahead of ego in the road camera view.
-The lead follows a speed step profile:
-- starts at ~22 m/s
-- slows to ~10 m/s
-- then recovers back to ~22 m/s
+The lead follows a slower profile with holds:
+- hold 10 mph
+- gradual ramp to 30 mph, then hold
+- gradual ramp down to 10 mph, then hold
+- gradual ramp back to 30 mph, then hold
 
 ### Manual no-lead driving (WASD only)
 To drive manually without auto-engage and without any virtual lead:

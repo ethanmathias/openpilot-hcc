@@ -31,7 +31,7 @@ def create_map(track_size=60):
   curve_len = track_size * 2
   return dict(
     type=MapGenerateMethod.PG_MAP_FILE,
-    lane_num=2,
+    lane_num=1,
     lane_width=4.5,
     config=[
       None,
@@ -48,22 +48,36 @@ def create_map(track_size=60):
 
 
 def get_hccc_step_scenario():
+  mph_to_ms = 0.44704
+  v10 = 10.0 * mph_to_ms
+  v30 = 30.0 * mph_to_ms
   return {
     "enabled": True,
     "visual_lead": True,
     "visual_lead_overlay": True,
     "initial_d_rel": 45.0,
-    "initial_v_lead": 22.0,
+    "initial_v_lead": v10,
     "y_rel": 0.0,
-    "max_accel": 2.0,
-    "max_decel": 3.0,
+    # Keep transitions smooth and slower so hCCC response is easier to observe.
+    "max_accel": 1.0,
+    "max_decel": 1.2,
     # (time_seconds, target_speed_mps)
     "speed_profile": [
-      (0.0, 22.0),
-      (8.0, 22.0),
-      (14.0, 10.0),
-      (22.0, 10.0),
-      (30.0, 22.0),
+      # hold 10 mph
+      (0.0, v10),
+      (8.0, v10),
+      # ramp to 30 mph
+      (20.0, v30),
+      # hold 30 mph
+      (28.0, v30),
+      # ramp to 10 mph
+      (40.0, v10),
+      # hold 10 mph
+      (48.0, v10),
+      # ramp to 30 mph
+      (60.0, v30),
+      # hold 30 mph
+      (68.0, v30),
     ],
   }
 
@@ -94,7 +108,8 @@ class MetaDriveBridge(SimulatorBridge):
     if self.dual_camera:
       sensors["rgb_wide"] = (RGBCameraWide, W, H)
 
-    map_track_size = 200 if self.scenario == "hccc_step" else 60
+    # Use a very long single-lane loop so hCCC tests have long uninterrupted stretches.
+    map_track_size = 2000 if self.scenario == "hccc_step" else 800
     hccc_scenario = get_hccc_step_scenario() if self.scenario == "hccc_step" else {"enabled": False}
 
     config = dict(
