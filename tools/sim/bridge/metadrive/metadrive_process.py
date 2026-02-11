@@ -1,5 +1,7 @@
 import math
 import os
+import builtins
+import shutil
 import time
 import numpy as np
 from pathlib import Path
@@ -9,6 +11,141 @@ from pathlib import Path
 os.environ.setdefault("METADRIVE_DISABLE_ASSET_UPDATE", "1")
 os.environ.setdefault("METADRIVE_DISABLE_ASSET_CHECK", "1")
 os.environ.setdefault("METADRIVE_SKIP_ASSET_DOWNLOAD", "1")
+
+
+def _install_metadrive_assets_guard():
+  if getattr(os, "_op_metadrive_assets_guard_installed", False):
+    return
+
+  protected_token = f"{os.sep}metadrive{os.sep}assets{os.sep}"
+  blocked_once = set()
+
+  def _abspath(path):
+    try:
+      return os.path.abspath(os.fspath(path))
+    except Exception:
+      return None
+
+  def _is_protected(path):
+    p = _abspath(path)
+    return p is not None and protected_token in p
+
+  def _log_block(op_name, path):
+    p = _abspath(path) or str(path)
+    key = (op_name, p)
+    if key not in blocked_once:
+      print(f"warning: blocked {op_name} in protected MetaDrive assets path: {p}")
+      blocked_once.add(key)
+
+  orig_remove = os.remove
+  orig_unlink = os.unlink
+  orig_rmdir = os.rmdir
+  orig_rename = os.rename
+  orig_replace = os.replace
+  orig_mkdir = os.mkdir
+  orig_makedirs = os.makedirs
+  orig_rmtree = shutil.rmtree
+  orig_move = shutil.move
+  orig_copy = shutil.copy
+  orig_copy2 = shutil.copy2
+  orig_copyfile = shutil.copyfile
+  orig_open = builtins.open
+
+  def remove_patched(path, *args, **kwargs):
+    if _is_protected(path):
+      _log_block("remove", path)
+      return None
+    return orig_remove(path, *args, **kwargs)
+
+  def unlink_patched(path, *args, **kwargs):
+    if _is_protected(path):
+      _log_block("unlink", path)
+      return None
+    return orig_unlink(path, *args, **kwargs)
+
+  def rmdir_patched(path, *args, **kwargs):
+    if _is_protected(path):
+      _log_block("rmdir", path)
+      return None
+    return orig_rmdir(path, *args, **kwargs)
+
+  def rename_patched(src, dst, *args, **kwargs):
+    if _is_protected(src) or _is_protected(dst):
+      _log_block("rename", src if _is_protected(src) else dst)
+      return None
+    return orig_rename(src, dst, *args, **kwargs)
+
+  def replace_patched(src, dst, *args, **kwargs):
+    if _is_protected(src) or _is_protected(dst):
+      _log_block("replace", src if _is_protected(src) else dst)
+      return None
+    return orig_replace(src, dst, *args, **kwargs)
+
+  def mkdir_patched(path, *args, **kwargs):
+    if _is_protected(path):
+      _log_block("mkdir", path)
+      return None
+    return orig_mkdir(path, *args, **kwargs)
+
+  def makedirs_patched(name, *args, **kwargs):
+    if _is_protected(name):
+      _log_block("makedirs", name)
+      return None
+    return orig_makedirs(name, *args, **kwargs)
+
+  def rmtree_patched(path, *args, **kwargs):
+    if _is_protected(path):
+      _log_block("rmtree", path)
+      return None
+    return orig_rmtree(path, *args, **kwargs)
+
+  def move_patched(src, dst, *args, **kwargs):
+    if _is_protected(src) or _is_protected(dst):
+      _log_block("move", src if _is_protected(src) else dst)
+      return None
+    return orig_move(src, dst, *args, **kwargs)
+
+  def copy_patched(src, dst, *args, **kwargs):
+    if _is_protected(dst):
+      _log_block("copy", dst)
+      return None
+    return orig_copy(src, dst, *args, **kwargs)
+
+  def copy2_patched(src, dst, *args, **kwargs):
+    if _is_protected(dst):
+      _log_block("copy2", dst)
+      return None
+    return orig_copy2(src, dst, *args, **kwargs)
+
+  def copyfile_patched(src, dst, *args, **kwargs):
+    if _is_protected(dst):
+      _log_block("copyfile", dst)
+      return None
+    return orig_copyfile(src, dst, *args, **kwargs)
+
+  def open_patched(file, mode="r", *args, **kwargs):
+    if _is_protected(file) and any(m in mode for m in ("w", "a", "x", "+")):
+      _log_block(f"open({mode})", file)
+      raise PermissionError(f"writes to protected MetaDrive assets path are disabled: {file}")
+    return orig_open(file, mode, *args, **kwargs)
+
+  os.remove = remove_patched
+  os.unlink = unlink_patched
+  os.rmdir = rmdir_patched
+  os.rename = rename_patched
+  os.replace = replace_patched
+  os.mkdir = mkdir_patched
+  os.makedirs = makedirs_patched
+  shutil.rmtree = rmtree_patched
+  shutil.move = move_patched
+  shutil.copy = copy_patched
+  shutil.copy2 = copy2_patched
+  shutil.copyfile = copyfile_patched
+  builtins.open = open_patched
+  os._op_metadrive_assets_guard_installed = True
+
+
+_install_metadrive_assets_guard()
 
 from collections import namedtuple
 from panda3d.core import Vec3, NodePath
