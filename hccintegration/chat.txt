@@ -1,31 +1,678 @@
-modeld init
-setting up CL context
-Waiting for CAN messages...
-proclogd journald modeld ui soundd locationd calibrationd torqued controlsd selfdrived card deleter paramsd lagd plannerd radard hardwared statsd feedbackd
-CL context ready; loading model
-models loaded in 0.6s, modeld starting
-vision stream set up, main_wide_camera: False, use_extra_client: False
-connected main cam with buffer size: 3493536 (1928 x 1208)
-proclogd journald modeld ui soundd locationd calibrationd torqued controlsd selfdrived card deleter paramsd lagd plannerd radard hardwared statsd feedbackd
-proclogd journald modeld ui soundd locationd calibrationd torqued controlsd selfdrived card deleter paramsd lagd plannerd radard hardwared statsd feedbackd
-proclogd journald modeld ui soundd locationd calibrationd torqued controlsd selfdrived card deleter paramsd lagd plannerd radard hardwared statsd feedbackd
-proclogd journald modeld ui soundd locationd calibrationd torqued controlsd selfdrived card deleter paramsd lagd plannerd radard hardwared statsd feedbackd
-proclogd journald modeld ui soundd locationd calibrationd torqued controlsd selfdrived card deleter paramsd lagd plannerd radard hardwared statsd feedbackd
-proclogd journald modeld ui soundd locationd calibrationd torqued controlsd selfdrived card deleter paramsd lagd plannerd radard hardwared statsd feedbackd
-panda timed out onroad
-child system.proclogd got SIGINT
-proclogd journald modeld ui soundd locationd calibrationd torqued controlsd selfdrived card deleter paramsd lagd plannerd radard hardwared statsd feedbackd
-child selfdrive.selfdrived.selfdrived got SIGINT
-child selfdrive.controls.plannerd got SIGINT
-child selfdrive.locationd.lagd got SIGINT
-child system.journald got SIGINT
-child selfdrive.ui.soundd got SIGINT
-child selfdrive.controls.radard got SIGINT
-child selfdrive.locationd.paramsd got SIGINT
-child selfdrive.ui.feedback.feedbackd got SIGINT
-child selfdrive.modeld.modeld got SIGINT
-child selfdrive.locationd.calibrationd got SIGINT
-child selfdrive.controls.controlsd got SIGINT
-child selfdrive.locationd.torqued got SIGINT
-child selfdrive.locationd.locationd got SIGINT
-ui deleter hardwared statsd
+    self.sock[s].send(dat)
+  File "msgq_repo/msgq/ipc_pyx.pyx", line 251, in msgq.ipc_pyx.PubSocket.send
+msgq.ipc_pyx.MultiplePublishersError: Messaging failure : Address already in use
+Killing old publisher: liveTracks
+Traceback (most recent call last):
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 137, in update
+    self.send_live_tracks(simulator_state)
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 125, in send_live_tracks
+    self.pm.send('liveTracks', tracks_msg)
+  File "/home/linklab/ethanmathias/openpilot-hcc/cereal/messaging/__init__.py", line 259, in send
+    self.sock[s].send(dat)
+  File "msgq_repo/msgq/ipc_pyx.pyx", line 251, in msgq.ipc_pyx.PubSocket.send
+msgq.ipc_pyx.MultiplePublishersError: Messaging failure : Address already in use
+Killing old publisher: liveTracks
+Traceback (most recent call last):
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 137, in update
+    self.send_live_tracks(simulator_state)
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 125, in send_live_tracks
+    self.pm.send('liveTracks', tracks_msg)
+  File "/home/linklab/ethanmathias/openpilot-hcc/cereal/messaging/__init__.py", line 259, in send
+    self.sock[s].send(dat)
+  File "msgq_repo/msgq/ipc_pyx.pyx", line 251, in msgq.ipc_pyx.PubSocket.send
+msgq.ipc_pyx.MultiplePublishersError: Messaging failure : Address already in use
+Killing old publisher: liveTracks
+Traceback (most recent call last):
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 137, in update
+    self.send_live_tracks(simulator_state)
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 125, in send_live_tracks
+    self.pm.send('liveTracks', tracks_msg)
+  File "/home/linklab/ethanmathias/openpilot-hcc/cereal/messaging/__init__.py", line 259, in send
+    self.sock[s].send(dat)
+  File "msgq_repo/msgq/ipc_pyx.pyx", line 251, in msgq.ipc_pyx.PubSocket.send
+msgq.ipc_pyx.MultiplePublishersError: Messaging failure : Address already in use
+Killing old publisher: liveTracks
+Traceback (most recent call last):
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 137, in update
+    self.send_live_tracks(simulator_state)
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 125, in send_live_tracks
+    self.pm.send('liveTracks', tracks_msg)
+  File "/home/linklab/ethanmathias/openpilot-hcc/cereal/messaging/__init__.py", line 259, in send
+    self.sock[s].send(dat)
+  File "msgq_repo/msgq/ipc_pyx.pyx", line 251, in msgq.ipc_pyx.PubSocket.send
+msgq.ipc_pyx.MultiplePublishersError: Messaging failure : Address already in use
+Killing old publisher: liveTracks
+Traceback (most recent call last):
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 137, in update
+    self.send_live_tracks(simulator_state)
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 125, in send_live_tracks
+    self.pm.send('liveTracks', tracks_msg)
+  File "/home/linklab/ethanmathias/openpilot-hcc/cereal/messaging/__init__.py", line 259, in send
+    self.sock[s].send(dat)
+  File "msgq_repo/msgq/ipc_pyx.pyx", line 251, in msgq.ipc_pyx.PubSocket.send
+msgq.ipc_pyx.MultiplePublishersError: Messaging failure : Address already in use
+Killing old publisher: liveTracks
+Traceback (most recent call last):
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 137, in update
+    self.send_live_tracks(simulator_state)
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 125, in send_live_tracks
+    self.pm.send('liveTracks', tracks_msg)
+  File "/home/linklab/ethanmathias/openpilot-hcc/cereal/messaging/__init__.py", line 259, in send
+    self.sock[s].send(dat)
+  File "msgq_repo/msgq/ipc_pyx.pyx", line 251, in msgq.ipc_pyx.PubSocket.send
+msgq.ipc_pyx.MultiplePublishersError: Messaging failure : Address already in use
+Killing old publisher: liveTracks
+Traceback (most recent call last):
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 137, in update
+    self.send_live_tracks(simulator_state)
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 125, in send_live_tracks
+    self.pm.send('liveTracks', tracks_msg)
+  File "/home/linklab/ethanmathias/openpilot-hcc/cereal/messaging/__init__.py", line 259, in send
+    self.sock[s].send(dat)
+  File "msgq_repo/msgq/ipc_pyx.pyx", line 251, in msgq.ipc_pyx.PubSocket.send
+msgq.ipc_pyx.MultiplePublishersError: Messaging failure : Address already in use
+Killing old publisher: liveTracks
+Traceback (most recent call last):
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 137, in update
+    self.send_live_tracks(simulator_state)
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 125, in send_live_tracks
+    self.pm.send('liveTracks', tracks_msg)
+  File "/home/linklab/ethanmathias/openpilot-hcc/cereal/messaging/__init__.py", line 259, in send
+    self.sock[s].send(dat)
+  File "msgq_repo/msgq/ipc_pyx.pyx", line 251, in msgq.ipc_pyx.PubSocket.send
+msgq.ipc_pyx.MultiplePublishersError: Messaging failure : Address already in use
+Killing old publisher: liveTracks
+Traceback (most recent call last):
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 137, in update
+    self.send_live_tracks(simulator_state)
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 125, in send_live_tracks
+    self.pm.send('liveTracks', tracks_msg)
+  File "/home/linklab/ethanmathias/openpilot-hcc/cereal/messaging/__init__.py", line 259, in send
+    self.sock[s].send(dat)
+  File "msgq_repo/msgq/ipc_pyx.pyx", line 251, in msgq.ipc_pyx.PubSocket.send
+msgq.ipc_pyx.MultiplePublishersError: Messaging failure : Address already in use
+Killing old publisher: liveTracks
+Traceback (most recent call last):
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 137, in update
+    self.send_live_tracks(simulator_state)
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 125, in send_live_tracks
+    self.pm.send('liveTracks', tracks_msg)
+  File "/home/linklab/ethanmathias/openpilot-hcc/cereal/messaging/__init__.py", line 259, in send
+    self.sock[s].send(dat)
+  File "msgq_repo/msgq/ipc_pyx.pyx", line 251, in msgq.ipc_pyx.PubSocket.send
+msgq.ipc_pyx.MultiplePublishersError: Messaging failure : Address already in use
+Killing old publisher: liveTracks
+Traceback (most recent call last):
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 137, in update
+    self.send_live_tracks(simulator_state)
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 125, in send_live_tracks
+    self.pm.send('liveTracks', tracks_msg)
+  File "/home/linklab/ethanmathias/openpilot-hcc/cereal/messaging/__init__.py", line 259, in send
+    self.sock[s].send(dat)
+  File "msgq_repo/msgq/ipc_pyx.pyx", line 251, in msgq.ipc_pyx.PubSocket.send
+msgq.ipc_pyx.MultiplePublishersError: Messaging failure : Address already in use
+
+State:
+Ignition: True Engaged: False
+
+Killing old publisher: liveTracks
+Traceback (most recent call last):
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 137, in update
+    self.send_live_tracks(simulator_state)
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 125, in send_live_tracks
+    self.pm.send('liveTracks', tracks_msg)
+  File "/home/linklab/ethanmathias/openpilot-hcc/cereal/messaging/__init__.py", line 259, in send
+    self.sock[s].send(dat)
+  File "msgq_repo/msgq/ipc_pyx.pyx", line 251, in msgq.ipc_pyx.PubSocket.send
+msgq.ipc_pyx.MultiplePublishersError: Messaging failure : Address already in use
+Killing old publisher: liveTracks
+Traceback (most recent call last):
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 137, in update
+    self.send_live_tracks(simulator_state)
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 125, in send_live_tracks
+    self.pm.send('liveTracks', tracks_msg)
+  File "/home/linklab/ethanmathias/openpilot-hcc/cereal/messaging/__init__.py", line 259, in send
+    self.sock[s].send(dat)
+  File "msgq_repo/msgq/ipc_pyx.pyx", line 251, in msgq.ipc_pyx.PubSocket.send
+msgq.ipc_pyx.MultiplePublishersError: Messaging failure : Address already in use
+Killing old publisher: liveTracks
+Traceback (most recent call last):
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 137, in update
+    self.send_live_tracks(simulator_state)
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 125, in send_live_tracks
+    self.pm.send('liveTracks', tracks_msg)
+  File "/home/linklab/ethanmathias/openpilot-hcc/cereal/messaging/__init__.py", line 259, in send
+    self.sock[s].send(dat)
+  File "msgq_repo/msgq/ipc_pyx.pyx", line 251, in msgq.ipc_pyx.PubSocket.send
+msgq.ipc_pyx.MultiplePublishersError: Messaging failure : Address already in use
+Killing old publisher: liveTracks
+Traceback (most recent call last):
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 137, in update
+    self.send_live_tracks(simulator_state)
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 125, in send_live_tracks
+    self.pm.send('liveTracks', tracks_msg)
+  File "/home/linklab/ethanmathias/openpilot-hcc/cereal/messaging/__init__.py", line 259, in send
+    self.sock[s].send(dat)
+  File "msgq_repo/msgq/ipc_pyx.pyx", line 251, in msgq.ipc_pyx.PubSocket.send
+msgq.ipc_pyx.MultiplePublishersError: Messaging failure : Address already in use
+Killing old publisher: liveTracks
+Traceback (most recent call last):
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 137, in update
+    self.send_live_tracks(simulator_state)
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 125, in send_live_tracks
+    self.pm.send('liveTracks', tracks_msg)
+  File "/home/linklab/ethanmathias/openpilot-hcc/cereal/messaging/__init__.py", line 259, in send
+    self.sock[s].send(dat)
+  File "msgq_repo/msgq/ipc_pyx.pyx", line 251, in msgq.ipc_pyx.PubSocket.send
+msgq.ipc_pyx.MultiplePublishersError: Messaging failure : Address already in use
+Killing old publisher: liveTracks
+Traceback (most recent call last):
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 137, in update
+    self.send_live_tracks(simulator_state)
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 125, in send_live_tracks
+    self.pm.send('liveTracks', tracks_msg)
+  File "/home/linklab/ethanmathias/openpilot-hcc/cereal/messaging/__init__.py", line 259, in send
+    self.sock[s].send(dat)
+  File "msgq_repo/msgq/ipc_pyx.pyx", line 251, in msgq.ipc_pyx.PubSocket.send
+msgq.ipc_pyx.MultiplePublishersError: Messaging failure : Address already in use
+Killing old publisher: liveTracks
+Traceback (most recent call last):
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 137, in update
+    self.send_live_tracks(simulator_state)
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 125, in send_live_tracks
+    self.pm.send('liveTracks', tracks_msg)
+  File "/home/linklab/ethanmathias/openpilot-hcc/cereal/messaging/__init__.py", line 259, in send
+    self.sock[s].send(dat)
+  File "msgq_repo/msgq/ipc_pyx.pyx", line 251, in msgq.ipc_pyx.PubSocket.send
+msgq.ipc_pyx.MultiplePublishersError: Messaging failure : Address already in use
+Killing old publisher: liveTracks
+Traceback (most recent call last):
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 137, in update
+    self.send_live_tracks(simulator_state)
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 125, in send_live_tracks
+    self.pm.send('liveTracks', tracks_msg)
+  File "/home/linklab/ethanmathias/openpilot-hcc/cereal/messaging/__init__.py", line 259, in send
+    self.sock[s].send(dat)
+  File "msgq_repo/msgq/ipc_pyx.pyx", line 251, in msgq.ipc_pyx.PubSocket.send
+msgq.ipc_pyx.MultiplePublishersError: Messaging failure : Address already in use
+Killing old publisher: liveTracks
+Traceback (most recent call last):
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 137, in update
+    self.send_live_tracks(simulator_state)
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 125, in send_live_tracks
+    self.pm.send('liveTracks', tracks_msg)
+  File "/home/linklab/ethanmathias/openpilot-hcc/cereal/messaging/__init__.py", line 259, in send
+    self.sock[s].send(dat)
+  File "msgq_repo/msgq/ipc_pyx.pyx", line 251, in msgq.ipc_pyx.PubSocket.send
+msgq.ipc_pyx.MultiplePublishersError: Messaging failure : Address already in use
+Killing old publisher: liveTracks
+Traceback (most recent call last):
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 137, in update
+    self.send_live_tracks(simulator_state)
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 125, in send_live_tracks
+    self.pm.send('liveTracks', tracks_msg)
+  File "/home/linklab/ethanmathias/openpilot-hcc/cereal/messaging/__init__.py", line 259, in send
+    self.sock[s].send(dat)
+  File "msgq_repo/msgq/ipc_pyx.pyx", line 251, in msgq.ipc_pyx.PubSocket.send
+msgq.ipc_pyx.MultiplePublishersError: Messaging failure : Address already in use
+Killing old publisher: liveTracks
+Traceback (most recent call last):
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 137, in update
+    self.send_live_tracks(simulator_state)
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 125, in send_live_tracks
+    self.pm.send('liveTracks', tracks_msg)
+  File "/home/linklab/ethanmathias/openpilot-hcc/cereal/messaging/__init__.py", line 259, in send
+    self.sock[s].send(dat)
+  File "msgq_repo/msgq/ipc_pyx.pyx", line 251, in msgq.ipc_pyx.PubSocket.send
+msgq.ipc_pyx.MultiplePublishersError: Messaging failure : Address already in use
+Killing old publisher: liveTracks
+Traceback (most recent call last):
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 137, in update
+    self.send_live_tracks(simulator_state)
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 125, in send_live_tracks
+    self.pm.send('liveTracks', tracks_msg)
+  File "/home/linklab/ethanmathias/openpilot-hcc/cereal/messaging/__init__.py", line 259, in send
+    self.sock[s].send(dat)
+  File "msgq_repo/msgq/ipc_pyx.pyx", line 251, in msgq.ipc_pyx.PubSocket.send
+msgq.ipc_pyx.MultiplePublishersError: Messaging failure : Address already in use
+Killing old publisher: liveTracks
+Traceback (most recent call last):
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 137, in update
+    self.send_live_tracks(simulator_state)
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 125, in send_live_tracks
+    self.pm.send('liveTracks', tracks_msg)
+  File "/home/linklab/ethanmathias/openpilot-hcc/cereal/messaging/__init__.py", line 259, in send
+    self.sock[s].send(dat)
+  File "msgq_repo/msgq/ipc_pyx.pyx", line 251, in msgq.ipc_pyx.PubSocket.send
+msgq.ipc_pyx.MultiplePublishersError: Messaging failure : Address already in use
+Killing old publisher: liveTracks
+Traceback (most recent call last):
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 137, in update
+    self.send_live_tracks(simulator_state)
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 125, in send_live_tracks
+    self.pm.send('liveTracks', tracks_msg)
+  File "/home/linklab/ethanmathias/openpilot-hcc/cereal/messaging/__init__.py", line 259, in send
+    self.sock[s].send(dat)
+  File "msgq_repo/msgq/ipc_pyx.pyx", line 251, in msgq.ipc_pyx.PubSocket.send
+msgq.ipc_pyx.MultiplePublishersError: Messaging failure : Address already in use
+Killing old publisher: liveTracks
+Traceback (most recent call last):
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 137, in update
+    self.send_live_tracks(simulator_state)
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 125, in send_live_tracks
+    self.pm.send('liveTracks', tracks_msg)
+  File "/home/linklab/ethanmathias/openpilot-hcc/cereal/messaging/__init__.py", line 259, in send
+    self.sock[s].send(dat)
+  File "msgq_repo/msgq/ipc_pyx.pyx", line 251, in msgq.ipc_pyx.PubSocket.send
+msgq.ipc_pyx.MultiplePublishersError: Messaging failure : Address already in use
+Killing old publisher: liveTracks
+Traceback (most recent call last):
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 137, in update
+    self.send_live_tracks(simulator_state)
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 125, in send_live_tracks
+    self.pm.send('liveTracks', tracks_msg)
+  File "/home/linklab/ethanmathias/openpilot-hcc/cereal/messaging/__init__.py", line 259, in send
+    self.sock[s].send(dat)
+  File "msgq_repo/msgq/ipc_pyx.pyx", line 251, in msgq.ipc_pyx.PubSocket.send
+msgq.ipc_pyx.MultiplePublishersError: Messaging failure : Address already in use
+Killing old publisher: liveTracks
+Traceback (most recent call last):
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 137, in update
+    self.send_live_tracks(simulator_state)
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 125, in send_live_tracks
+    self.pm.send('liveTracks', tracks_msg)
+  File "/home/linklab/ethanmathias/openpilot-hcc/cereal/messaging/__init__.py", line 259, in send
+    self.sock[s].send(dat)
+  File "msgq_repo/msgq/ipc_pyx.pyx", line 251, in msgq.ipc_pyx.PubSocket.send
+msgq.ipc_pyx.MultiplePublishersError: Messaging failure : Address already in use
+Killing old publisher: liveTracks
+Traceback (most recent call last):
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 137, in update
+    self.send_live_tracks(simulator_state)
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 125, in send_live_tracks
+    self.pm.send('liveTracks', tracks_msg)
+  File "/home/linklab/ethanmathias/openpilot-hcc/cereal/messaging/__init__.py", line 259, in send
+    self.sock[s].send(dat)
+  File "msgq_repo/msgq/ipc_pyx.pyx", line 251, in msgq.ipc_pyx.PubSocket.send
+msgq.ipc_pyx.MultiplePublishersError: Messaging failure : Address already in use
+Killing old publisher: liveTracks
+Traceback (most recent call last):
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 137, in update
+    self.send_live_tracks(simulator_state)
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 125, in send_live_tracks
+    self.pm.send('liveTracks', tracks_msg)
+  File "/home/linklab/ethanmathias/openpilot-hcc/cereal/messaging/__init__.py", line 259, in send
+    self.sock[s].send(dat)
+  File "msgq_repo/msgq/ipc_pyx.pyx", line 251, in msgq.ipc_pyx.PubSocket.send
+msgq.ipc_pyx.MultiplePublishersError: Messaging failure : Address already in use
+Killing old publisher: liveTracks
+Traceback (most recent call last):
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 137, in update
+    self.send_live_tracks(simulator_state)
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 125, in send_live_tracks
+    self.pm.send('liveTracks', tracks_msg)
+  File "/home/linklab/ethanmathias/openpilot-hcc/cereal/messaging/__init__.py", line 259, in send
+    self.sock[s].send(dat)
+  File "msgq_repo/msgq/ipc_pyx.pyx", line 251, in msgq.ipc_pyx.PubSocket.send
+msgq.ipc_pyx.MultiplePublishersError: Messaging failure : Address already in use
+Killing old publisher: liveTracks
+Traceback (most recent call last):
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 137, in update
+    self.send_live_tracks(simulator_state)
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 125, in send_live_tracks
+    self.pm.send('liveTracks', tracks_msg)
+  File "/home/linklab/ethanmathias/openpilot-hcc/cereal/messaging/__init__.py", line 259, in send
+    self.sock[s].send(dat)
+  File "msgq_repo/msgq/ipc_pyx.pyx", line 251, in msgq.ipc_pyx.PubSocket.send
+msgq.ipc_pyx.MultiplePublishersError: Messaging failure : Address already in use
+Killing old publisher: liveTracks
+Traceback (most recent call last):
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 137, in update
+    self.send_live_tracks(simulator_state)
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 125, in send_live_tracks
+    self.pm.send('liveTracks', tracks_msg)
+  File "/home/linklab/ethanmathias/openpilot-hcc/cereal/messaging/__init__.py", line 259, in send
+    self.sock[s].send(dat)
+  File "msgq_repo/msgq/ipc_pyx.pyx", line 251, in msgq.ipc_pyx.PubSocket.send
+msgq.ipc_pyx.MultiplePublishersError: Messaging failure : Address already in use
+Killing old publisher: liveTracks
+Traceback (most recent call last):
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 137, in update
+    self.send_live_tracks(simulator_state)
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 125, in send_live_tracks
+    self.pm.send('liveTracks', tracks_msg)
+  File "/home/linklab/ethanmathias/openpilot-hcc/cereal/messaging/__init__.py", line 259, in send
+    self.sock[s].send(dat)
+  File "msgq_repo/msgq/ipc_pyx.pyx", line 251, in msgq.ipc_pyx.PubSocket.send
+msgq.ipc_pyx.MultiplePublishersError: Messaging failure : Address already in use
+Killing old publisher: liveTracks
+Traceback (most recent call last):
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 137, in update
+    self.send_live_tracks(simulator_state)
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 125, in send_live_tracks
+    self.pm.send('liveTracks', tracks_msg)
+  File "/home/linklab/ethanmathias/openpilot-hcc/cereal/messaging/__init__.py", line 259, in send
+    self.sock[s].send(dat)
+  File "msgq_repo/msgq/ipc_pyx.pyx", line 251, in msgq.ipc_pyx.PubSocket.send
+msgq.ipc_pyx.MultiplePublishersError: Messaging failure : Address already in use
+Killing old publisher: liveTracks
+Traceback (most recent call last):
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 137, in update
+    self.send_live_tracks(simulator_state)
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 125, in send_live_tracks
+    self.pm.send('liveTracks', tracks_msg)
+  File "/home/linklab/ethanmathias/openpilot-hcc/cereal/messaging/__init__.py", line 259, in send
+    self.sock[s].send(dat)
+  File "msgq_repo/msgq/ipc_pyx.pyx", line 251, in msgq.ipc_pyx.PubSocket.send
+msgq.ipc_pyx.MultiplePublishersError: Messaging failure : Address already in use
+
+State:
+Ignition: True Engaged: False
+
+Killing old publisher: liveTracks
+Traceback (most recent call last):
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 137, in update
+    self.send_live_tracks(simulator_state)
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 125, in send_live_tracks
+    self.pm.send('liveTracks', tracks_msg)
+  File "/home/linklab/ethanmathias/openpilot-hcc/cereal/messaging/__init__.py", line 259, in send
+    self.sock[s].send(dat)
+  File "msgq_repo/msgq/ipc_pyx.pyx", line 251, in msgq.ipc_pyx.PubSocket.send
+msgq.ipc_pyx.MultiplePublishersError: Messaging failure : Address already in use
+Killing old publisher: liveTracks
+Traceback (most recent call last):
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 137, in update
+    self.send_live_tracks(simulator_state)
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 125, in send_live_tracks
+    self.pm.send('liveTracks', tracks_msg)
+  File "/home/linklab/ethanmathias/openpilot-hcc/cereal/messaging/__init__.py", line 259, in send
+    self.sock[s].send(dat)
+  File "msgq_repo/msgq/ipc_pyx.pyx", line 251, in msgq.ipc_pyx.PubSocket.send
+msgq.ipc_pyx.MultiplePublishersError: Messaging failure : Address already in use
+Killing old publisher: liveTracks
+Traceback (most recent call last):
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 137, in update
+    self.send_live_tracks(simulator_state)
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 125, in send_live_tracks
+    self.pm.send('liveTracks', tracks_msg)
+  File "/home/linklab/ethanmathias/openpilot-hcc/cereal/messaging/__init__.py", line 259, in send
+    self.sock[s].send(dat)
+  File "msgq_repo/msgq/ipc_pyx.pyx", line 251, in msgq.ipc_pyx.PubSocket.send
+msgq.ipc_pyx.MultiplePublishersError: Messaging failure : Address already in use
+Killing old publisher: liveTracks
+Traceback (most recent call last):
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 137, in update
+    self.send_live_tracks(simulator_state)
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 125, in send_live_tracks
+    self.pm.send('liveTracks', tracks_msg)
+  File "/home/linklab/ethanmathias/openpilot-hcc/cereal/messaging/__init__.py", line 259, in send
+    self.sock[s].send(dat)
+  File "msgq_repo/msgq/ipc_pyx.pyx", line 251, in msgq.ipc_pyx.PubSocket.send
+msgq.ipc_pyx.MultiplePublishersError: Messaging failure : Address already in use
+Killing old publisher: liveTracks
+Traceback (most recent call last):
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 137, in update
+    self.send_live_tracks(simulator_state)
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 125, in send_live_tracks
+    self.pm.send('liveTracks', tracks_msg)
+  File "/home/linklab/ethanmathias/openpilot-hcc/cereal/messaging/__init__.py", line 259, in send
+    self.sock[s].send(dat)
+  File "msgq_repo/msgq/ipc_pyx.pyx", line 251, in msgq.ipc_pyx.PubSocket.send
+msgq.ipc_pyx.MultiplePublishersError: Messaging failure : Address already in use
+Killing old publisher: liveTracks
+Traceback (most recent call last):
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 137, in update
+    self.send_live_tracks(simulator_state)
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 125, in send_live_tracks
+    self.pm.send('liveTracks', tracks_msg)
+  File "/home/linklab/ethanmathias/openpilot-hcc/cereal/messaging/__init__.py", line 259, in send
+    self.sock[s].send(dat)
+  File "msgq_repo/msgq/ipc_pyx.pyx", line 251, in msgq.ipc_pyx.PubSocket.send
+msgq.ipc_pyx.MultiplePublishersError: Messaging failure : Address already in use
+Killing old publisher: liveTracks
+Traceback (most recent call last):
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 137, in update
+    self.send_live_tracks(simulator_state)
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 125, in send_live_tracks
+    self.pm.send('liveTracks', tracks_msg)
+  File "/home/linklab/ethanmathias/openpilot-hcc/cereal/messaging/__init__.py", line 259, in send
+    self.sock[s].send(dat)
+  File "msgq_repo/msgq/ipc_pyx.pyx", line 251, in msgq.ipc_pyx.PubSocket.send
+msgq.ipc_pyx.MultiplePublishersError: Messaging failure : Address already in use
+Killing old publisher: liveTracks
+Traceback (most recent call last):
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 137, in update
+    self.send_live_tracks(simulator_state)
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 125, in send_live_tracks
+    self.pm.send('liveTracks', tracks_msg)
+  File "/home/linklab/ethanmathias/openpilot-hcc/cereal/messaging/__init__.py", line 259, in send
+    self.sock[s].send(dat)
+  File "msgq_repo/msgq/ipc_pyx.pyx", line 251, in msgq.ipc_pyx.PubSocket.send
+msgq.ipc_pyx.MultiplePublishersError: Messaging failure : Address already in use
+Killing old publisher: liveTracks
+Traceback (most recent call last):
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 137, in update
+    self.send_live_tracks(simulator_state)
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 125, in send_live_tracks
+    self.pm.send('liveTracks', tracks_msg)
+  File "/home/linklab/ethanmathias/openpilot-hcc/cereal/messaging/__init__.py", line 259, in send
+    self.sock[s].send(dat)
+  File "msgq_repo/msgq/ipc_pyx.pyx", line 251, in msgq.ipc_pyx.PubSocket.send
+msgq.ipc_pyx.MultiplePublishersError: Messaging failure : Address already in use
+Killing old publisher: liveTracks
+Traceback (most recent call last):
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 137, in update
+    self.send_live_tracks(simulator_state)
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 125, in send_live_tracks
+    self.pm.send('liveTracks', tracks_msg)
+  File "/home/linklab/ethanmathias/openpilot-hcc/cereal/messaging/__init__.py", line 259, in send
+    self.sock[s].send(dat)
+  File "msgq_repo/msgq/ipc_pyx.pyx", line 251, in msgq.ipc_pyx.PubSocket.send
+msgq.ipc_pyx.MultiplePublishersError: Messaging failure : Address already in use
+Killing old publisher: liveTracks
+Traceback (most recent call last):
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 137, in update
+    self.send_live_tracks(simulator_state)
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 125, in send_live_tracks
+    self.pm.send('liveTracks', tracks_msg)
+  File "/home/linklab/ethanmathias/openpilot-hcc/cereal/messaging/__init__.py", line 259, in send
+    self.sock[s].send(dat)
+  File "msgq_repo/msgq/ipc_pyx.pyx", line 251, in msgq.ipc_pyx.PubSocket.send
+msgq.ipc_pyx.MultiplePublishersError: Messaging failure : Address already in use
+Killing old publisher: liveTracks
+Traceback (most recent call last):
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 137, in update
+    self.send_live_tracks(simulator_state)
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 125, in send_live_tracks
+    self.pm.send('liveTracks', tracks_msg)
+  File "/home/linklab/ethanmathias/openpilot-hcc/cereal/messaging/__init__.py", line 259, in send
+    self.sock[s].send(dat)
+  File "msgq_repo/msgq/ipc_pyx.pyx", line 251, in msgq.ipc_pyx.PubSocket.send
+msgq.ipc_pyx.MultiplePublishersError: Messaging failure : Address already in use
+Killing old publisher: liveTracks
+Traceback (most recent call last):
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 137, in update
+    self.send_live_tracks(simulator_state)
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 125, in send_live_tracks
+    self.pm.send('liveTracks', tracks_msg)
+  File "/home/linklab/ethanmathias/openpilot-hcc/cereal/messaging/__init__.py", line 259, in send
+    self.sock[s].send(dat)
+  File "msgq_repo/msgq/ipc_pyx.pyx", line 251, in msgq.ipc_pyx.PubSocket.send
+msgq.ipc_pyx.MultiplePublishersError: Messaging failure : Address already in use
+Killing old publisher: liveTracks
+Traceback (most recent call last):
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 137, in update
+    self.send_live_tracks(simulator_state)
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 125, in send_live_tracks
+    self.pm.send('liveTracks', tracks_msg)
+  File "/home/linklab/ethanmathias/openpilot-hcc/cereal/messaging/__init__.py", line 259, in send
+    self.sock[s].send(dat)
+  File "msgq_repo/msgq/ipc_pyx.pyx", line 251, in msgq.ipc_pyx.PubSocket.send
+msgq.ipc_pyx.MultiplePublishersError: Messaging failure : Address already in use
+Killing old publisher: liveTracks
+Traceback (most recent call last):
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 137, in update
+    self.send_live_tracks(simulator_state)
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 125, in send_live_tracks
+    self.pm.send('liveTracks', tracks_msg)
+  File "/home/linklab/ethanmathias/openpilot-hcc/cereal/messaging/__init__.py", line 259, in send
+    self.sock[s].send(dat)
+  File "msgq_repo/msgq/ipc_pyx.pyx", line 251, in msgq.ipc_pyx.PubSocket.send
+msgq.ipc_pyx.MultiplePublishersError: Messaging failure : Address already in use
+Killing old publisher: liveTracks
+Traceback (most recent call last):
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 137, in update
+    self.send_live_tracks(simulator_state)
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 125, in send_live_tracks
+    self.pm.send('liveTracks', tracks_msg)
+  File "/home/linklab/ethanmathias/openpilot-hcc/cereal/messaging/__init__.py", line 259, in send
+    self.sock[s].send(dat)
+  File "msgq_repo/msgq/ipc_pyx.pyx", line 251, in msgq.ipc_pyx.PubSocket.send
+msgq.ipc_pyx.MultiplePublishersError: Messaging failure : Address already in use
+Killing old publisher: liveTracks
+Traceback (most recent call last):
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 137, in update
+    self.send_live_tracks(simulator_state)
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 125, in send_live_tracks
+    self.pm.send('liveTracks', tracks_msg)
+  File "/home/linklab/ethanmathias/openpilot-hcc/cereal/messaging/__init__.py", line 259, in send
+    self.sock[s].send(dat)
+  File "msgq_repo/msgq/ipc_pyx.pyx", line 251, in msgq.ipc_pyx.PubSocket.send
+msgq.ipc_pyx.MultiplePublishersError: Messaging failure : Address already in use
+Killing old publisher: liveTracks
+Traceback (most recent call last):
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 137, in update
+    self.send_live_tracks(simulator_state)
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 125, in send_live_tracks
+    self.pm.send('liveTracks', tracks_msg)
+  File "/home/linklab/ethanmathias/openpilot-hcc/cereal/messaging/__init__.py", line 259, in send
+    self.sock[s].send(dat)
+  File "msgq_repo/msgq/ipc_pyx.pyx", line 251, in msgq.ipc_pyx.PubSocket.send
+msgq.ipc_pyx.MultiplePublishersError: Messaging failure : Address already in use
+Killing old publisher: liveTracks
+Traceback (most recent call last):
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 137, in update
+    self.send_live_tracks(simulator_state)
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 125, in send_live_tracks
+    self.pm.send('liveTracks', tracks_msg)
+  File "/home/linklab/ethanmathias/openpilot-hcc/cereal/messaging/__init__.py", line 259, in send
+    self.sock[s].send(dat)
+  File "msgq_repo/msgq/ipc_pyx.pyx", line 251, in msgq.ipc_pyx.PubSocket.send
+msgq.ipc_pyx.MultiplePublishersError: Messaging failure : Address already in use
+Killing old publisher: liveTracks
+Traceback (most recent call last):
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 137, in update
+    self.send_live_tracks(simulator_state)
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 125, in send_live_tracks
+    self.pm.send('liveTracks', tracks_msg)
+  File "/home/linklab/ethanmathias/openpilot-hcc/cereal/messaging/__init__.py", line 259, in send
+    self.sock[s].send(dat)
+  File "msgq_repo/msgq/ipc_pyx.pyx", line 251, in msgq.ipc_pyx.PubSocket.send
+msgq.ipc_pyx.MultiplePublishersError: Messaging failure : Address already in use
+Killing old publisher: liveTracks
+Traceback (most recent call last):
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 137, in update
+    self.send_live_tracks(simulator_state)
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 125, in send_live_tracks
+    self.pm.send('liveTracks', tracks_msg)
+  File "/home/linklab/ethanmathias/openpilot-hcc/cereal/messaging/__init__.py", line 259, in send
+    self.sock[s].send(dat)
+  File "msgq_repo/msgq/ipc_pyx.pyx", line 251, in msgq.ipc_pyx.PubSocket.send
+msgq.ipc_pyx.MultiplePublishersError: Messaging failure : Address already in use
+Killing old publisher: liveTracks
+Traceback (most recent call last):
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 137, in update
+    self.send_live_tracks(simulator_state)
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 125, in send_live_tracks
+    self.pm.send('liveTracks', tracks_msg)
+  File "/home/linklab/ethanmathias/openpilot-hcc/cereal/messaging/__init__.py", line 259, in send
+    self.sock[s].send(dat)
+  File "msgq_repo/msgq/ipc_pyx.pyx", line 251, in msgq.ipc_pyx.PubSocket.send
+msgq.ipc_pyx.MultiplePublishersError: Messaging failure : Address already in use
+Killing old publisher: liveTracks
+Traceback (most recent call last):
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 137, in update
+    self.send_live_tracks(simulator_state)
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 125, in send_live_tracks
+    self.pm.send('liveTracks', tracks_msg)
+  File "/home/linklab/ethanmathias/openpilot-hcc/cereal/messaging/__init__.py", line 259, in send
+    self.sock[s].send(dat)
+  File "msgq_repo/msgq/ipc_pyx.pyx", line 251, in msgq.ipc_pyx.PubSocket.send
+msgq.ipc_pyx.MultiplePublishersError: Messaging failure : Address already in use
+Killing old publisher: liveTracks
+Traceback (most recent call last):
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 137, in update
+    self.send_live_tracks(simulator_state)
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 125, in send_live_tracks
+    self.pm.send('liveTracks', tracks_msg)
+  File "/home/linklab/ethanmathias/openpilot-hcc/cereal/messaging/__init__.py", line 259, in send
+    self.sock[s].send(dat)
+  File "msgq_repo/msgq/ipc_pyx.pyx", line 251, in msgq.ipc_pyx.PubSocket.send
+msgq.ipc_pyx.MultiplePublishersError: Messaging failure : Address already in use
+Killing old publisher: liveTracks
+Traceback (most recent call last):
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 137, in update
+    self.send_live_tracks(simulator_state)
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 125, in send_live_tracks
+    self.pm.send('liveTracks', tracks_msg)
+  File "/home/linklab/ethanmathias/openpilot-hcc/cereal/messaging/__init__.py", line 259, in send
+    self.sock[s].send(dat)
+  File "msgq_repo/msgq/ipc_pyx.pyx", line 251, in msgq.ipc_pyx.PubSocket.send
+msgq.ipc_pyx.MultiplePublishersError: Messaging failure : Address already in use
+
+State:
+Ignition: True Engaged: False
+
+Killing old publisher: liveTracks
+Traceback (most recent call last):
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 137, in update
+    self.send_live_tracks(simulator_state)
+Traceback (most recent call last):
+  File "/home/linklab/ethanmathias/openpilot-hcc/tools/sim/./run_bridge.py", line 48, in <module>
+    keyboard_poll_thread(queue)
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/keyboard_ctrl.py", line 62, in keyboard_poll_thread
+    c = getch()
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/simulated_car.py", line 125, in send_live_tracks
+    self.pm.send('liveTracks', tracks_msg)
+        ^^^^^^^
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/keyboard_ctrl.py", line 50, in getch
+    ch = sys.stdin.read(1)
+         ^^^^^^^^^^^^^^^^^
+  File "/home/linklab/ethanmathias/openpilot-hcc/cereal/messaging/__init__.py", line 259, in send
+    self.sock[s].send(dat)
+KeyboardInterrupt
+  File "msgq_repo/msgq/ipc_pyx.pyx", line 251, in msgq.ipc_pyx.PubSocket.send
+msgq.ipc_pyx.MultiplePublishersError: Messaging failure : Address already in use
+* interrupt by keyboard
+Process metadrive process:
+Traceback (most recent call last):
+  File "/usr/lib/python3.12/multiprocessing/process.py", line 314, in _bootstrap
+    self.run()
+  File "/usr/lib/python3.12/multiprocessing/process.py", line 108, in run
+    self._target(*self._args, **self._kwargs)
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/bridge/metadrive/metadrive_process.py", line 192, in metadrive_process
+    _, _, terminated, _, _ = env.step(vc)
+                             ^^^^^^^^^^^^
+  File "/home/linklab/ethanmathias/openpilot-hcc/.venv/lib/python3.12/site-packages/metadrive/envs/base_env.py", line 436, in step
+    engine_info = self._step_simulator(actions)  # step the simulation
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/linklab/ethanmathias/openpilot-hcc/.venv/lib/python3.12/site-packages/metadrive/envs/base_env.py", line 465, in _step_simulator
+    self.engine.step(self.config["decision_repeat"])
+  File "/home/linklab/ethanmathias/openpilot-hcc/.venv/lib/python3.12/site-packages/metadrive/engine/base_engine.py", line 448, in step
+    self.task_manager.step()
+  File "/home/linklab/ethanmathias/openpilot-hcc/.venv/lib/python3.12/site-packages/direct/task/Task.py", line 517, in step
+    raise KeyboardInterrupt
+KeyboardInterrupt
+Process bridge:
+Traceback (most recent call last):
+  File "/usr/lib/python3.12/multiprocessing/process.py", line 314, in _bootstrap
+    self.run()
+  File "/usr/lib/python3.12/multiprocessing/process.py", line 108, in run
+    self._target(*self._args, **self._kwargs)
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/bridge/common.py", line 73, in bridge_keep_alive
+    self._run(q)
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/bridge/common.py", line 207, in _run
+    self.rk.keep_time()
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/common/realtime.py", line 75, in keep_time
+    time.sleep(self._remaining)
+KeyboardInterrupt
