@@ -89,10 +89,30 @@ class SimulatorBridge(ABC):
     return bridge_p
 
   def print_status(self):
+    mph = self.simulator_state.speed * 2.23694 if self.simulator_state.velocity is not None else 0.0
+    lead_present = bool(self.simulator_state.lead_status)
+    lead_mph = (self.simulator_state.speed + self.simulator_state.lead_v_rel) * 2.23694 if lead_present and self.simulator_state.velocity is not None else 0.0
+    lead_v_rel_mph = self.simulator_state.lead_v_rel * 2.23694 if lead_present else 0.0
+
+    v_cruise_mph = 0.0
+    accel_cmd = 0.0
+    try:
+      v_cruise_mph = float(self.simulated_car.sm['carState'].vCruise) * 0.621371
+    except Exception:
+      pass
+    try:
+      accel_cmd = float(self.simulated_car.sm['carControl'].actuators.accel)
+    except Exception:
+      pass
+
+    hccc_enabled = self.params.get_bool("EnableHCCC")
     print(
     f"""
 State:
 Ignition: {self.simulator_state.ignition} Engaged: {self.simulator_state.is_engaged}
+HCCC enabled: {hccc_enabled}
+Ego speed: {mph:.1f} mph | Cruise set: {v_cruise_mph:.1f} mph | Accel cmd: {accel_cmd:.2f} m/s^2
+Lead present: {lead_present} | dRel: {self.simulator_state.lead_d_rel:.1f} m | Lead speed: {lead_mph:.1f} mph | vRel: {lead_v_rel_mph:+.1f} mph
     """)
 
   @abstractmethod
