@@ -6,7 +6,6 @@ import cereal.messaging as messaging
 from opendbc.car.interfaces import ACCEL_MIN, ACCEL_MAX
 from openpilot.common.constants import CV
 from openpilot.common.filter_simple import FirstOrderFilter
-from openpilot.common.params import Params
 from openpilot.common.realtime import DT_MDL
 from openpilot.selfdrive.modeld.constants import ModelConstants
 from openpilot.selfdrive.controls.lib.longcontrol import LongCtrlState
@@ -15,7 +14,6 @@ from openpilot.selfdrive.controls.lib.longitudinal_mpc_lib.long_mpc import T_IDX
 from openpilot.selfdrive.controls.lib.drive_helpers import CONTROL_N, get_accel_from_plan
 from openpilot.selfdrive.car.cruise import V_CRUISE_MAX, V_CRUISE_UNSET
 from openpilot.common.swaglog import cloudlog
-from openpilot.selfdrive.controls.lib.hccc_controller import hCCC
 
 LON_MPC_STEP = 0.2  # first step is 0.2s
 A_CRUISE_MAX_VALS = [1.6, 1.2, 0.8, 0.6]
@@ -59,10 +57,6 @@ class LongitudinalPlanner:
     self.fcw = False
     self.dt = dt
     self.allow_throttle = True
-    self.params = Params()
-    self.use_hccc = False
-    self.hccc = None
-    self._refresh_hccc(force_reset=True)
 
     self.a_desired = init_a
     self.v_desired_filter = FirstOrderFilter(init_v, 2.0, self.dt)
@@ -95,20 +89,6 @@ class LongitudinalPlanner:
       throttle_prob = 1.0
     return x, v, a, j, throttle_prob
 
-  def _hccc_enabled(self):
-    cp_flag = getattr(self.CP, 'enableHCCC', None)
-    if cp_flag is not None:
-      return cp_flag
-    return self.params.get_bool("EnableHCCC")
-
-  def _refresh_hccc(self, force_reset=False):
-    enabled = self._hccc_enabled()
-    if not enabled:
-      self.hccc = None
-    elif self.hccc is None or force_reset:
-      self.hccc = hCCC(dt=self.dt)
-    self.use_hccc = enabled
-
   def update(self, sm):
     mode = 'blended' if sm['selfdriveState'].experimentalMode else 'acc'
 
@@ -129,8 +109,6 @@ class LongitudinalPlanner:
     reset_state = long_control_off if self.CP.openpilotLongitudinalControl else not sm['selfdriveState'].enabled
     # PCM cruise speed may be updated a few cycles later, check if initialized
     reset_state = reset_state or not v_cruise_initialized
-    self._refresh_hccc(force_reset=reset_state)
-
     # No change cost when user is controlling the speed, or when standstill
     prev_accel_constraint = not (reset_state or sm['carState'].standstill)
 
@@ -194,11 +172,6 @@ class LongitudinalPlanner:
     for idx in range(2):
       accel_clip[idx] = np.clip(accel_clip[idx], self.prev_accel_clip[idx] - 0.05, self.prev_accel_clip[idx] + 0.05)
     self.output_a_target = np.clip(output_a_target, accel_clip[0], accel_clip[1])
-    hccc_accel = None
-    if self.use_hccc and self.hccc is not None:
-      hccc_accel = self.hccc.run_step(sm['carState'], sm['radarState'].leadOne)
-    if hccc_accel is not None:
-      self.output_a_target = np.clip(hccc_accel, accel_clip[0], accel_clip[1])
     self.prev_accel_clip = accel_clip
 
   def publish(self, sm, pm):
