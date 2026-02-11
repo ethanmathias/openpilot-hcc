@@ -87,6 +87,13 @@ class SimulatedCar:
       self.obd_multiplexing = not self.obd_multiplexing
       self.params.put_bool("ObdMultiplexingChanged", True)
 
+    alt_exp = 0
+    try:
+      alt_exp = self.sm["carParams"].alternativeExperience
+    except Exception:
+      # carParams may be unavailable during startup; keep pandaStates flowing.
+      pass
+
     dat = messaging.new_message('pandaStates', 1)
     dat.valid = True
     dat.pandaStates[0] = {
@@ -94,7 +101,7 @@ class SimulatedCar:
       'pandaType': "blackPanda",
       'controlsAllowed': True,
       'safetyModel': 'hondaBosch',
-      'alternativeExperience': self.sm["carParams"].alternativeExperience,
+      'alternativeExperience': alt_exp,
       'safetyParam': HondaSafetyFlags.RADARLESS.value | HondaSafetyFlags.BOSCH_LONG.value,
     }
     self.pm.send('pandaStates', dat)
@@ -118,14 +125,17 @@ class SimulatedCar:
     self.pm.send('liveTracks', tracks_msg)
 
   def update(self, simulator_state: SimulatorState):
+    # Keep pandaStates publishing robustly; hardwared offroads after 5s without it.
+    try:
+      if self.idx % 10 == 0: # send panda states at 10hz to match service expectation
+        self.send_panda_state(simulator_state)
+    except Exception:
+      traceback.print_exc()
+
     try:
       self.send_can_messages(simulator_state)
       self.send_live_tracks(simulator_state)
-
-      if self.idx % 10 == 0: # send panda states at 10hz to match service expectation
-        self.send_panda_state(simulator_state)
-
-      self.idx += 1
     except Exception:
       traceback.print_exc()
-      raise
+
+    self.idx += 1
