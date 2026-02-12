@@ -23,6 +23,19 @@ options:
   --joystick
   --high_quality
   --dual_camera
+  --enable_hcc
+
+Notes:
+If you see warning: EnableHCCC param key is unavailable ... --enable_hcc ignored, then HCC was not enabled.
+To truly enable via flag, rebuild on Ubuntu so params key table includes EnableHCCC.
+From repo root on Ubuntu:
+
+rg -n "EnableHCCC" common/params_keys.h
+scons -u -j"$(nproc)"
+Then rerun:
+
+cd tools/sim
+./run_bridge.py --enable_hcc
 ```
 
 #### Bridge Controls:

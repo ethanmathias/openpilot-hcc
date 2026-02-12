@@ -27,7 +27,7 @@ def curve_block(length, angle=45, direction=0):
     "dir": direction
   }
 
-def create_map(track_size=60):
+def create_loop_map(track_size=60):
   curve_len = track_size * 2
   return dict(
     type=MapGenerateMethod.PG_MAP_FILE,
@@ -44,6 +44,17 @@ def create_map(track_size=60):
       straight_block(track_size),
       curve_block(curve_len, 90),
     ]
+  )
+
+def create_straight_map(length=5000):
+  return dict(
+    type=MapGenerateMethod.PG_MAP_FILE,
+    lane_num=1,
+    lane_width=4.5,
+    config=[
+      None,
+      straight_block(length),
+    ],
   )
 
 
@@ -86,11 +97,14 @@ class MetaDriveBridge(SimulatorBridge):
       traffic_density=0.0, # traffic is incredibly expensive
       lead_vehicle_enabled=True,
       lead_vehicle_distance=35.0,
-      lead_vehicle_speed=12.0,
+      lead_speed_profile="ramp",
+      lead_speed_start_mph=10.0,
+      lead_speed_end_mph=30.0,
+      lead_speed_ramp_sec=20.0,
       lead_vehicle_lateral_offset=0.0,
       lead_vehicle_model="s",
       lead_vehicle_render=True,
-      map_config=create_map(),
+      map_config=create_straight_map(),
       decision_repeat=1,
       physics_world_step_size=self.TICKS_PER_FRAME/100,
       preload_models=False,

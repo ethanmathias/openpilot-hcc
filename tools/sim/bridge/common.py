@@ -42,7 +42,10 @@ class SimulatorBridge(ABC):
     self.params = Params()
     self.params.put_bool("AlphaLongitudinalEnabled", True)
     if enable_hcc:
-      self.params.put_bool("EnableHCCC", True)
+      if self.params.check_key("EnableHCCC"):
+        self.params.put_bool("EnableHCCC", True)
+      else:
+        print("[WARNING] EnableHCCC param key is unavailable in this build; --enable_hcc ignored.")
 
     self.rk = Ratekeeper(100, None)
 
@@ -90,10 +93,33 @@ class SimulatorBridge(ABC):
     return bridge_p
 
   def print_status(self):
+    lead_line = "Lead: unavailable"
+    ego_line = "Ego: unavailable"
+
+    if hasattr(self, "simulated_car"):
+      sm = self.simulated_car.sm
+      if sm.valid.get('carState', False):
+        v_ego = sm['carState'].vEgo
+        a_ego = sm['carState'].aEgo
+        accel_cmd = sm['carControl'].actuators.accel
+        ego_line = f"Ego: vEgo={v_ego:.2f} m/s aEgo={a_ego:.2f} m/s^2 accelCmd={accel_cmd:.2f} m/s^2"
+
+      if sm.valid.get('radarState', False):
+        lead = sm['radarState'].leadOne
+        if lead.status:
+          lead_line = (
+            f"Lead: dRel={lead.dRel:.2f} m vLead={lead.vLead:.2f} m/s "
+            f"vRel={lead.vRel:.2f} m/s yRel={lead.yRel:.2f} m"
+          )
+        else:
+          lead_line = "Lead: no valid lead"
+
     print(
     f"""
 State:
 Ignition: {self.simulator_state.ignition} Engaged: {self.simulator_state.is_engaged}
+{ego_line}
+{lead_line}
     """)
 
   @abstractmethod

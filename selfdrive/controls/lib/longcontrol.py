@@ -67,6 +67,8 @@ class LongControl:
     cp_flag = getattr(self.CP, 'enableHCCC', None)
     if cp_flag is not None:
       return cp_flag
+    if not self.params.check_key("EnableHCCC"):
+      return False
     return self.params.get_bool("EnableHCCC")
 
   def _refresh_hccc(self, force_reset=False):

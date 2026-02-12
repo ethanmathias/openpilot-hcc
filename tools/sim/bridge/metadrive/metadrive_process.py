@@ -52,10 +52,16 @@ def apply_metadrive_patches(arrive_dest_done=True):
 def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera_array, image_lock,
                       controls_recv: Connection, simulation_state_send: Connection, vehicle_state_send: Connection,
                       exit_event, op_engaged, test_duration, test_run):
+  mph_to_ms = 0.44704
   arrive_dest_done = config.pop("arrive_dest_done", True)
   lead_vehicle_enabled = bool(config.pop("lead_vehicle_enabled", False))
   lead_vehicle_distance = float(config.pop("lead_vehicle_distance", 35.0))
-  lead_vehicle_speed = float(config.pop("lead_vehicle_speed", 12.0))
+  lead_speed_profile = str(config.pop("lead_speed_profile", "constant"))
+  lead_speed_start_mph = float(config.pop("lead_speed_start_mph", 10.0))
+  lead_speed_end_mph = float(config.pop("lead_speed_end_mph", 30.0))
+  lead_speed_ramp_sec = float(config.pop("lead_speed_ramp_sec", 20.0))
+  # Backward-compatible fixed speed option for old config callers.
+  lead_vehicle_speed = float(config.pop("lead_vehicle_speed", lead_speed_end_mph * mph_to_ms))
   lead_vehicle_lateral_offset = float(config.pop("lead_vehicle_lateral_offset", 0.0))
   lead_vehicle_model = config.pop("lead_vehicle_model", "s")
   lead_vehicle_render = bool(config.pop("lead_vehicle_render", True))
@@ -70,6 +76,9 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
   env = MetaDriveEnv(config)
   lead_vehicle = None
   lead_distance_dynamic = lead_vehicle_distance
+  lead_profile_start_time = None
+  lead_speed_start = lead_speed_start_mph * mph_to_ms
+  lead_speed_end = lead_speed_end_mph * mph_to_ms
 
   def get_current_lane_info(vehicle):
     _, lane_info, on_lane = vehicle.navigation._get_current_lane(vehicle)
@@ -88,6 +97,22 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
       if model and model not in unique_models:
         unique_models.append(model)
     return unique_models
+
+  def _target_lead_speed():
+    nonlocal lead_profile_start_time
+    if lead_speed_profile != "ramp":
+      return lead_vehicle_speed
+
+    if not op_engaged.is_set():
+      return lead_speed_start
+
+    now = time.monotonic()
+    if lead_profile_start_time is None:
+      lead_profile_start_time = now
+
+    ramp_sec = max(lead_speed_ramp_sec, 1e-3)
+    alpha = float(np.clip((now - lead_profile_start_time) / ramp_sec, 0.0, 1.0))
+    return lead_speed_start + alpha * (lead_speed_end - lead_speed_start)
 
   def _lead_target_position(ego_vehicle):
     heading = np.array([math.cos(ego_vehicle.heading_theta), math.sin(ego_vehicle.heading_theta)], dtype=np.float64)
@@ -132,7 +157,7 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
           position=target_position.tolist(),
           heading=float(ego_vehicle.heading_theta),
         )
-        lead_vehicle.set_velocity(heading, lead_vehicle_speed, in_local_frame=False)
+        lead_vehicle.set_velocity(heading, _target_lead_speed(), in_local_frame=False)
         print(f"[INFO] Spawned lead vehicle model '{model_name}'")
         return
       except (OSError, FileNotFoundError) as e:
@@ -150,23 +175,25 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
       return
 
     ego_vehicle = env.vehicle
+    current_lead_speed = _target_lead_speed()
     ego_speed = float(np.linalg.norm(np.array(ego_vehicle.velocity[:2], dtype=np.float64)))
-    lead_distance_dynamic += (lead_vehicle_speed - ego_speed) * step_dt
+    lead_distance_dynamic += (current_lead_speed - ego_speed) * step_dt
     lead_distance_dynamic = float(np.clip(lead_distance_dynamic, 8.0, 120.0))
 
     heading, target_position = _lead_target_position(ego_vehicle)
     try:
       lead_vehicle.set_position(target_position.tolist())
-      lead_vehicle.set_velocity(heading, lead_vehicle_speed, in_local_frame=False)
+      lead_vehicle.set_velocity(heading, current_lead_speed, in_local_frame=False)
     except Exception as e:
       print(f"[WARNING] Lead update failed, removing lead vehicle: {e}")
       lead_vehicle = None
 
   def reset():
-    nonlocal lead_distance_dynamic
+    nonlocal lead_distance_dynamic, lead_profile_start_time
     env.reset()
     env.vehicle.config["max_speed_km_h"] = 1000
     lead_distance_dynamic = lead_vehicle_distance
+    lead_profile_start_time = None
     spawn_lead_vehicle()
     lane_idx_prev, _ = get_current_lane_info(env.vehicle)
 
