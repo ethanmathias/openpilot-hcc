@@ -1,12 +1,4 @@
-ilot-hcc/tools/sim$ ./run_bridge.py --scenario hccc_step
-Keyboard Commands:
-
-  | key  |   functionality       |
-  |------|-----------------------|
-  |  1   | Cruise Resume / Accel |
-  |  2   | Cruise Set    / Decel |
-  |  3   | Cruise Cancel         |
-  |  r   | Reset Simulation      |
+  r   | Reset Simulation      |
   |  i   | Toggle Ignition       |
   |  q   | Exit all              |
   | wasd | Control manually      |
@@ -23,47 +15,59 @@ Keyboard Commands:
 [INFO] Known Pipes: glxGraphicsPipe
 [WARNING] You are using too large buffer! The height is 1208, and width is 1928. It may lower the sample efficiency! Consider reducing buffer size or use cuda image by set [image_on_cuda=True]. (base_camera.py:49)
 [INFO] Start Scenario Index: 0, Num Scenarios : 1
-:loader(error): Couldn't load file /home/linklab/ethanmathias/openpilot-hcc/.venv/lib/python3.12/site-packages/metadrive/assets/models/ferra/right_tire_front.gltf: does not exist.
-Process metadrive process:
+[WARNING] env.vehicle will be deprecated soon. Use env.agent instead (base_env.py:733)
+msgq_repo/msgq/visionipc/visionipc_server.cc: Starting listener for: camerad
+Process bridge:
 Traceback (most recent call last):
   File "/usr/lib/python3.12/multiprocessing/process.py", line 314, in _bootstrap
     self.run()
   File "/usr/lib/python3.12/multiprocessing/process.py", line 108, in run
     self._target(*self._args, **self._kwargs)
-  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/bridge/metadrive/metadrive_process.py", line 222, in metadrive_process
-    lane_idx_prev, lead_state, lead_measurement, visual_lead = reset()
-                                                               ^^^^^^^
-  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/bridge/metadrive/metadrive_process.py", line 198, in reset
-    env.reset()
-  File "/home/linklab/ethanmathias/openpilot-hcc/.venv/lib/python3.12/site-packages/metadrive/envs/base_env.py", line 531, in reset
-    reset_info = self.engine.reset()
-                 ^^^^^^^^^^^^^^^^^^^
-  File "/home/linklab/ethanmathias/openpilot-hcc/.venv/lib/python3.12/site-packages/metadrive/engine/base_engine.py", line 355, in reset
-    new_step_infos = manager.reset()
-                     ^^^^^^^^^^^^^^^
-  File "/home/linklab/ethanmathias/openpilot-hcc/.venv/lib/python3.12/site-packages/metadrive/manager/agent_manager.py", line 103, in reset
-    super(VehicleAgentManager, self).reset()
-  File "/home/linklab/ethanmathias/openpilot-hcc/.venv/lib/python3.12/site-packages/metadrive/manager/base_manager.py", line 243, in reset
-    self.episode_created_agents = self._create_agents(config_dict=self.engine.global_config["agent_configs"])
-                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/linklab/ethanmathias/openpilot-hcc/.venv/lib/python3.12/site-packages/metadrive/manager/agent_manager.py", line 45, in _create_agents
-    obj = self.spawn_object(v_type, vehicle_config=v_config, name=obj_name)
-          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/linklab/ethanmathias/openpilot-hcc/.venv/lib/python3.12/site-packages/metadrive/manager/base_manager.py", line 80, in spawn_object
-    object = self.engine.spawn_object(object_class, **kwargs)
-             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/linklab/ethanmathias/openpilot-hcc/.venv/lib/python3.12/site-packages/metadrive/engine/base_engine.py", line 137, in spawn_object
-    obj = object_class(**kwargs)
-          ^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/linklab/ethanmathias/openpilot-hcc/.venv/lib/python3.12/site-packages/metadrive/component/vehicle/base_vehicle.py", line 149, in __init__
-    self.wheels = self._create_wheel()
-                  ^^^^^^^^^^^^^^^^^^^^
-  File "/home/linklab/ethanmathias/openpilot-hcc/.venv/lib/python3.12/site-packages/metadrive/component/vehicle/base_vehicle.py", line 666, in _create_wheel
-    wheel = self._add_wheel(pos, radius, True if k < 2 else False, True if k == 0 or k == 2 else False)
-            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/linklab/ethanmathias/openpilot-hcc/.venv/lib/python3.12/site-packages/metadrive/component/vehicle/base_vehicle.py", line 677, in _add_wheel
-    wheel_model = self.loader.loadModel(model_path)
-                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/linklab/ethanmathias/openpilot-hcc/.venv/lib/python3.12/site-packages/direct/showbase/Loader.py", line 308, in loadModel
-    raise IOError(message)
-OSError: Could not load model file(s): ['/home/linklab/ethanmathias/openpilot-hcc/.venv/lib/python3.12/site-packages/metadrive/assets/models/ferra/right_tire_front.gltf']
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/bridge/common.py", line 73, in bridge_keep_alive
+    self._run(q)
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/bridge/common.py", line 223, in _run
+    self.print_status()
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/bridge/common.py", line 108, in print_status
+    hccc_enabled = self.params.get_bool("EnableHCCC")
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "common/params_pyx.pyx", line 133, in common.params_pyx.Params.get_bool
+  File "common/params_pyx.pyx", line 96, in common.params_pyx.Params.check_key
+common.params_pyx.UnknownKeyName: b'EnableHCCC'
+Traceback (most recent call last):
+  File "/home/linklab/ethanmathias/openpilot-hcc/tools/sim/./run_bridge.py", line 48, in <module>
+    keyboard_poll_thread(queue)
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/keyboard_ctrl.py", line 62, in keyboard_poll_thread
+    c = getch()
+        ^^^^^^^
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/lib/keyboard_ctrl.py", line 50, in getch
+    ch = sys.stdin.read(1)
+         ^^^^^^^^^^^^^^^^^
+KeyboardInterrupt
+
+(openpilot) (base) linklab@linklab-ubuntu:~/ethanmathias/openpilot-hcc/tools/sim$ git pull
+warning: redirecting to https://github.com/ethanmathias/openpilot-hcc.git/
+remote: Enumerating objects: 15, done.
+remote: Counting objects: 100% (15/15), done.
+remote: Compressing objects: 100% (2/2), done.
+remote: Total 8 (delta 7), reused 7 (delta 6), pack-reused 0 (from 0)
+Unpacking objects: 100% (8/8), 630 bytes | 210.00 KiB/s, done.
+From https://www.github.com/ethanmathias/openpilot-hcc
+   55165a39c..94c0bd21a  metadrive  -> origin/metadrive
+Updating 55165a39c..94c0bd21a
+Fast-forward
+ tools/sim/bridge/metadrive/metadrive_bridge.py  |  3 +--
+ tools/sim/bridge/metadrive/metadrive_process.py | 49 +-----------------------------------------
+ 2 files changed, 2 insertions(+), 50 deletions(-)
+(openpilot) (base) linklab@linklab-ubuntu:~/ethanmathias/openpilot-hcc/tools/sim$ ./run_bridge.py --scenario hccc_step
+Traceback (most recent call last):
+  File "/home/linklab/ethanmathias/openpilot-hcc/tools/sim/./run_bridge.py", line 36, in <module>
+    queue, simulator_process, simulator_bridge = create_bridge(args.dual_camera, args.high_quality,
+                                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/linklab/ethanmathias/openpilot-hcc/tools/sim/./run_bridge.py", line 12, in create_bridge
+    simulator_bridge = MetaDriveBridge(dual_camera, high_quality, scenario=scenario,
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/bridge/metadrive/metadrive_bridge.py", line 105, in __init__
+    self.params.put_bool("EnableHCCC", True)
+  File "common/params_pyx.pyx", line 157, in common.params_pyx.Params.put_bool
+  File "common/params_pyx.pyx", line 96, in common.params_pyx.Params.check_key
+common.params_pyx.UnknownKeyName: b'EnableHCCC'
