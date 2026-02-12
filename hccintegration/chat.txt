@@ -1,0 +1,16 @@
+-hcc/tools/sim$ ./run_bridge.py --enable_hcc
+Traceback (most recent call last):
+  File "/home/linklab/ethanmathias/openpilot-hcc/tools/sim/./run_bridge.py", line 34, in <module>
+    queue, simulator_process, simulator_bridge = create_bridge(args.dual_camera, args.high_quality,
+                                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/linklab/ethanmathias/openpilot-hcc/tools/sim/./run_bridge.py", line 12, in create_bridge
+    simulator_bridge = MetaDriveBridge(dual_camera, high_quality, enable_hcc=enable_hcc)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/bridge/metadrive/metadrive_bridge.py", line 54, in __init__
+    super().__init__(dual_camera, high_quality, enable_hcc=enable_hcc)
+  File "/home/linklab/ethanmathias/openpilot-hcc/openpilot/tools/sim/bridge/common.py", line 45, in __init__
+    self.params.put_bool("EnableHCCC", True)
+  File "common/params_pyx.pyx", line 157, in common.params_pyx.Params.put_bool
+  File "common/params_pyx.pyx", line 96, in common.params_pyx.Params.check_key
+common.params_pyx.UnknownKeyName: b'EnableHCCC'
+(openpilot) (base) linklab@linklab-ubuntu:~/ethanmathias/openpilot-hcc/tools/sim$ 
