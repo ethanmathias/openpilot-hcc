@@ -23,6 +23,7 @@ options:
   --joystick
   --high_quality
   --dual_camera
+  --scenario {default,hccc_step}
   --enable_hcc
 
 Notes:
@@ -36,6 +37,12 @@ Then rerun:
 
 cd tools/sim
 ./run_bridge.py --enable_hcc
+```
+
+### hCCC step scenario
+Run a lead profile that ramps up and down in speed for acceleration/deceleration testing:
+```
+./run_bridge.py --scenario hccc_step
 ```
 
 #### Bridge Controls:

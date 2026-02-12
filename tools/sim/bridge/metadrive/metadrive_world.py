@@ -89,6 +89,11 @@ class MetaDriveWorld(World):
       state.bearing = md_vehicle.bearing
       state.steering_angle = md_vehicle.steering_angle
       state.gps.from_xy(curr_pos)
+      state.lead_status = md_vehicle.lead_status
+      state.lead_d_rel = md_vehicle.lead_d_rel
+      state.lead_y_rel = md_vehicle.lead_y_rel
+      state.lead_v_rel = md_vehicle.lead_v_rel
+      state.lead_a_rel = md_vehicle.lead_a_rel
       state.valid = True
 
       is_engaged = state.is_engaged

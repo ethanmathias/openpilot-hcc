@@ -56,6 +56,13 @@ class SimulatorState:
     self.left_blinker = False
     self.right_blinker = False
 
+    # Optional virtual lead state for simulator-generated liveTracks.
+    self.lead_status: bool = False
+    self.lead_d_rel: float = 0.0
+    self.lead_y_rel: float = 0.0
+    self.lead_v_rel: float = 0.0
+    self.lead_a_rel: float = 0.0
+
   @property
   def speed(self):
     return math.sqrt(self.velocity.x ** 2 + self.velocity.y ** 2 + self.velocity.z ** 2)

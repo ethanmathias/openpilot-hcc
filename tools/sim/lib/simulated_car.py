@@ -1,6 +1,7 @@
 import traceback
 import cereal.messaging as messaging
 
+from cereal import car
 from opendbc.can.packer import CANPacker
 from opendbc.can.parser import CANParser
 from opendbc.car.honda.values import HondaSafetyFlags
@@ -14,7 +15,7 @@ class SimulatedCar:
   packer = CANPacker("honda_bosch_radarless_generated")
 
   def __init__(self):
-    self.pm = messaging.PubMaster(['can', 'pandaStates'])
+    self.pm = messaging.PubMaster(['can', 'pandaStates', 'liveTracks'])
     self.sm = messaging.SubMaster(['carControl', 'controlsState', 'carParams', 'selfdriveState', 'carState', 'radarState'])
     self.cp = self.get_car_can_parser()
     self.idx = 0
@@ -98,9 +99,28 @@ class SimulatedCar:
     }
     self.pm.send('pandaStates', dat)
 
+  def send_live_tracks(self, simulator_state: SimulatorState):
+    tracks_msg = messaging.new_message('liveTracks')
+    tracks_msg.valid = True
+
+    points = []
+    if simulator_state.lead_status:
+      pt = car.RadarData.RadarPoint()
+      pt.trackId = 0
+      pt.dRel = simulator_state.lead_d_rel
+      pt.yRel = simulator_state.lead_y_rel
+      pt.vRel = simulator_state.lead_v_rel
+      pt.aRel = simulator_state.lead_a_rel
+      pt.measured = True
+      points.append(pt)
+
+    tracks_msg.liveTracks.points = points
+    self.pm.send('liveTracks', tracks_msg)
+
   def update(self, simulator_state: SimulatorState):
     try:
       self.send_can_messages(simulator_state)
+      self.send_live_tracks(simulator_state)
 
       if self.idx % 50 == 0: # only send panda states at 2hz
         self.send_panda_state(simulator_state)
