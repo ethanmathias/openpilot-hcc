@@ -1,9 +1,10 @@
 import numpy as np
+import os
 from cereal import car
 from openpilot.common.realtime import DT_CTRL
 from openpilot.selfdrive.controls.lib.drive_helpers import CONTROL_N
 from openpilot.common.pid import PIDController
-from openpilot.common.params import Params
+from openpilot.common.params import Params, UnknownKeyName
 from openpilot.selfdrive.controls.lib.hccc_controller import hCCC
 from openpilot.selfdrive.modeld.constants import ModelConstants
 
@@ -67,7 +68,17 @@ class LongControl:
     cp_flag = getattr(self.CP, 'enableHCCC', None)
     if cp_flag is not None:
       return cp_flag
-    return self.params.get_bool("EnableHCCC")
+    try:
+      return self.params.get_bool("EnableHCCC")
+    except UnknownKeyName:
+      # Some branches may not ship the EnableHCCC param key in params_pyx.
+      # In simulator runs, fall back to AlphaLongitudinalEnabled as HCCC gate.
+      if os.environ.get("SIMULATION", "0") == "1":
+        try:
+          return self.params.get_bool("AlphaLongitudinalEnabled")
+        except UnknownKeyName:
+          return True
+      return False
 
   def _refresh_hccc(self, force_reset=False):
     enabled = self._hccc_enabled()

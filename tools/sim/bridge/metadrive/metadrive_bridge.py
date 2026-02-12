@@ -4,6 +4,7 @@ from multiprocessing import Queue
 from metadrive.component.sensors.base_camera import _cuda_enable
 from metadrive.component.map.pg_map import MapGenerateMethod
 
+from openpilot.common.params import UnknownKeyName
 from openpilot.tools.sim.bridge.common import SimulatorBridge
 from openpilot.tools.sim.bridge.metadrive.metadrive_common import RGBCameraRoad, RGBCameraWide
 from openpilot.tools.sim.bridge.metadrive.metadrive_world import MetaDriveWorld
@@ -102,9 +103,15 @@ class MetaDriveBridge(SimulatorBridge):
     self.scenario = scenario
 
     if self.scenario == "hccc_step":
-      self.params.put_bool("EnableHCCC", True)
+      try:
+        self.params.put_bool("EnableHCCC", True)
+      except UnknownKeyName:
+        pass
     elif not force_engage_on_startup:
-      self.params.put_bool("EnableHCCC", False)
+      try:
+        self.params.put_bool("EnableHCCC", False)
+      except UnknownKeyName:
+        pass
 
   def spawn_world(self, queue: Queue):
     sensors = {

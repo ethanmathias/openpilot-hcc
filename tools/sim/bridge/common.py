@@ -1,6 +1,7 @@
 import signal
 import threading
 import functools
+import os
 import numpy as np
 
 from collections import namedtuple
@@ -9,7 +10,7 @@ from multiprocessing import Process, Queue, Value
 from abc import ABC, abstractmethod
 
 from opendbc.car.honda.values import CruiseButtons
-from openpilot.common.params import Params
+from openpilot.common.params import Params, UnknownKeyName
 from openpilot.common.realtime import Ratekeeper
 from openpilot.selfdrive.test.helpers import set_params_enabled
 from openpilot.tools.sim.lib.common import SimulatorState, World
@@ -105,7 +106,16 @@ class SimulatorBridge(ABC):
     except Exception:
       pass
 
-    hccc_enabled = self.params.get_bool("EnableHCCC")
+    try:
+      hccc_enabled = self.params.get_bool("EnableHCCC")
+    except UnknownKeyName:
+      if os.environ.get("SIMULATION", "0") == "1":
+        try:
+          hccc_enabled = self.params.get_bool("AlphaLongitudinalEnabled")
+        except UnknownKeyName:
+          hccc_enabled = True
+      else:
+        hccc_enabled = False
     print(
     f"""
 State:
