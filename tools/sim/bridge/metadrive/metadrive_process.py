@@ -11,6 +11,7 @@ from metadrive.engine.core.image_buffer import ImageBuffer
 from metadrive.envs.metadrive_env import MetaDriveEnv
 from metadrive.obs.image_obs import ImageObservation
 from metadrive.component.vehicle.vehicle_type import vehicle_type
+from metadrive.policy.idm_policy import IDMPolicy
 
 from openpilot.common.realtime import Ratekeeper
 
@@ -65,6 +66,7 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
   lead_vehicle_lateral_offset = float(config.pop("lead_vehicle_lateral_offset", 0.0))
   lead_vehicle_model = config.pop("lead_vehicle_model", "s")
   lead_vehicle_render = bool(config.pop("lead_vehicle_render", True))
+  lead_vehicle_idm_policy = bool(config.pop("lead_vehicle_idm_policy", True))
   step_dt = float(config.get("physics_world_step_size", 0.05)) * float(config.get("decision_repeat", 1))
   apply_metadrive_patches(arrive_dest_done)
 
@@ -138,10 +140,12 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
     for config_key in ("show_navi_mark", "show_dest_mark", "show_line_to_dest", "show_line_to_navi_mark"):
       if config_key in lead_config_base:
         lead_config_base[config_key] = False
-    if "navigation_module" in lead_config_base:
-      lead_config_base["navigation_module"] = None
-    if "navigation" in lead_config_base:
-      lead_config_base["navigation"] = None
+    # IDM relies on internal route/lane context; keep navigation settings if IDM is enabled.
+    if not lead_vehicle_idm_policy:
+      if "navigation_module" in lead_config_base:
+        lead_config_base["navigation_module"] = None
+      if "navigation" in lead_config_base:
+        lead_config_base["navigation"] = None
 
     fallback_cls = ego_vehicle.__class__
     spawn_error = None
@@ -158,6 +162,9 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
           heading=float(ego_vehicle.heading_theta),
         )
         lead_vehicle.set_velocity(heading, _target_lead_speed(), in_local_frame=False)
+        if lead_vehicle_idm_policy:
+          env.engine.add_policy(lead_vehicle.id, IDMPolicy, lead_vehicle, env.engine.generate_seed())
+          print("[INFO] Lead vehicle is controlled by IDMPolicy")
         print(f"[INFO] Spawned lead vehicle model '{model_name}'")
         return
       except (OSError, FileNotFoundError) as e:
@@ -172,6 +179,8 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
   def update_lead_vehicle():
     nonlocal lead_vehicle, lead_distance_dynamic
     if lead_vehicle is None:
+      return
+    if lead_vehicle_idm_policy:
       return
 
     ego_vehicle = env.vehicle
