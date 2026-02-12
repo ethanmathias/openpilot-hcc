@@ -10,6 +10,7 @@ from metadrive.engine.core.engine_core import EngineCore
 from metadrive.engine.core.image_buffer import ImageBuffer
 from metadrive.envs.metadrive_env import MetaDriveEnv
 from metadrive.obs.image_obs import ImageObservation
+from metadrive.component.vehicle.vehicle_type import vehicle_type
 
 from openpilot.common.realtime import Ratekeeper
 
@@ -52,6 +53,13 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
                       controls_recv: Connection, simulation_state_send: Connection, vehicle_state_send: Connection,
                       exit_event, op_engaged, test_duration, test_run):
   arrive_dest_done = config.pop("arrive_dest_done", True)
+  lead_vehicle_enabled = bool(config.pop("lead_vehicle_enabled", False))
+  lead_vehicle_distance = float(config.pop("lead_vehicle_distance", 35.0))
+  lead_vehicle_speed = float(config.pop("lead_vehicle_speed", 12.0))
+  lead_vehicle_lateral_offset = float(config.pop("lead_vehicle_lateral_offset", 0.0))
+  lead_vehicle_model = config.pop("lead_vehicle_model", "s")
+  lead_vehicle_render = bool(config.pop("lead_vehicle_render", True))
+  step_dt = float(config.get("physics_world_step_size", 0.05)) * float(config.get("decision_repeat", 1))
   apply_metadrive_patches(arrive_dest_done)
 
   road_image = np.frombuffer(camera_array.get_obj(), dtype=np.uint8).reshape((H, W, 3))
@@ -60,15 +68,107 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
     wide_road_image = np.frombuffer(wide_camera_array.get_obj(), dtype=np.uint8).reshape((H, W, 3))
 
   env = MetaDriveEnv(config)
+  lead_vehicle = None
+  lead_distance_dynamic = lead_vehicle_distance
 
   def get_current_lane_info(vehicle):
     _, lane_info, on_lane = vehicle.navigation._get_current_lane(vehicle)
     lane_idx = lane_info[2] if lane_info is not None else None
     return lane_idx, on_lane
 
+  def _vehicle_cls_for_model(model_name, fallback_cls):
+    cls = vehicle_type.get(model_name)
+    return cls if cls is not None else fallback_cls
+
+  def _candidate_models(primary_model, ego_model):
+    # These models are part of standard MetaDrive model ids.
+    ordered = [primary_model, ego_model, "s", "m", "l", "xl", "default"]
+    unique_models = []
+    for model in ordered:
+      if model and model not in unique_models:
+        unique_models.append(model)
+    return unique_models
+
+  def _lead_target_position(ego_vehicle):
+    heading = np.array([math.cos(ego_vehicle.heading_theta), math.sin(ego_vehicle.heading_theta)], dtype=np.float64)
+    target_position = np.array(ego_vehicle.position, dtype=np.float64) + heading * lead_distance_dynamic
+    if abs(lead_vehicle_lateral_offset) > 1e-3:
+      lateral_direction = np.array([-heading[1], heading[0]], dtype=np.float64)
+      target_position += lateral_direction * lead_vehicle_lateral_offset
+    return heading, target_position
+
+  def spawn_lead_vehicle():
+    nonlocal lead_vehicle
+    lead_vehicle = None
+
+    if not lead_vehicle_enabled:
+      return
+
+    ego_vehicle = env.vehicle
+    heading, target_position = _lead_target_position(ego_vehicle)
+    ego_model = ego_vehicle.config.get("vehicle_model", None)
+
+    lead_config_base = dict(env.config["vehicle_config"])
+    lead_config_base["render_vehicle"] = lead_vehicle_render
+    lead_config_base["random_agent_model"] = False
+    for config_key in ("show_navi_mark", "show_dest_mark", "show_line_to_dest", "show_line_to_navi_mark"):
+      if config_key in lead_config_base:
+        lead_config_base[config_key] = False
+    if "navigation_module" in lead_config_base:
+      lead_config_base["navigation_module"] = None
+    if "navigation" in lead_config_base:
+      lead_config_base["navigation"] = None
+
+    fallback_cls = ego_vehicle.__class__
+    spawn_error = None
+    for model_name in _candidate_models(lead_vehicle_model, ego_model):
+      lead_config = dict(lead_config_base)
+      lead_config["vehicle_model"] = model_name
+      vehicle_cls = _vehicle_cls_for_model(model_name, fallback_cls)
+
+      try:
+        lead_vehicle = env.engine.spawn_object(
+          vehicle_cls,
+          vehicle_config=lead_config,
+          position=target_position.tolist(),
+          heading=float(ego_vehicle.heading_theta),
+        )
+        lead_vehicle.set_velocity(heading, lead_vehicle_speed, in_local_frame=False)
+        print(f"[INFO] Spawned lead vehicle model '{model_name}'")
+        return
+      except (OSError, FileNotFoundError) as e:
+        spawn_error = e
+        print(f"[WARNING] Failed lead model '{model_name}': {e}")
+      except Exception as e:
+        spawn_error = e
+        print(f"[WARNING] Lead spawn error for '{model_name}': {e}")
+
+    print(f"[WARNING] Lead vehicle disabled after model spawn failures: {spawn_error}")
+
+  def update_lead_vehicle():
+    nonlocal lead_vehicle, lead_distance_dynamic
+    if lead_vehicle is None:
+      return
+
+    ego_vehicle = env.vehicle
+    ego_speed = float(np.linalg.norm(np.array(ego_vehicle.velocity[:2], dtype=np.float64)))
+    lead_distance_dynamic += (lead_vehicle_speed - ego_speed) * step_dt
+    lead_distance_dynamic = float(np.clip(lead_distance_dynamic, 8.0, 120.0))
+
+    heading, target_position = _lead_target_position(ego_vehicle)
+    try:
+      lead_vehicle.set_position(target_position.tolist())
+      lead_vehicle.set_velocity(heading, lead_vehicle_speed, in_local_frame=False)
+    except Exception as e:
+      print(f"[WARNING] Lead update failed, removing lead vehicle: {e}")
+      lead_vehicle = None
+
   def reset():
+    nonlocal lead_distance_dynamic
     env.reset()
     env.vehicle.config["max_speed_km_h"] = 1000
+    lead_distance_dynamic = lead_vehicle_distance
+    spawn_lead_vehicle()
     lane_idx_prev, _ = get_current_lane_info(env.vehicle)
 
     simulation_state = metadrive_simulation_state(
@@ -125,6 +225,7 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
       start_time = time.monotonic()
 
     if rk.frame % 5 == 0:
+      update_lead_vehicle()
       _, _, terminated, _, _ = env.step(vc)
       timeout = True if start_time is not None and time.monotonic() - start_time >= test_duration else False
       lane_idx_curr, on_lane = get_current_lane_info(env.vehicle)

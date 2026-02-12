@@ -71,6 +71,9 @@ class MetaDriveBridge(SimulatorBridge):
         enable_reverse=False,
         render_vehicle=False,
         image_source="rgb_road",
+        # Avoid random model picks that may reference missing asset packs.
+        random_agent_model=False,
+        vehicle_model="s",
       ),
       sensors=sensors,
       image_on_cuda=_cuda_enable,
@@ -82,6 +85,12 @@ class MetaDriveBridge(SimulatorBridge):
       crash_object_done=False,
       arrive_dest_done=False,
       traffic_density=0.0, # traffic is incredibly expensive
+      lead_vehicle_enabled=True,
+      lead_vehicle_distance=35.0,
+      lead_vehicle_speed=12.0,
+      lead_vehicle_lateral_offset=0.0,
+      lead_vehicle_model="s",
+      lead_vehicle_render=True,
       map_config=create_map(),
       decision_repeat=1,
       physics_world_step_size=self.TICKS_PER_FRAME/100,
