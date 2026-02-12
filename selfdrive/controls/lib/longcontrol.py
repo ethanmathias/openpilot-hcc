@@ -2,7 +2,6 @@ import numpy as np
 from cereal import car
 from openpilot.common.realtime import DT_CTRL
 from openpilot.selfdrive.controls.lib.drive_helpers import CONTROL_N
-from openpilot.common.pid import PIDController
 from openpilot.common.params import Params
 from openpilot.selfdrive.controls.lib.hccc_controller import hCCC
 from openpilot.selfdrive.modeld.constants import ModelConstants
@@ -50,9 +49,6 @@ class LongControl:
   def __init__(self, CP):
     self.CP = CP
     self.long_control_state = LongCtrlState.off
-    self.pid = PIDController((CP.longitudinalTuning.kpBP, CP.longitudinalTuning.kpV),
-                             (CP.longitudinalTuning.kiBP, CP.longitudinalTuning.kiV),
-                             rate=1 / DT_CTRL)
     self.last_output_accel = 0.0
     self.params = Params()
     self.use_hccc = False
@@ -60,7 +56,6 @@ class LongControl:
     self._refresh_hccc(force_reset=True)
 
   def reset(self):
-    self.pid.reset()
     self._refresh_hccc(force_reset=True)
 
   def _hccc_enabled(self):
@@ -80,9 +75,7 @@ class LongControl:
     self.use_hccc = enabled
 
   def update(self, active, CS, a_target, should_stop, accel_limits, lead=None):
-    """Update longitudinal control. This updates the state machine and runs a PID loop"""
-    self.pid.neg_limit = accel_limits[0]
-    self.pid.pos_limit = accel_limits[1]
+    """Update longitudinal control. This updates the state machine and runs hCCC."""
     self._refresh_hccc()
 
     self.long_control_state = long_control_state_trans(self.CP, active, self.long_control_state, CS.vEgo,
@@ -108,12 +101,7 @@ class LongControl:
       if self.use_hccc and self.hccc is not None:
         hccc_output = self.hccc.run_step(CS, lead)
 
-      if hccc_output is not None:
-        output_accel = hccc_output
-      else:
-        error = a_target - CS.aEgo
-        output_accel = self.pid.update(error, speed=CS.vEgo,
-                                       feedforward=a_target)
+      output_accel = hccc_output if hccc_output is not None else 0.0
 
     self.last_output_accel = np.clip(output_accel, accel_limits[0], accel_limits[1])
     return self.last_output_accel
