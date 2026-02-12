@@ -71,8 +71,7 @@ class MetaDriveBridge(SimulatorBridge):
         enable_reverse=False,
         render_vehicle=False,
         image_source="rgb_road",
-        # Avoid random model picks that may reference missing asset packs.
-        random_agent_model=False,
+        # Pin to a known model id to reduce asset-mismatch issues.
         vehicle_model="s",
       ),
       sensors=sensors,
