@@ -37,10 +37,12 @@ def rk_loop(function, hz, exit_event: threading.Event):
 class SimulatorBridge(ABC):
   TICKS_PER_FRAME = 5
 
-  def __init__(self, dual_camera, high_quality):
+  def __init__(self, dual_camera, high_quality, enable_hcc=False):
     set_params_enabled()
     self.params = Params()
     self.params.put_bool("AlphaLongitudinalEnabled", True)
+    if enable_hcc:
+      self.params.put_bool("EnableHCCC", True)
 
     self.rk = Ratekeeper(100, None)
 

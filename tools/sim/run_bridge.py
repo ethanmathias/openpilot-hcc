@@ -6,10 +6,10 @@ from multiprocessing import Queue
 
 from openpilot.tools.sim.bridge.metadrive.metadrive_bridge import MetaDriveBridge
 
-def create_bridge(dual_camera, high_quality):
+def create_bridge(dual_camera, high_quality, enable_hcc=False):
   queue: Any = Queue()
 
-  simulator_bridge = MetaDriveBridge(dual_camera, high_quality)
+  simulator_bridge = MetaDriveBridge(dual_camera, high_quality, enable_hcc=enable_hcc)
   simulator_process = simulator_bridge.run(queue)
 
   return queue, simulator_process, simulator_bridge
@@ -23,13 +23,16 @@ def parse_args(add_args=None):
   parser.add_argument('--joystick', action='store_true')
   parser.add_argument('--high_quality', action='store_true')
   parser.add_argument('--dual_camera', action='store_true')
+  parser.add_argument('--enable_hcc', action='store_true',
+                      help='Enable HCC by setting EnableHCCC param before bridge startup')
 
   return parser.parse_args(add_args)
 
 if __name__ == "__main__":
   args = parse_args()
 
-  queue, simulator_process, simulator_bridge = create_bridge(args.dual_camera, args.high_quality)
+  queue, simulator_process, simulator_bridge = create_bridge(args.dual_camera, args.high_quality,
+                                                             enable_hcc=args.enable_hcc)
 
   if args.joystick:
     # start input poll for joystick
