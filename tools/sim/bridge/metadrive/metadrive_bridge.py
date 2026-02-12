@@ -105,6 +105,7 @@ class MetaDriveBridge(SimulatorBridge):
       lead_vehicle_model="s",
       lead_vehicle_render=True,
       lead_vehicle_idm_policy=True,
+      lead_vehicle_idm_min_speed_mph=8.0,
       map_config=create_straight_map(),
       decision_repeat=1,
       physics_world_step_size=self.TICKS_PER_FRAME/100,

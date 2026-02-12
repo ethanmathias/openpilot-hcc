@@ -67,6 +67,7 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
   lead_vehicle_model = config.pop("lead_vehicle_model", "s")
   lead_vehicle_render = bool(config.pop("lead_vehicle_render", True))
   lead_vehicle_idm_policy = bool(config.pop("lead_vehicle_idm_policy", True))
+  lead_vehicle_idm_min_speed_mph = float(config.pop("lead_vehicle_idm_min_speed_mph", 8.0))
   step_dt = float(config.get("physics_world_step_size", 0.05)) * float(config.get("decision_repeat", 1))
   apply_metadrive_patches(arrive_dest_done)
 
@@ -81,6 +82,8 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
   lead_profile_start_time = None
   lead_speed_start = lead_speed_start_mph * mph_to_ms
   lead_speed_end = lead_speed_end_mph * mph_to_ms
+  idm_min_speed = max(0.0, lead_vehicle_idm_min_speed_mph * mph_to_ms)
+  idm_assist_printed = False
 
   def get_current_lane_info(vehicle):
     _, lane_info, on_lane = vehicle.navigation._get_current_lane(vehicle)
@@ -198,10 +201,23 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
     print(f"[WARNING] Lead vehicle disabled after model spawn failures: {spawn_error}")
 
   def update_lead_vehicle():
-    nonlocal lead_vehicle, lead_distance_dynamic
+    nonlocal lead_vehicle, lead_distance_dynamic, idm_assist_printed
     if lead_vehicle is None:
       return
     if lead_vehicle_idm_policy:
+      try:
+        current_lead_speed = float(np.linalg.norm(np.array(lead_vehicle.velocity[:2], dtype=np.float64)))
+        target_speed = max(_target_lead_speed(), idm_min_speed)
+        if current_lead_speed < max(0.5, idm_min_speed):
+          lead_heading = np.array([math.cos(float(lead_vehicle.heading_theta)), math.sin(float(lead_vehicle.heading_theta))], dtype=np.float64)
+          lead_vehicle.set_velocity(lead_heading, target_speed, in_local_frame=False)
+          if not idm_assist_printed:
+            print("[INFO] IDM keep-moving assist is active for lead vehicle")
+            idm_assist_printed = True
+        else:
+          idm_assist_printed = False
+      except Exception as e:
+        print(f"[WARNING] IDM keep-moving assist failed: {e}")
       return
 
     ego_vehicle = env.vehicle
