@@ -11,7 +11,7 @@ from metadrive.engine.core.image_buffer import ImageBuffer
 from metadrive.envs.metadrive_env import MetaDriveEnv
 from metadrive.obs.image_obs import ImageObservation
 from metadrive.component.vehicle.vehicle_type import vehicle_type, DefaultVehicle
-from metadrive.policy.idm_policy import IDMPolicy
+from metadrive.policy.expert_policy import ExpertPolicy
 
 from openpilot.common.realtime import Ratekeeper
 
@@ -66,8 +66,9 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
   lead_vehicle_lateral_offset = float(config.pop("lead_vehicle_lateral_offset", 0.0))
   lead_vehicle_model = config.pop("lead_vehicle_model", "s")
   lead_vehicle_render = bool(config.pop("lead_vehicle_render", True))
-  lead_vehicle_idm_policy = bool(config.pop("lead_vehicle_idm_policy", True))
-  lead_vehicle_idm_min_speed_mph = float(config.pop("lead_vehicle_idm_min_speed_mph", 8.0))
+  lead_vehicle_expert_policy = bool(config.pop("lead_vehicle_expert_policy", config.pop("lead_vehicle_idm_policy", True)))
+  lead_vehicle_expert_min_speed_mph = float(config.pop("lead_vehicle_expert_min_speed_mph",
+                                                        config.pop("lead_vehicle_idm_min_speed_mph", 8.0)))
   step_dt = float(config.get("physics_world_step_size", 0.05)) * float(config.get("decision_repeat", 1))
   apply_metadrive_patches(arrive_dest_done)
 
@@ -82,8 +83,8 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
   lead_profile_start_time = None
   lead_speed_start = lead_speed_start_mph * mph_to_ms
   lead_speed_end = lead_speed_end_mph * mph_to_ms
-  idm_min_speed = max(0.0, lead_vehicle_idm_min_speed_mph * mph_to_ms)
-  idm_assist_printed = False
+  expert_min_speed = max(0.0, lead_vehicle_expert_min_speed_mph * mph_to_ms)
+  expert_assist_printed = False
 
   def get_current_lane_info(vehicle):
     _, lane_info, on_lane = vehicle.navigation._get_current_lane(vehicle)
@@ -128,7 +129,7 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
     return heading, target_position
 
   def spawn_lead_vehicle():
-    nonlocal lead_vehicle, lead_vehicle_idm_policy
+    nonlocal lead_vehicle, lead_vehicle_expert_policy
     lead_vehicle = None
 
     if not lead_vehicle_enabled:
@@ -138,31 +139,31 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
     heading, target_position = _lead_target_position(ego_vehicle)
     ego_model = ego_vehicle.config.get("vehicle_model", None)
 
-    if lead_vehicle_idm_policy:
-      idm_config = dict(env.config["vehicle_config"])
-      idm_config["render_vehicle"] = lead_vehicle_render
-      idm_config["spawn_velocity"] = heading.tolist()
-      idm_config["spawn_velocity_car_frame"] = False
+    if lead_vehicle_expert_policy:
+      expert_config = dict(env.config["vehicle_config"])
+      expert_config["render_vehicle"] = lead_vehicle_render
+      expert_config["spawn_velocity"] = heading.tolist()
+      expert_config["spawn_velocity_car_frame"] = False
       for config_key in ("show_navi_mark", "show_dest_mark", "show_line_to_dest", "show_line_to_navi_mark"):
-        if config_key in idm_config:
-          idm_config[config_key] = False
+        if config_key in expert_config:
+          expert_config[config_key] = False
       try:
         lead_vehicle = env.engine.spawn_object(
           DefaultVehicle,
           position=target_position.tolist(),
           heading=float(ego_vehicle.heading_theta),
           random_seed=env.engine.generate_seed(),
-          vehicle_config=idm_config,
+          vehicle_config=expert_config,
         )
         lead_vehicle.set_velocity(heading, _target_lead_speed(), in_local_frame=False)
-        env.engine.add_policy(lead_vehicle.id, IDMPolicy, lead_vehicle, env.engine.generate_seed())
-        print("[INFO] Lead vehicle is controlled by IDMPolicy")
+        env.engine.add_policy(lead_vehicle.id, ExpertPolicy, lead_vehicle, env.engine.generate_seed())
+        print("[INFO] Lead vehicle is controlled by ExpertPolicy")
         print("[INFO] Spawned lead vehicle model 'DefaultVehicle'")
         return
       except Exception as e:
-        print(f"[WARNING] IDM lead spawn/policy attach failed: {e}. Falling back to manual lead control.")
+        print(f"[WARNING] Expert lead spawn/policy attach failed: {e}. Falling back to manual lead control.")
         lead_vehicle = None
-        lead_vehicle_idm_policy = False
+        lead_vehicle_expert_policy = False
 
     lead_config_base = dict(env.config["vehicle_config"])
     lead_config_base["render_vehicle"] = lead_vehicle_render
@@ -201,23 +202,23 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
     print(f"[WARNING] Lead vehicle disabled after model spawn failures: {spawn_error}")
 
   def update_lead_vehicle():
-    nonlocal lead_vehicle, lead_distance_dynamic, idm_assist_printed
+    nonlocal lead_vehicle, lead_distance_dynamic, expert_assist_printed
     if lead_vehicle is None:
       return
-    if lead_vehicle_idm_policy:
+    if lead_vehicle_expert_policy:
       try:
         current_lead_speed = float(np.linalg.norm(np.array(lead_vehicle.velocity[:2], dtype=np.float64)))
-        target_speed = max(_target_lead_speed(), idm_min_speed)
-        if current_lead_speed < max(0.5, idm_min_speed):
+        target_speed = max(_target_lead_speed(), expert_min_speed)
+        if current_lead_speed < max(0.5, expert_min_speed):
           lead_heading = np.array([math.cos(float(lead_vehicle.heading_theta)), math.sin(float(lead_vehicle.heading_theta))], dtype=np.float64)
           lead_vehicle.set_velocity(lead_heading, target_speed, in_local_frame=False)
-          if not idm_assist_printed:
-            print("[INFO] IDM keep-moving assist is active for lead vehicle")
-            idm_assist_printed = True
+          if not expert_assist_printed:
+            print("[INFO] Expert policy keep-moving assist is active for lead vehicle")
+            expert_assist_printed = True
         else:
-          idm_assist_printed = False
+          expert_assist_printed = False
       except Exception as e:
-        print(f"[WARNING] IDM keep-moving assist failed: {e}")
+        print(f"[WARNING] Expert keep-moving assist failed: {e}")
       return
 
     ego_vehicle = env.vehicle
