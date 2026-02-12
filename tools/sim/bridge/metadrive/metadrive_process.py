@@ -110,7 +110,7 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
 
     lead_config_base = dict(env.config["vehicle_config"])
     lead_config_base["render_vehicle"] = lead_vehicle_render
-    lead_config_base["random_agent_model"] = False
+    #lead_config_base["random_agent_model"] = False
     for config_key in ("show_navi_mark", "show_dest_mark", "show_line_to_dest", "show_line_to_navi_mark"):
       if config_key in lead_config_base:
         lead_config_base[config_key] = False
