@@ -80,6 +80,13 @@ class LongControl:
     """Update longitudinal control. This updates the state machine and runs hCCC."""
     self._refresh_hccc()
 
+    hccc_output = None
+    if self.use_hccc and self.hccc is not None:
+      hccc_output = self.hccc.run_step(CS, lead)
+
+    if hccc_output is not None:
+      should_stop = False
+
     self.long_control_state = long_control_state_trans(self.CP, active, self.long_control_state, CS.vEgo,
                                                        should_stop, CS.brakePressed,
                                                        CS.cruiseState.standstill)
@@ -99,11 +106,10 @@ class LongControl:
       self.reset()
 
     else:  # LongCtrlState.pid
-      hccc_output = None
-      if self.use_hccc and self.hccc is not None:
-        hccc_output = self.hccc.run_step(CS, lead)
-
       output_accel = hccc_output if hccc_output is not None else 0.0
 
-    self.last_output_accel = np.clip(output_accel, accel_limits[0], accel_limits[1])
+    if hccc_output is not None:
+      self.last_output_accel = np.clip(output_accel, self.CP.stopAccel, self.CP.startAccel)
+    else:
+      self.last_output_accel = np.clip(output_accel, accel_limits[0], accel_limits[1])
     return self.last_output_accel
