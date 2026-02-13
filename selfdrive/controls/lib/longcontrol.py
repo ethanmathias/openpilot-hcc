@@ -90,6 +90,8 @@ class LongControl:
     self.long_control_state = long_control_state_trans(self.CP, active, self.long_control_state, CS.vEgo,
                                                        should_stop, CS.brakePressed,
                                                        CS.cruiseState.standstill)
+    if active and hccc_output is not None:
+      self.long_control_state = LongCtrlState.pid
     if self.long_control_state == LongCtrlState.off:
       self.reset()
       output_accel = 0.

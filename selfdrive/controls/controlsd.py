@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import math
+import os
 from numbers import Number
 
 from cereal import car, log
@@ -25,6 +26,7 @@ LaneChangeState = log.LaneChangeState
 LaneChangeDirection = log.LaneChangeDirection
 
 ACTUATOR_FIELDS = tuple(car.CarControl.Actuators.schema.fields.keys())
+SIMULATION = os.environ.get("SIMULATION", "0") == "1"
 
 
 class Controls:
@@ -96,7 +98,7 @@ class Controls:
     standstill = abs(CS.vEgo) <= max(self.CP.minSteerSpeed, 0.3) or CS.standstill
     CC.latActive = self.sm['selfdriveState'].active and not CS.steerFaultTemporary and not CS.steerFaultPermanent and \
                    (not standstill or self.CP.steerAtStandstill)
-    CC.longActive = CC.enabled and not any(e.overrideLongitudinal for e in self.sm['onroadEvents']) and self.CP.openpilotLongitudinalControl
+    CC.longActive = CC.enabled and not any(e.overrideLongitudinal for e in self.sm['onroadEvents']) and (self.CP.openpilotLongitudinalControl or SIMULATION)
 
     actuators = CC.actuators
     actuators.longControlState = self.LoC.long_control_state
