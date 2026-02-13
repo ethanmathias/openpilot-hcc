@@ -73,15 +73,21 @@ class LongControl:
     if not enabled:
       self.hccc = None
     elif self.hccc is None or force_reset:
-      self.hccc = hCCC(dt=DT_CTRL, max_deceleration=self.CP.stopAccel, max_acceleration=self.CP.startAccel)
+      sim_max_accel = 1.6 if SIMULATION else self.CP.startAccel
+      self.hccc = hCCC(dt=DT_CTRL, max_deceleration=self.CP.stopAccel, max_acceleration=max(self.CP.startAccel, sim_max_accel))
     self.use_hccc = enabled
 
   def update(self, active, CS, a_target, should_stop, accel_limits, lead=None):
     """Update longitudinal control. This updates the state machine and runs hCCC."""
     self._refresh_hccc()
+    accel_min, accel_max = accel_limits
+    if SIMULATION and self.use_hccc:
+      accel_max = max(accel_max, 1.6)
 
     hccc_output = None
     if self.use_hccc and self.hccc is not None:
+      self.hccc._max_decel = accel_min
+      self.hccc._max_accl = accel_max
       hccc_output = self.hccc.run_step(CS, lead)
 
     if hccc_output is not None:
@@ -111,7 +117,7 @@ class LongControl:
       output_accel = hccc_output if hccc_output is not None else 0.0
 
     if hccc_output is not None:
-      self.last_output_accel = np.clip(output_accel, self.CP.stopAccel, self.CP.startAccel)
+      self.last_output_accel = np.clip(output_accel, accel_min, accel_max)
     else:
       self.last_output_accel = np.clip(output_accel, accel_limits[0], accel_limits[1])
     return self.last_output_accel
