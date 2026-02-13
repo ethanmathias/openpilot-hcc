@@ -1,4 +1,5 @@
 import numpy as np
+import os
 from cereal import car
 from openpilot.common.realtime import DT_CTRL
 from openpilot.selfdrive.controls.lib.drive_helpers import CONTROL_N
@@ -9,6 +10,7 @@ from openpilot.selfdrive.modeld.constants import ModelConstants
 CONTROL_N_T_IDX = ModelConstants.T_IDXS[:CONTROL_N]
 
 LongCtrlState = car.CarControl.Actuators.LongControlState
+SIMULATION = os.environ.get("SIMULATION", "0") == "1"
 
 
 def long_control_state_trans(CP, active, long_control_state, v_ego,
@@ -63,7 +65,7 @@ class LongControl:
     if cp_flag is not None:
       return cp_flag
     if not self.params.check_key("EnableHCCC"):
-      return False
+      return SIMULATION
     return self.params.get_bool("EnableHCCC")
 
   def _refresh_hccc(self, force_reset=False):
