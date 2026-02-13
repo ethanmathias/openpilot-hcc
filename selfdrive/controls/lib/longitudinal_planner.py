@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import math
+import os
 import numpy as np
 
 import cereal.messaging as messaging
@@ -15,6 +16,7 @@ from openpilot.selfdrive.controls.lib.drive_helpers import CONTROL_N, get_accel_
 from openpilot.selfdrive.car.cruise import V_CRUISE_MAX, V_CRUISE_UNSET
 from openpilot.common.swaglog import cloudlog
 
+SIMULATION = os.environ.get("SIMULATION", "0") == "1"
 LON_MPC_STEP = 0.2  # first step is 0.2s
 A_CRUISE_MAX_VALS = [1.6, 1.2, 0.8, 0.6]
 A_CRUISE_MAX_BP = [0., 10.0, 25., 40.]
@@ -129,6 +131,8 @@ class LongitudinalPlanner:
     x, v, a, j, throttle_prob = self.parse_model(sm['modelV2'])
     # Don't clip at low speeds since throttle_prob doesn't account for creep
     self.allow_throttle = throttle_prob > ALLOW_THROTTLE_THRESHOLD or v_ego <= MIN_ALLOW_THROTTLE_SPEED
+    if SIMULATION:
+      self.allow_throttle = True
 
     if not self.allow_throttle:
       clipped_accel_coast = max(accel_coast, accel_clip[0])
