@@ -23,7 +23,7 @@ def parse_args(add_args=None):
   parser.add_argument('--joystick', action='store_true')
   parser.add_argument('--high_quality', action='store_true')
   parser.add_argument('--dual_camera', action='store_true')
-  parser.add_argument('--scenario', default="default", choices=["default", "hccc_step"])
+  parser.add_argument('--scenario', default="default", choices=["default", "hccc_step", "lead_loop"])
   parser.add_argument('--enable_hcc', action='store_true',
                       help='Enable HCC by setting EnableHCCC param before bridge startup')
 

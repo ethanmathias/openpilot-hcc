@@ -27,7 +27,7 @@ def curve_block(length, angle=45, direction=0):
     "dir": direction
   }
 
-def create_loop_map(track_size=60):
+def create_map(track_size=60):
   curve_len = track_size * 2
   return dict(
     type=MapGenerateMethod.PG_MAP_FILE,
@@ -57,77 +57,18 @@ def create_straight_map(length=5000):
     ],
   )
 
-def create_map(track_size=60):
-  curve_len = track_size * 2
-  return dict(
-    type=MapGenerateMethod.PG_MAP_FILE,
-    lane_num=1,
-    lane_width=4.5,
-    config=[
-      None,
-      straight_block(track_size),
-      curve_block(curve_len, 90),
-      straight_block(track_size),
-      curve_block(curve_len, 90),
-      straight_block(track_size),
-      curve_block(curve_len, 90),
-      straight_block(track_size),
-      curve_block(curve_len, 90),
-    ]
-  )
-
-def get_hccc_step_scenario():
-  mph_to_ms = 0.44704
-  v0 = 0.0
-  v10 = 5.0 * mph_to_ms
-  v30 = 10.0 * mph_to_ms
-  return {
-    "enabled": True,
-    "visual_lead": True,
-    "visual_lead_overlay": False,
-    "lead_start_delay_s": 10.0,
-    "initial_d_rel": 8.0,
-    "initial_v_lead": v0,
-    "y_rel": 0.0,
-    # Keep transitions smooth and slower so hCCC response is easier to observe.
-    "max_accel": 0.5,
-    "max_decel": 1.2,
-    # (time_seconds, target_speed_mps)
-    "speed_profile": [
-      # hold stopped
-      (0.0, v0),
-      (8.0, v0),
-      # ramp to 10 mph
-      (20.0, v10),
-      # hold 10 mph
-      (28.0, v10),
-      # ramp to 30 mph
-      (40.0, v30),
-      # hold 30 mph
-      (48.0, v30),
-      # ramp to 10 mph
-      (60.0, v10),
-      # hold 10 mph
-      (68.0, v10),
-      # ramp back to 30 mph
-      (80.0, v30),
-      # hold 30 mph
-      (88.0, v30),
-    ],
-  }
-
 
 class MetaDriveBridge(SimulatorBridge):
   TICKS_PER_FRAME = 5
 
   def __init__(self, dual_camera, high_quality, test_duration=math.inf, test_run=False, scenario="default",
                enable_hcc=False):
-    self.scenario = scenario
-    super().__init__(dual_camera, high_quality, enable_hcc=enable_hcc or scenario == "hccc_step")
+    super().__init__(dual_camera, high_quality, enable_hcc=enable_hcc)
 
     self.should_render = False
     self.test_run = test_run
     self.test_duration = test_duration if self.test_run else math.inf
+    self.scenario = scenario
 
   def spawn_world(self, queue: Queue):
     sensors = {
@@ -137,9 +78,8 @@ class MetaDriveBridge(SimulatorBridge):
     if self.dual_camera:
       sensors["rgb_wide"] = (RGBCameraWide, W, H)
 
-    hccc_scenario = get_hccc_step_scenario() if self.scenario == "hccc_step" else {"enabled": False}
-    map_config = create_map(track_size=2000) if self.scenario == "hccc_step" else create_straight_map()
-    lead_vehicle_enabled = False if self.scenario == "hccc_step" else True
+    lead_loop = self.scenario in ("lead_loop", "hccc_step")
+    map_config = create_straight_map() if lead_loop else create_map()
 
     config = dict(
       use_render=self.should_render,
@@ -147,8 +87,6 @@ class MetaDriveBridge(SimulatorBridge):
         enable_reverse=False,
         render_vehicle=False,
         image_source="rgb_road",
-        # Pin to a known model id to reduce asset-mismatch issues.
-        vehicle_model="s",
       ),
       sensors=sensors,
       image_on_cuda=_cuda_enable,
@@ -160,8 +98,8 @@ class MetaDriveBridge(SimulatorBridge):
       crash_object_done=False,
       arrive_dest_done=False,
       traffic_density=0.0, # traffic is incredibly expensive
-      lead_vehicle_enabled=lead_vehicle_enabled,
-      lead_vehicle_distance=35.0,
+      lead_vehicle_enabled=lead_loop,
+      lead_vehicle_distance=8.0,
       lead_speed_profile="loop_ramp",
       lead_speed_start_mph=10.0,
       lead_speed_end_mph=30.0,
@@ -174,8 +112,7 @@ class MetaDriveBridge(SimulatorBridge):
       physics_world_step_size=self.TICKS_PER_FRAME/100,
       preload_models=False,
       show_logo=False,
-      anisotropic_filtering=False,
-      hccc_scenario=hccc_scenario,
+      anisotropic_filtering=False
     )
 
     return MetaDriveWorld(queue, config, self.test_duration, self.test_run, self.dual_camera)

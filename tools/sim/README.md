@@ -23,7 +23,7 @@ options:
   --joystick
   --high_quality
   --dual_camera
-  --scenario {default,hccc_step}
+  --scenario {default,hccc_step,lead_loop}
   --enable_hcc
 
 Notes:
@@ -43,6 +43,12 @@ cd tools/sim
 Run a lead profile that ramps up and down in speed for acceleration/deceleration testing:
 ```
 ./run_bridge.py --scenario hccc_step
+```
+
+### Lead loop scenario
+Spawn a lead vehicle ~8 m ahead on a straight road, looping from 10 mph to 30 mph:
+```
+./run_bridge.py --scenario lead_loop
 ```
 
 #### Bridge Controls:
