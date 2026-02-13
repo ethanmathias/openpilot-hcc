@@ -189,9 +189,15 @@ class Controls:
     cs.lateralPlanMonoTime = self.sm.logMonoTime['modelV2']
     cs.desiredCurvature = self.desired_curvature
     cs.longControlState = self.LoC.long_control_state
-    cs.upAccelCmd = float(self.LoC.pid.p)
-    cs.uiAccelCmd = float(self.LoC.pid.i)
-    cs.ufAccelCmd = float(self.LoC.pid.f)
+    pid = getattr(self.LoC, "pid", None)
+    if pid is not None:
+      cs.upAccelCmd = float(pid.p)
+      cs.uiAccelCmd = float(pid.i)
+      cs.ufAccelCmd = float(pid.f)
+    else:
+      cs.upAccelCmd = 0.0
+      cs.uiAccelCmd = 0.0
+      cs.ufAccelCmd = 0.0
     cs.forceDecel = bool((self.sm['driverMonitoringState'].awarenessStatus < 0.) or
                          (self.sm['selfdriveState'].state == State.softDisabling))
 
