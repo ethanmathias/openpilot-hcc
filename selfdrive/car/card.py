@@ -65,7 +65,11 @@ class Car:
   def __init__(self, CI=None, RI=None) -> None:
     self.can_sock = messaging.sub_sock('can', timeout=20)
     self.sm = messaging.SubMaster(['pandaStates', 'carControl', 'onroadEvents'])
-    self.pm = messaging.PubMaster(['sendcan', 'carState', 'carParams', 'carOutput', 'liveTracks'])
+    self.simulation = os.environ.get("SIMULATION", "0") == "1"
+    pubs = ['sendcan', 'carState', 'carParams', 'carOutput']
+    if not self.simulation:
+      pubs.append('liveTracks')
+    self.pm = messaging.PubMaster(pubs)
 
     self.can_rcv_cum_timeout_counter = 0
 
@@ -215,7 +219,7 @@ class Car:
     cs_send.carState.cumLagMs = -self.rk.remaining * 1000.
     self.pm.send('carState', cs_send)
 
-    if RD is not None:
+    if RD is not None and not self.simulation:
       tracks_msg = messaging.new_message('liveTracks')
       tracks_msg.valid = not any(RD.errors.to_dict().values())
       tracks_msg.liveTracks = RD
