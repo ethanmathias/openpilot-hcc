@@ -80,6 +80,7 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
   lead_speed_start_mph = float(config.pop("lead_speed_start_mph", 10.0))
   lead_speed_end_mph = float(config.pop("lead_speed_end_mph", 30.0))
   lead_speed_ramp_sec = float(config.pop("lead_speed_ramp_sec", 20.0))
+  lead_start_delay_s = float(config.pop("lead_start_delay_s", 0.0))
   lead_vehicle_speed = float(config.pop("lead_vehicle_speed", lead_speed_end_mph * mph_to_ms))
   lead_vehicle_lateral_offset = float(config.pop("lead_vehicle_lateral_offset", 0.0))
   lead_vehicle_model = config.pop("lead_vehicle_model", "s")
@@ -96,6 +97,7 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
   lead_vehicle = None
   lead_distance_dynamic = lead_vehicle_distance
   lead_profile_start_time = None
+  lead_start_time = None
   lead_speed_start = lead_speed_start_mph * mph_to_ms
   lead_speed_end = lead_speed_end_mph * mph_to_ms
   lead_world_heading = None
@@ -121,7 +123,14 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
     return unique_models
 
   def _target_lead_speed():
-    nonlocal lead_profile_start_time
+    nonlocal lead_profile_start_time, lead_start_time
+    if lead_start_delay_s > 0.0:
+      now = time.monotonic()
+      if lead_start_time is None:
+        lead_start_time = now
+      if now - lead_start_time < lead_start_delay_s:
+        return 0.0
+
     if lead_speed_profile == "loop_ramp":
       if not op_engaged.is_set():
         return lead_speed_start
@@ -254,12 +263,13 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
     lead_measurement = _get_lead_measurement(True, d_rel, y_rel, v_rel, a_rel)
 
   def reset():
-    nonlocal lead_distance_dynamic, lead_profile_start_time, lead_world_heading, lead_world_position
+    nonlocal lead_distance_dynamic, lead_profile_start_time, lead_world_heading, lead_world_position, lead_start_time
     nonlocal lead_measurement, lead_prev_v_rel
     env.reset()
     env.vehicle.config["max_speed_km_h"] = 1000
     lead_distance_dynamic = lead_vehicle_distance
     lead_profile_start_time = None
+    lead_start_time = None
     lead_world_heading = None
     lead_world_position = None
     spawn_lead_vehicle()

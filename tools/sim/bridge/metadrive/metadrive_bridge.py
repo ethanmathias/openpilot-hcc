@@ -104,6 +104,7 @@ class MetaDriveBridge(SimulatorBridge):
       lead_speed_start_mph=10.0,
       lead_speed_end_mph=30.0,
       lead_speed_ramp_sec=20.0,
+      lead_start_delay_s=5.0,
       lead_vehicle_lateral_offset=0.0,
       lead_vehicle_model="s",
       lead_vehicle_render=True,
