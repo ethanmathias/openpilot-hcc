@@ -63,6 +63,7 @@ class MetaDriveBridge(SimulatorBridge):
 
   def __init__(self, dual_camera, high_quality, test_duration=math.inf, test_run=False, scenario="default",
                enable_hcc=False):
+    enable_hcc = enable_hcc or scenario in ("lead_loop", "hccc_step")
     super().__init__(dual_camera, high_quality, enable_hcc=enable_hcc)
 
     self.should_render = False

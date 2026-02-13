@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import math
+import os
 import numpy as np
 from collections import deque
 from typing import Any
@@ -24,6 +25,8 @@ V_EGO_STATIONARY = 4.   # no stationary object flag below this speed
 
 RADAR_TO_CENTER = 2.7   # (deprecated) RADAR is ~ 2.7m ahead from center of car
 RADAR_TO_CAMERA = 1.52  # RADAR is ~ 1.5m ahead from center of mesh frame
+
+SIMULATION = os.environ.get("SIMULATION", "0") == "1"
 
 
 class KalmanParams:
@@ -178,6 +181,12 @@ def get_lead(v_ego: float, ready: bool, tracks: dict[int, Track], lead_msg: capn
       # Only choose new track if it is actually closer than the previous one
       if (not lead_dict['status']) or (closest_track.dRel < lead_dict['dRel']):
         lead_dict = closest_track.get_RadarState()
+
+  if SIMULATION and not lead_dict['status'] and len(tracks) > 0:
+    sim_tracks = [c for c in tracks.values() if c.dRel > 0.5]
+    if len(sim_tracks) > 0:
+      closest_track = min(sim_tracks, key=lambda c: c.dRel)
+      lead_dict = closest_track.get_RadarState()
 
   return lead_dict
 
