@@ -11,7 +11,11 @@ if [[ ! -f "${VENV_ACTIVATE}" ]]; then
   exit 1
 fi
 
-OPENPILOT_CMD="cd \"${REPO_ROOT}\"; source \"${VENV_ACTIVATE}\"; BIG=1 ./tools/sim/launch_openpilot.sh"
+OPENPILOT_PREFIX=""
+if [[ "${SIM_BIG:-0}" == "1" ]]; then
+  OPENPILOT_PREFIX="BIG=1 "
+fi
+OPENPILOT_CMD="cd \"${REPO_ROOT}\"; source \"${VENV_ACTIVATE}\"; ${OPENPILOT_PREFIX}./tools/sim/launch_openpilot.sh"
 BRIDGE_READY_CMD="cd \"${REPO_ROOT}/tools/sim\"; source \"${VENV_ACTIVATE}\"; clear; echo \"Ready. Run: ./run_bridge.py --scenario lead_loop\"; exec bash"
 
 open_ubuntu_2404_terminal() {
