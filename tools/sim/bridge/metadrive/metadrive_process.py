@@ -85,6 +85,9 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
   lead_vehicle_lateral_offset = float(config.pop("lead_vehicle_lateral_offset", 0.0))
   lead_vehicle_model = config.pop("lead_vehicle_model", "s")
   lead_vehicle_render = bool(config.pop("lead_vehicle_render", True))
+  steer_cmd_ratio = float(config.pop("steer_cmd_ratio", 15.0))
+  steer_cmd_rate_limit = float(config.pop("steer_cmd_rate_limit", 0.08))
+  steer_cmd_deadband_deg = float(config.pop("steer_cmd_deadband_deg", 0.0))
   step_dt = float(config.get("physics_world_step_size", 0.05)) * float(config.get("decision_repeat", 1))
   apply_metadrive_patches(arrive_dest_done)
 
@@ -301,8 +304,9 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
 
   rk = Ratekeeper(100, None)
 
-  steer_ratio = 8
-  vc = [0,0]
+  steer_target = 0.0
+  steer_cmd = 0.0
+  gas_cmd = 0.0
 
   while not exit_event.is_set():
     vehicle_state = metadrive_vehicle_state(
@@ -322,20 +326,32 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
       while controls_recv.poll(0):
         steer_angle, gas, should_reset = controls_recv.recv()
 
-      steer_metadrive = steer_angle * 1 / (env.vehicle.MAX_STEERING * steer_ratio)
-      steer_metadrive = np.clip(steer_metadrive, -1, 1)
+      if abs(steer_angle) <= steer_cmd_deadband_deg:
+        steer_angle = 0.0
 
-      vc = [steer_metadrive, gas]
+      steer_metadrive = steer_angle / (env.vehicle.MAX_STEERING * steer_cmd_ratio)
+      steer_target = float(np.clip(steer_metadrive, -1.0, 1.0))
+      gas_cmd = float(gas)
 
       if should_reset:
         lane_idx_prev = reset()
         start_time = None
+        steer_target = 0.0
+        steer_cmd = 0.0
+        gas_cmd = 0.0
 
     is_engaged = op_engaged.is_set()
     if is_engaged and start_time is None:
       start_time = time.monotonic()
 
     if rk.frame % 5 == 0:
+      if steer_cmd_rate_limit <= 0.0:
+        steer_cmd = steer_target
+      else:
+        steer_delta = float(np.clip(steer_target - steer_cmd, -steer_cmd_rate_limit, steer_cmd_rate_limit))
+        steer_cmd += steer_delta
+
+      vc = [steer_cmd, gas_cmd]
       update_lead_vehicle()
       _, _, terminated, _, _ = env.step(vc)
       update_lead_measurement()
