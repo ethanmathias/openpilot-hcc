@@ -10,6 +10,7 @@ from metadrive.engine.core.engine_core import EngineCore
 from metadrive.engine.core.image_buffer import ImageBuffer
 from metadrive.envs.metadrive_env import MetaDriveEnv
 from metadrive.obs.image_obs import ImageObservation
+from metadrive.policy.idm_policy import IDMPolicy
 from metadrive.component.vehicle.vehicle_type import vehicle_type
 
 from openpilot.common.realtime import Ratekeeper
@@ -18,7 +19,7 @@ from openpilot.tools.sim.lib.common import vec3
 from openpilot.tools.sim.lib.camerad import W, H
 
 C3_POSITION = Vec3(0.0, 0, 1.22)
-C3_HPR = Vec3(0, 0,0)
+C3_HPR = Vec3(0, 0, 0)
 
 
 metadrive_simulation_state = namedtuple("metadrive_simulation_state", ["running", "done", "done_info"])
@@ -72,16 +73,13 @@ def apply_metadrive_patches(arrive_dest_done=True):
 def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera_array, image_lock,
                       controls_recv: Connection, simulation_state_send: Connection, vehicle_state_send: Connection,
                       exit_event, op_engaged, test_duration, test_run):
-  mph_to_ms = 0.44704
   arrive_dest_done = config.pop("arrive_dest_done", True)
   lead_vehicle_enabled = bool(config.pop("lead_vehicle_enabled", False))
   lead_vehicle_distance = float(config.pop("lead_vehicle_distance", 35.0))
-  lead_speed_profile = str(config.pop("lead_speed_profile", "constant"))
-  lead_speed_start_mph = float(config.pop("lead_speed_start_mph", 10.0))
-  lead_speed_end_mph = float(config.pop("lead_speed_end_mph", 30.0))
-  lead_speed_ramp_sec = float(config.pop("lead_speed_ramp_sec", 20.0))
+  # Consume legacy speed knobs so older configs still work with IDM lead.
+  for legacy_key in ("lead_speed_profile", "lead_speed_start_mph", "lead_speed_end_mph", "lead_speed_ramp_sec", "lead_vehicle_speed"):
+    config.pop(legacy_key, None)
   lead_start_delay_s = float(config.pop("lead_start_delay_s", 0.0))
-  lead_vehicle_speed = float(config.pop("lead_vehicle_speed", lead_speed_end_mph * mph_to_ms))
   lead_vehicle_lateral_offset = float(config.pop("lead_vehicle_lateral_offset", 0.0))
   lead_vehicle_model = config.pop("lead_vehicle_model", "s")
   lead_vehicle_render = bool(config.pop("lead_vehicle_render", True))
@@ -95,13 +93,8 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
 
   env = MetaDriveEnv(config)
   lead_vehicle = None
-  lead_distance_dynamic = lead_vehicle_distance
-  lead_profile_start_time = None
+  lead_policy = None
   lead_start_time = None
-  lead_speed_start = lead_speed_start_mph * mph_to_ms
-  lead_speed_end = lead_speed_end_mph * mph_to_ms
-  lead_world_heading = None
-  lead_world_position = None
   lead_measurement = _get_lead_measurement(False)
   lead_prev_v_rel = 0.0
 
@@ -122,59 +115,24 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
         unique_models.append(model)
     return unique_models
 
-  def _target_lead_speed():
-    nonlocal lead_profile_start_time, lead_start_time
-    if lead_start_delay_s > 0.0:
-      now = time.monotonic()
-      if lead_start_time is None:
-        lead_start_time = now
-      if now - lead_start_time < lead_start_delay_s:
-        return 0.0
-
-    if lead_speed_profile == "loop_ramp":
-      if not op_engaged.is_set():
-        return lead_speed_start
-
-      now = time.monotonic()
-      if lead_profile_start_time is None:
-        lead_profile_start_time = now
-
-      ramp_sec = max(lead_speed_ramp_sec, 1e-3)
-      phase = ((now - lead_profile_start_time) / ramp_sec) % 2.0
-      alpha = phase if phase <= 1.0 else (2.0 - phase)
-      return lead_speed_start + alpha * (lead_speed_end - lead_speed_start)
-
-    if lead_speed_profile != "ramp":
-      return lead_vehicle_speed
-
-    if not op_engaged.is_set():
-      return lead_speed_start
-
-    now = time.monotonic()
-    if lead_profile_start_time is None:
-      lead_profile_start_time = now
-
-    ramp_sec = max(lead_speed_ramp_sec, 1e-3)
-    alpha = float(np.clip((now - lead_profile_start_time) / ramp_sec, 0.0, 1.0))
-    return lead_speed_start + alpha * (lead_speed_end - lead_speed_start)
-
   def _lead_target_position(ego_vehicle):
     heading = np.array([math.cos(ego_vehicle.heading_theta), math.sin(ego_vehicle.heading_theta)], dtype=np.float64)
-    target_position = np.array(ego_vehicle.position, dtype=np.float64) + heading * lead_distance_dynamic
+    target_position = np.array(ego_vehicle.position, dtype=np.float64) + heading * lead_vehicle_distance
     if abs(lead_vehicle_lateral_offset) > 1e-3:
       lateral_direction = np.array([-heading[1], heading[0]], dtype=np.float64)
       target_position += lateral_direction * lead_vehicle_lateral_offset
-    return heading, target_position
+    return target_position
 
   def spawn_lead_vehicle():
-    nonlocal lead_vehicle, lead_world_heading, lead_world_position
+    nonlocal lead_vehicle, lead_policy, lead_start_time
     lead_vehicle = None
+    lead_policy = None
 
     if not lead_vehicle_enabled:
       return
 
     ego_vehicle = env.vehicle
-    heading, target_position = _lead_target_position(ego_vehicle)
+    target_position = _lead_target_position(ego_vehicle)
     ego_model = ego_vehicle.config.get("vehicle_model", None)
 
     lead_config_base = dict(env.config["vehicle_config"])
@@ -182,10 +140,6 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
     for config_key in ("show_navi_mark", "show_dest_mark", "show_line_to_dest", "show_line_to_navi_mark"):
       if config_key in lead_config_base:
         lead_config_base[config_key] = False
-    if "navigation_module" in lead_config_base:
-      lead_config_base["navigation_module"] = None
-    if "navigation" in lead_config_base:
-      lead_config_base["navigation"] = None
 
     fallback_cls = ego_vehicle.__class__
     spawn_error = None
@@ -201,13 +155,9 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
           position=target_position.tolist(),
           heading=float(ego_vehicle.heading_theta),
         )
-        heading_norm = np.linalg.norm(heading)
-        if heading_norm > 1e-6:
-          lead_world_heading = heading / heading_norm
-        else:
-          lead_world_heading = np.array([1.0, 0.0], dtype=np.float64)
-        lead_world_position = np.array(target_position, dtype=np.float64)
-        lead_vehicle.set_velocity(lead_world_heading, _target_lead_speed(), in_local_frame=False)
+        policy_seed = int((time.time() * 1000) % (2**31 - 1))
+        lead_policy = IDMPolicy(lead_vehicle, policy_seed)
+        lead_start_time = time.monotonic()
         print(f"[INFO] Spawned lead vehicle model '{model_name}'")
         return
       except (OSError, FileNotFoundError) as e:
@@ -220,24 +170,28 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
     print(f"[WARNING] Lead vehicle disabled after model spawn failures: {spawn_error}")
 
   def update_lead_vehicle():
-    nonlocal lead_vehicle, lead_world_heading, lead_world_position
-    if lead_vehicle is None:
+    nonlocal lead_vehicle, lead_policy
+    if lead_vehicle is None or lead_policy is None:
       return
 
-    current_lead_speed = _target_lead_speed()
-    if lead_world_heading is None:
-      lead_heading_theta = float(lead_vehicle.heading_theta)
-      lead_world_heading = np.array([math.cos(lead_heading_theta), math.sin(lead_heading_theta)], dtype=np.float64)
-    if lead_world_position is None:
-      lead_world_position = np.array(lead_vehicle.position, dtype=np.float64)
-
-    lead_world_position = lead_world_position + lead_world_heading * current_lead_speed * step_dt
     try:
-      lead_vehicle.set_position(lead_world_position.tolist())
-      lead_vehicle.set_velocity(lead_world_heading, current_lead_speed, in_local_frame=False)
+      waiting_for_start = (
+        lead_start_delay_s > 0.0 and
+        lead_start_time is not None and
+        (time.monotonic() - lead_start_time) < lead_start_delay_s
+      )
+      if waiting_for_start:
+        lead_action = [0.0, 0.0]
+      else:
+        lead_action = lead_policy.act()
+        lead_action = np.array(lead_action, dtype=np.float64)
+        lead_action[0] = float(np.clip(lead_action[0], -0.2, 0.2))
+        lead_action = lead_action.tolist()
+      lead_vehicle.before_step(lead_action)
     except Exception as e:
       print(f"[WARNING] Lead update failed, removing lead vehicle: {e}")
       lead_vehicle = None
+      lead_policy = None
 
   def update_lead_measurement():
     nonlocal lead_measurement, lead_prev_v_rel
@@ -263,15 +217,11 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
     lead_measurement = _get_lead_measurement(True, d_rel, y_rel, v_rel, a_rel)
 
   def reset():
-    nonlocal lead_distance_dynamic, lead_profile_start_time, lead_world_heading, lead_world_position, lead_start_time
+    nonlocal lead_start_time
     nonlocal lead_measurement, lead_prev_v_rel
     env.reset()
     env.vehicle.config["max_speed_km_h"] = 1000
-    lead_distance_dynamic = lead_vehicle_distance
-    lead_profile_start_time = None
     lead_start_time = None
-    lead_world_heading = None
-    lead_world_position = None
     spawn_lead_vehicle()
     lead_measurement = _get_lead_measurement(False)
     lead_prev_v_rel = 0.0

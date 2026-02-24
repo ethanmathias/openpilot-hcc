@@ -101,10 +101,6 @@ class MetaDriveBridge(SimulatorBridge):
       traffic_density=0.0, # traffic is incredibly expensive
       lead_vehicle_enabled=lead_loop,
       lead_vehicle_distance=8.0,
-      lead_speed_profile="loop_ramp",
-      lead_speed_start_mph=10.0,
-      lead_speed_end_mph=30.0,
-      lead_speed_ramp_sec=20.0,
       lead_start_delay_s=5.0,
       lead_vehicle_lateral_offset=0.0,
       lead_vehicle_model="s",
