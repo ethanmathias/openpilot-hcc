@@ -212,7 +212,11 @@ Ignition: {self.simulator_state.ignition} Engaged: {self.simulator_state.is_enga
 
       throttle_out = throttle_op if self.simulator_state.is_engaged else throttle_manual
       brake_out = brake_op if self.simulator_state.is_engaged else brake_manual
-      steer_out = steer_op if self.simulator_state.is_engaged else steer_manual
+      steer_manual_override = abs(steer_manual) > 1e-6
+      if self.simulator_state.is_engaged:
+        steer_out = steer_manual if steer_manual_override else steer_op
+      else:
+        steer_out = steer_manual
 
       self.world.apply_controls(steer_out, throttle_out, brake_out)
       self.world.read_state()
