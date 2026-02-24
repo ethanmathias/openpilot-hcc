@@ -103,7 +103,7 @@ class MetaDriveBridge(SimulatorBridge):
       lead_vehicle_distance=8.0,
       lead_start_delay_s=5.0,
       lead_vehicle_lateral_offset=0.0,
-      lead_vehicle_model="s",
+      lead_vehicle_model="m",
       lead_vehicle_render=True,
       steer_cmd_ratio=12.0,
       map_config=map_config,
