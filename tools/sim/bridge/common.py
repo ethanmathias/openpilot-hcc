@@ -210,9 +210,23 @@ Ignition: {self.simulator_state.ignition} Engaged: {self.simulator_state.is_enga
         self.simulator_state.cruise_button = CruiseButtons.DECEL_SET if self.startup_button_prev else CruiseButtons.MAIN # force engagement on startup
         self.startup_button_prev = not self.startup_button_prev
 
-      throttle_out = throttle_op if self.simulator_state.is_engaged else throttle_manual
-      brake_out = brake_op if self.simulator_state.is_engaged else brake_manual
-      steer_out = steer_op if self.simulator_state.is_engaged else steer_manual
+      if self.simulator_state.is_engaged:
+        # Human keeps authority: manual brake/throttle can override engaged longitudinal control.
+        if brake_manual > 1e-6:
+          throttle_out = 0.0
+          brake_out = max(brake_op, brake_manual)
+        elif throttle_manual > 1e-6:
+          throttle_out = max(throttle_op, throttle_manual)
+          brake_out = 0.0
+        else:
+          throttle_out = throttle_op
+          brake_out = brake_op
+
+        steer_out = steer_manual if abs(steer_manual) > 1e-6 else steer_op
+      else:
+        throttle_out = throttle_manual
+        brake_out = brake_manual
+        steer_out = steer_manual
 
       self.world.apply_controls(steer_out, throttle_out, brake_out)
       self.world.read_state()
