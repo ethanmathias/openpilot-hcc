@@ -46,7 +46,7 @@ def create_map(track_size=60):
     ]
   )
 
-def create_straight_map(length=5000):
+def create_straight_map(length=10000):
   return dict(
     type=MapGenerateMethod.PG_MAP_FILE,
     lane_num=1,
