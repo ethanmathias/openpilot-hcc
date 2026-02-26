@@ -45,6 +45,11 @@ def _compute_rel(ego_position, ego_heading, lead_position):
   y_rel = float(np.dot(delta, left))
   return d_rel, y_rel
 
+
+def _wrap_to_pi(angle: float) -> float:
+  return float((angle + math.pi) % (2.0 * math.pi) - math.pi)
+
+
 def apply_metadrive_patches(arrive_dest_done=True):
   # By default, metadrive won't try to use cuda images unless it's used as a sensor for vehicles, so patch that in
   def add_image_sensor_patched(self, name: str, cls, args):
@@ -203,7 +208,23 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
       else:
         lead_action = lead_policy.act()
         lead_action = np.array(lead_action, dtype=np.float64)
-        # Keep IDM steering authority for curved roads; only enforce simulator bounds.
+        # Add lane-centering correction so lead follows curved lane geometry.
+        lane = getattr(lead_vehicle, "lane", None)
+        if lane is not None:
+          try:
+            s_coord, lateral_offset = lane.local_coordinates(lead_vehicle.position)
+            p0 = np.array(lane.position(float(s_coord), 0.0), dtype=np.float64)[:2]
+            p1 = np.array(lane.position(float(s_coord) + 1.0, 0.0), dtype=np.float64)[:2]
+            tangent = p1 - p0
+            if np.linalg.norm(tangent) > 1e-6:
+              lane_heading = float(math.atan2(tangent[1], tangent[0]))
+              heading_error = _wrap_to_pi(lane_heading - float(lead_vehicle.heading_theta))
+              steer_correction = 1.2 * heading_error - 0.18 * float(lateral_offset)
+              lead_action[0] += steer_correction
+          except Exception:
+            pass
+
+        # Keep steering command in simulator bounds.
         lead_action[0] = float(np.clip(lead_action[0], -1.0, 1.0))
         lead_action = lead_action.tolist()
       lead_vehicle.before_step(lead_action)
