@@ -2,6 +2,7 @@ import signal
 import threading
 import functools
 import numpy as np
+import queue as pyqueue
 
 from collections import namedtuple
 from enum import Enum
@@ -146,6 +147,10 @@ Ignition: {self.simulator_state.ignition} Engaged: {self.simulator_state.is_enga
     for _ in range(20):
       self.world.tick()
 
+    throttle_manual = steer_manual = brake_manual = 0.0
+    manual_ttl = 0.15
+    steer_manual_ts = throttle_manual_ts = brake_manual_ts = 0.0
+
     while self._keep_alive:
       throttle_out = steer_out = brake_out = 0.0
       throttle_op = steer_op = brake_op = 0.0
@@ -154,19 +159,26 @@ Ignition: {self.simulator_state.ignition} Engaged: {self.simulator_state.is_enga
       self.simulator_state.left_blinker = False
       self.simulator_state.right_blinker = False
 
-      throttle_manual = steer_manual = brake_manual = 0.
+      now = self.rk.frame / 100.0
 
-      # Read manual controls
-      if not q.empty():
-        message = q.get()
+      # Drain queued manual controls each frame and keep latest axis values.
+      while True:
+        try:
+          message = q.get_nowait()
+        except pyqueue.Empty:
+          break
+
         if message.type == QueueMessageType.CONTROL_COMMAND:
           m = message.info.split('_')
           if m[0] == "steer":
             steer_manual = float(m[1])
+            steer_manual_ts = now
           elif m[0] == "throttle":
             throttle_manual = float(m[1])
+            throttle_manual_ts = now
           elif m[0] == "brake":
             brake_manual = float(m[1])
+            brake_manual_ts = now
           elif m[0] == "cruise":
             if m[1] == "down":
               self.simulator_state.cruise_button = CruiseButtons.DECEL_SET
@@ -186,7 +198,18 @@ Ignition: {self.simulator_state.ignition} Engaged: {self.simulator_state.is_enga
           elif m[0] == "reset":
             self.world.reset()
           elif m[0] == "quit":
+            self._keep_alive = False
             break
+
+      if not self._keep_alive:
+        break
+
+      if now - steer_manual_ts > manual_ttl:
+        steer_manual = 0.0
+      if now - throttle_manual_ts > manual_ttl:
+        throttle_manual = 0.0
+      if now - brake_manual_ts > manual_ttl:
+        brake_manual = 0.0
 
       self.simulator_state.user_brake = brake_manual
       self.simulator_state.user_gas = throttle_manual

@@ -18,18 +18,48 @@ def _clamp(v: float, lo: float, hi: float) -> float:
   return max(lo, min(hi, v))
 
 
-def _find_logitech_device(device_path: str | None):
-  if device_path is not None:
-    return evdev.InputDevice(device_path)
+def _name_score(name: str) -> int:
+  n = name.lower()
+  score = 0
+  for marker in ("logitech", "g29", "g920", "g923", "driving force", "wheel"):
+    if marker in n:
+      score += 1
+  return score
 
-  devices = [evdev.InputDevice(path) for path in evdev.list_devices()]
-  for dev in devices:
-    caps = dev.capabilities()
-    if ecodes.EV_ABS in caps and "logitech" in dev.name.lower():
+
+def _find_logitech_device(device_path: str | None):
+  try:
+    if device_path is not None:
+      dev = evdev.InputDevice(device_path)
+      if ecodes.EV_ABS not in dev.capabilities():
+        raise RuntimeError(f"{device_path} has no EV_ABS capabilities")
       return dev
+  except PermissionError as e:
+    raise RuntimeError(f"Permission denied opening {device_path}. Add your user to the input group or run with sudo.") from e
+
+  devices = []
+  for path in evdev.list_devices():
+    try:
+      dev = evdev.InputDevice(path)
+      devices.append(dev)
+    except PermissionError:
+      continue
+
+  candidates = [dev for dev in devices if ecodes.EV_ABS in dev.capabilities()]
+  if not candidates:
+    available = ", ".join(f"{d.path}:{d.name}" for d in devices) or "<none>"
+    raise RuntimeError(f"No EV_ABS input device found. Available devices: {available}")
+
+  candidates.sort(key=lambda d: _name_score(d.name), reverse=True)
+  if _name_score(candidates[0].name) > 0:
+    return candidates[0]
+  if len(candidates) == 1:
+    return candidates[0]
 
   available = ", ".join(f"{d.path}:{d.name}" for d in devices) or "<none>"
-  raise RuntimeError(f"No Logitech ABS input device found. Available devices: {available}")
+  raise RuntimeError(
+    f"Could not identify Logitech wheel automatically. Pass --wheel_device /dev/input/eventX. Available devices: {available}"
+  )
 
 
 def _abs_map(dev):
@@ -42,6 +72,32 @@ def _pick_axis(abs_info, candidates):
     if code in abs_info:
       return code
   return None
+
+
+def _pick_steer_axis(abs_info):
+  candidates = [c for c in (ecodes.ABS_X, ecodes.ABS_RX, ecodes.ABS_WHEEL) if c in abs_info]
+  if not candidates:
+    return None
+  return max(candidates, key=lambda c: abs_info[c].max - abs_info[c].min)
+
+
+def _pick_pedal_axes(abs_info):
+  # Prefer explicit gas/brake axes, then the common Z/RZ pair.
+  throttle_candidates = [ecodes.ABS_GAS, ecodes.ABS_Z, ecodes.ABS_RY, ecodes.ABS_Y]
+  brake_candidates = [ecodes.ABS_BRAKE, ecodes.ABS_RZ, ecodes.ABS_Y, ecodes.ABS_RY]
+
+  throttle_axis = _pick_axis(abs_info, throttle_candidates)
+  brake_axis = _pick_axis(abs_info, brake_candidates)
+
+  if throttle_axis is not None and brake_axis is not None and throttle_axis == brake_axis:
+    for c in brake_candidates:
+      if c in abs_info and c != throttle_axis:
+        brake_axis = c
+        break
+    else:
+      brake_axis = None
+
+  return throttle_axis, brake_axis
 
 
 @dataclass
@@ -104,9 +160,8 @@ def logitech_wheel_poll_thread(q, device_path: str | None = None, publish_hz: fl
   dev = _find_logitech_device(device_path)
   abs_info = _abs_map(dev)
 
-  steer_axis = _pick_axis(abs_info, [ecodes.ABS_X, ecodes.ABS_RX, ecodes.ABS_WHEEL])
-  throttle_axis = _pick_axis(abs_info, [ecodes.ABS_Z, ecodes.ABS_GAS, ecodes.ABS_Y, ecodes.ABS_RY])
-  brake_axis = _pick_axis(abs_info, [ecodes.ABS_RZ, ecodes.ABS_BRAKE, ecodes.ABS_Y, ecodes.ABS_RY])
+  steer_axis = _pick_steer_axis(abs_info)
+  throttle_axis, brake_axis = _pick_pedal_axes(abs_info)
 
   if steer_axis is None:
     raise RuntimeError(f"No steering axis found on {dev.path} ({dev.name})")
@@ -155,6 +210,8 @@ def logitech_wheel_poll_thread(q, device_path: str | None = None, publish_hz: fl
         cmd = button_map.get(ev.code)
         if cmd is not None:
           q.put(control_cmd_gen(cmd))
+  except PermissionError as e:
+    raise RuntimeError(f"Permission denied reading {dev.path}. Add your user to the input group or run with sudo.") from e
   finally:
     stop_event.set()
 
