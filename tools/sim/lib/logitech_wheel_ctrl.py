@@ -27,6 +27,28 @@ def _name_score(name: str) -> int:
   return score
 
 
+def _abs_codes(dev):
+  try:
+    return {code for code, _ in dev.capabilities(absinfo=True).get(ecodes.EV_ABS, [])}
+  except Exception:
+    return set()
+
+
+def _device_score(dev) -> int:
+  abs_codes = _abs_codes(dev)
+  score = _name_score(dev.name) * 10
+
+  if ecodes.ABS_X in abs_codes or ecodes.ABS_RX in abs_codes or ecodes.ABS_WHEEL in abs_codes:
+    score += 8
+  if ecodes.ABS_GAS in abs_codes or ecodes.ABS_Z in abs_codes:
+    score += 5
+  if ecodes.ABS_BRAKE in abs_codes or ecodes.ABS_RZ in abs_codes:
+    score += 5
+  if ecodes.EV_KEY in dev.capabilities():
+    score += 1
+  return score
+
+
 def _find_logitech_device(device_path: str | None):
   try:
     if device_path is not None:
@@ -50,8 +72,8 @@ def _find_logitech_device(device_path: str | None):
     available = ", ".join(f"{d.path}:{d.name}" for d in devices) or "<none>"
     raise RuntimeError(f"No EV_ABS input device found. Available devices: {available}")
 
-  candidates.sort(key=lambda d: _name_score(d.name), reverse=True)
-  if _name_score(candidates[0].name) > 0:
+  candidates.sort(key=_device_score, reverse=True)
+  if _device_score(candidates[0]) > 0:
     return candidates[0]
   if len(candidates) == 1:
     return candidates[0]
