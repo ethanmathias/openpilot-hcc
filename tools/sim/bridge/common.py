@@ -148,7 +148,7 @@ Ignition: {self.simulator_state.ignition} Engaged: {self.simulator_state.is_enga
       self.world.tick()
 
     throttle_manual = steer_manual = brake_manual = 0.0
-    manual_ttl = 0.15
+    manual_ttl = 0.35
     steer_manual_ts = throttle_manual_ts = brake_manual_ts = 0.0
 
     while self._keep_alive:
@@ -236,9 +236,9 @@ Ignition: {self.simulator_state.ignition} Engaged: {self.simulator_state.is_enga
         # Human keeps authority: manual brake/throttle can override engaged longitudinal control.
         if brake_manual > 1e-6:
           throttle_out = 0.0
-          brake_out = max(brake_op, brake_manual)
+          brake_out = np.clip(brake_op + brake_manual * (1.0 - brake_op), 0.0, 1.0)
         elif throttle_manual > 1e-6:
-          throttle_out = max(throttle_op, throttle_manual)
+          throttle_out = np.clip(throttle_op + throttle_manual * (1.0 - throttle_op), 0.0, 1.0)
           brake_out = 0.0
         else:
           throttle_out = throttle_op

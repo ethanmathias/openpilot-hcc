@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import math
 import threading
 import time
 from dataclasses import dataclass
@@ -13,9 +14,18 @@ try:
 except ImportError as e:
   raise RuntimeError("logitech_wheel_ctrl.py requires python-evdev") from e
 
+DEFAULT_PUBLISH_HZ = 100.0
+STEER_DEADZONE = 0.015
+ENABLE_AUTOCENTER = False
+
 
 def _clamp(v: float, lo: float, hi: float) -> float:
   return max(lo, min(hi, v))
+
+def _apply_deadzone(v: float, deadzone: float) -> float:
+  if abs(v) <= deadzone:
+    return 0.0
+  return math.copysign((abs(v) - deadzone) / max(1.0 - deadzone, 1e-3), v)
 
 
 def _name_score(name: str) -> int:
@@ -178,7 +188,7 @@ def _publisher_loop(q, state: LogitechWheelState, hz: float, stop_event: threadi
     time.sleep(dt)
 
 
-def logitech_wheel_poll_thread(q, device_path: str | None = None, publish_hz: float = 25.0) -> NoReturn:
+def logitech_wheel_poll_thread(q, device_path: str | None = None, publish_hz: float = DEFAULT_PUBLISH_HZ) -> NoReturn:
   dev = _find_logitech_device(device_path)
   abs_info = _abs_map(dev)
 
@@ -202,11 +212,11 @@ def logitech_wheel_poll_thread(q, device_path: str | None = None, publish_hz: fl
   publisher = threading.Thread(target=_publisher_loop, args=(q, state, publish_hz, stop_event), daemon=True)
   publisher.start()
 
-  # Optional force-feedback autcenter if supported.
-  try:
-    dev.write(ecodes.EV_FF, ecodes.FF_AUTOCENTER, 24000)
-  except Exception:
-    pass
+  if ENABLE_AUTOCENTER:
+    try:
+      dev.write(ecodes.EV_FF, ecodes.FF_AUTOCENTER, 24000)
+    except Exception:
+      pass
 
   button_map = {
     ecodes.BTN_SOUTH: "cruise_down",
@@ -222,7 +232,9 @@ def logitech_wheel_poll_thread(q, device_path: str | None = None, publish_hz: fl
     for ev in dev.read_loop():
       if ev.type == ecodes.EV_ABS:
         if ev.code == steer_axis:
-          state.set_steer((ev.value - steer_center) / steer_span)
+          steer = (ev.value - steer_center) / steer_span
+          steer = _apply_deadzone(float(steer), STEER_DEADZONE)
+          state.set_steer(steer)
         elif ev.code == throttle_axis:
           state.set_throttle(throttle_norm.normalize(ev.value))
         elif ev.code == brake_axis:
@@ -241,7 +253,7 @@ def logitech_wheel_poll_thread(q, device_path: str | None = None, publish_hz: fl
 def main():
   parser = argparse.ArgumentParser(description="Logitech wheel/pedal input for openpilot sim bridge.")
   parser.add_argument("--device", default=None, help="Optional /dev/input/eventX path")
-  parser.add_argument("--hz", type=float, default=25.0, help="Control publish rate")
+  parser.add_argument("--hz", type=float, default=DEFAULT_PUBLISH_HZ, help="Control publish rate")
   args = parser.parse_args()
 
   from multiprocessing import Queue

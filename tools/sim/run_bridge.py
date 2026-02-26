@@ -25,7 +25,7 @@ def parse_args(add_args=None):
                       help='Use Logitech wheel/pedals via /dev/input/event* (Linux)')
   parser.add_argument('--wheel_device', default=None,
                       help='Optional event device path, e.g. /dev/input/event5')
-  parser.add_argument('--wheel_hz', type=float, default=25.0,
+  parser.add_argument('--wheel_hz', type=float, default=100.0,
                       help='Wheel command publish rate (Hz) when using --logitech_wheel')
   parser.add_argument('--high_quality', action='store_true')
   parser.add_argument('--dual_camera', action='store_true')

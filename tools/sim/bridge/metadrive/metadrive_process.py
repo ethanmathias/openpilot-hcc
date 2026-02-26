@@ -322,7 +322,9 @@ def metadrive_process(
   for legacy_key in LEGACY_LEAD_KEYS:
     config.pop(legacy_key, None)
 
-  steer_cmd_ratio = float(config.pop("steer_cmd_ratio", 12.0))
+  steer_cmd_ratio = float(config.pop("steer_cmd_ratio", 1.2))
+  sim_step_frames = max(1, int(config.pop("sim_step_frames", 5)))
+  camera_capture_frames = max(1, int(config.pop("camera_capture_frames", 5)))
   step_dt = float(config.get("physics_world_step_size", 0.05)) * float(config.get("decision_repeat", 1))
 
   _patch_metadrive(arrive_dest_done)
@@ -382,7 +384,7 @@ def metadrive_process(
     if op_engaged.is_set() and engage_start_time is None:
       engage_start_time = time.monotonic()
 
-    if rk.frame % 5 == 0:
+    if rk.frame % sim_step_frames == 0:
       _update_lead_vehicle(env, lead_cfg, lead_state)
       _, _, terminated, _, _ = env.step(ego_control)
       _update_lead_measurement(env, lead_state, step_dt)
@@ -399,6 +401,7 @@ def metadrive_process(
 
         _send_done_state(simulation_state_send, done_result)
 
+    if rk.frame % camera_capture_frames == 0:
       if dual_camera and wide_road_image is not None:
         wide_road_image[...] = _capture_rgb_image(env, "rgb_wide")
       road_image[...] = _capture_rgb_image(env, "rgb_road")

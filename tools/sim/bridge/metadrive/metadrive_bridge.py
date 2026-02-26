@@ -66,7 +66,7 @@ def create_straight_map(length=10000):
 
 
 class MetaDriveBridge(SimulatorBridge):
-  TICKS_PER_FRAME = 5
+  TICKS_PER_FRAME = 2
 
   def __init__(self, dual_camera, high_quality, test_duration=math.inf, test_run=False, scenario=SCENARIO_DEFAULT,
                enable_hcc=False):
@@ -113,7 +113,9 @@ class MetaDriveBridge(SimulatorBridge):
       lead_vehicle_lateral_offset=0.0,
       lead_vehicle_model="m",
       lead_vehicle_render=True,
-      steer_cmd_ratio=12.0,
+      steer_cmd_ratio=1.2,
+      sim_step_frames=self.TICKS_PER_FRAME,
+      camera_capture_frames=5,
       map_config=map_config,
       decision_repeat=1,
       physics_world_step_size=self.TICKS_PER_FRAME/100,
