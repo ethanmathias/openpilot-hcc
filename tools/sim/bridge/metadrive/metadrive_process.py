@@ -111,13 +111,35 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
         unique_models.append(model)
     return unique_models
 
-  def _lead_target_position(ego_vehicle):
-    heading = np.array([math.cos(ego_vehicle.heading_theta), math.sin(ego_vehicle.heading_theta)], dtype=np.float64)
-    target_position = np.array(ego_vehicle.position, dtype=np.float64) + heading * lead_vehicle_distance
+  def _lead_target_pose(ego_vehicle):
+    fallback_heading = float(ego_vehicle.heading_theta)
+    heading_vec = np.array([math.cos(fallback_heading), math.sin(fallback_heading)], dtype=np.float64)
+    fallback_position = np.array(ego_vehicle.position, dtype=np.float64) + heading_vec * lead_vehicle_distance
     if abs(lead_vehicle_lateral_offset) > 1e-3:
-      lateral_direction = np.array([-heading[1], heading[0]], dtype=np.float64)
-      target_position += lateral_direction * lead_vehicle_lateral_offset
-    return target_position
+      lateral_direction = np.array([-heading_vec[1], heading_vec[0]], dtype=np.float64)
+      fallback_position += lateral_direction * lead_vehicle_lateral_offset
+
+    lane = getattr(ego_vehicle, "lane", None)
+    if lane is None:
+      return fallback_position, fallback_heading
+
+    try:
+      ego_longitudinal, _ = lane.local_coordinates(ego_vehicle.position)
+      target_longitudinal = float(ego_longitudinal + lead_vehicle_distance)
+      lane_target = np.array(lane.position(target_longitudinal, lead_vehicle_lateral_offset), dtype=np.float64)
+      target_position = lane_target[:2]
+
+      # Use lane tangent to align heading with the lane centerline.
+      p0 = np.array(lane.position(target_longitudinal, lead_vehicle_lateral_offset), dtype=np.float64)[:2]
+      p1 = np.array(lane.position(target_longitudinal + 0.5, lead_vehicle_lateral_offset), dtype=np.float64)[:2]
+      tangent = p1 - p0
+      if np.linalg.norm(tangent) > 1e-6:
+        target_heading = float(math.atan2(tangent[1], tangent[0]))
+      else:
+        target_heading = fallback_heading
+      return target_position, target_heading
+    except Exception:
+      return fallback_position, fallback_heading
 
   def spawn_lead_vehicle():
     nonlocal lead_vehicle, lead_policy, lead_start_time
@@ -128,7 +150,7 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
       return
 
     ego_vehicle = env.vehicle
-    target_position = _lead_target_position(ego_vehicle)
+    target_position, target_heading = _lead_target_pose(ego_vehicle)
     ego_model = ego_vehicle.config.get("vehicle_model", None)
 
     lead_config_base = dict(env.config["vehicle_config"])
@@ -149,7 +171,7 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
           vehicle_cls,
           vehicle_config=lead_config,
           position=target_position.tolist(),
-          heading=float(ego_vehicle.heading_theta),
+          heading=target_heading,
         )
         policy_seed = int((time.time() * 1000) % (2**31 - 1))
         lead_policy = IDMPolicy(lead_vehicle, policy_seed)
