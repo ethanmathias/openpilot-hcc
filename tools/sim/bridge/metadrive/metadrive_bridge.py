@@ -79,8 +79,9 @@ class MetaDriveBridge(SimulatorBridge):
     if self.dual_camera:
       sensors["rgb_wide"] = (RGBCameraWide, W, H)
 
-    lead_loop = self.scenario in ("lead_loop", "hccc_step")
-    map_config = create_straight_map() if lead_loop else create_map()
+    straight_scenario = self.scenario in ("lead_loop", "hccc_step")
+    lead_enabled = self.scenario in ("default", "lead_loop", "hccc_step")
+    map_config = create_straight_map() if straight_scenario else create_map()
 
     config = dict(
       use_render=self.should_render,
@@ -99,7 +100,7 @@ class MetaDriveBridge(SimulatorBridge):
       crash_object_done=False,
       arrive_dest_done=False,
       traffic_density=0.0, # traffic is incredibly expensive
-      lead_vehicle_enabled=lead_loop,
+      lead_vehicle_enabled=lead_enabled,
       lead_vehicle_distance=8.0,
       lead_start_delay_s=5.0,
       lead_vehicle_lateral_offset=0.0,
