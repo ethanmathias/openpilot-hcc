@@ -102,6 +102,7 @@ class MetaDriveBridge(SimulatorBridge):
       image_observation=True,
       interface_panel=[],
       out_of_route_done=False,
+      out_of_road_done=False,
       on_continuous_line_done=False,
       crash_vehicle_done=False,
       crash_object_done=False,

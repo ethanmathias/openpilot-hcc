@@ -390,6 +390,13 @@ def metadrive_process(
       timeout = engage_start_time is not None and (time.monotonic() - engage_start_time) >= test_duration
       if terminated or (timeout and test_run):
         done_result = env.done_function("default_agent") if terminated else (True, {"timeout": True})
+
+        if terminated and bool(done_result[1].get("out_of_road", False)):
+          print("[WARNING] Episode hit out_of_road. Auto-resetting scenario instead of exiting.")
+          reset_world()
+          engage_start_time = None
+          continue
+
         _send_done_state(simulation_state_send, done_result)
 
       if dual_camera and wide_road_image is not None:
