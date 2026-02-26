@@ -13,6 +13,29 @@ LongCtrlState = car.CarControl.Actuators.LongControlState
 SIMULATION = os.environ.get("SIMULATION", "0") == "1"
 
 
+def _normalize_pedal(value: float) -> float:
+  v = float(value)
+  if v > 1.0 and v <= 100.0:
+    v *= 0.01
+  return float(np.clip(v, 0.0, 1.0))
+
+
+def _manual_longitudinal_input(CS) -> float:
+  gas_raw = getattr(CS, "gas", 0.0)
+  brake_raw = getattr(CS, "brake", 0.0)
+
+  gas = _normalize_pedal(gas_raw)
+  brake = _normalize_pedal(brake_raw)
+
+  # Fallback for platforms that only expose boolean pressed flags.
+  if getattr(CS, "gasPressed", False):
+    gas = max(gas, 1.0)
+  if getattr(CS, "brakePressed", False):
+    brake = max(brake, 1.0)
+
+  return float(np.clip(gas - brake, -1.0, 1.0))
+
+
 def long_control_state_trans(CP, active, long_control_state, v_ego,
                              should_stop, brake_pressed, cruise_standstill):
   stopping_condition = should_stop
@@ -90,6 +113,9 @@ class LongControl:
       self.hccc._max_accl = accel_max
       hccc_output = self.hccc.run_step(CS, lead)
 
+    # BeamNG-style blending: add raw manual pedal net input directly.
+    manual_accel = _manual_longitudinal_input(CS)
+
     if hccc_output is not None:
       should_stop = False
 
@@ -114,7 +140,7 @@ class LongControl:
       self.reset()
 
     else:  # LongCtrlState.pid
-      output_accel = hccc_output if hccc_output is not None else 0.0
+      output_accel = (hccc_output + manual_accel) if hccc_output is not None else 0.0
 
     if hccc_output is not None:
       self.last_output_accel = np.clip(output_accel, accel_min, accel_max)
