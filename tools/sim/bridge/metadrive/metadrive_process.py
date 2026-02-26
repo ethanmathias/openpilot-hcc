@@ -203,7 +203,8 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
       else:
         lead_action = lead_policy.act()
         lead_action = np.array(lead_action, dtype=np.float64)
-        lead_action[0] = float(np.clip(lead_action[0], -0.2, 0.2))
+        # Keep IDM steering authority for curved roads; only enforce simulator bounds.
+        lead_action[0] = float(np.clip(lead_action[0], -1.0, 1.0))
         lead_action = lead_action.tolist()
       lead_vehicle.before_step(lead_action)
     except Exception as e:
