@@ -226,7 +226,6 @@ Ignition: {self.simulator_state.ignition} Engaged: {self.simulator_state.is_enga
       if self.simulator_state.is_engaged:
         throttle_op = np.clip(self.simulated_car.sm['carControl'].actuators.accel / 1.6, 0.0, 1.0)
         brake_op = np.clip(-self.simulated_car.sm['carControl'].actuators.accel / 4.0, 0.0, 1.0)
-        steer_op = self.simulated_car.sm['carControl'].actuators.steeringAngleDeg
 
         self.past_startup_engaged = True
       elif not self.past_startup_engaged and self.simulated_car.sm['selfdriveState'].engageable:
@@ -245,7 +244,7 @@ Ignition: {self.simulator_state.ignition} Engaged: {self.simulator_state.is_enga
           throttle_out = throttle_op
           brake_out = brake_op
 
-        steer_out = steer_manual if abs(steer_manual) > 1e-6 else steer_op
+        steer_out = steer_manual
       else:
         throttle_out = throttle_manual
         brake_out = brake_manual
