@@ -50,6 +50,23 @@ def _wrap_to_pi(angle: float) -> float:
   return float((angle + math.pi) % (2.0 * math.pi) - math.pi)
 
 
+def _lane_center_steer_from_lane(vehicle, lane) -> float | None:
+  if lane is None:
+    return None
+  try:
+    s_coord, lateral_offset = lane.local_coordinates(vehicle.position)
+    p0 = np.array(lane.position(float(s_coord), 0.0), dtype=np.float64)[:2]
+    p1 = np.array(lane.position(float(s_coord) + 1.0, 0.0), dtype=np.float64)[:2]
+    tangent = p1 - p0
+    if np.linalg.norm(tangent) <= 1e-6:
+      return None
+    lane_heading = float(math.atan2(tangent[1], tangent[0]))
+    heading_error = _wrap_to_pi(lane_heading - float(vehicle.heading_theta))
+    return float(np.clip(1.2 * heading_error - 0.18 * float(lateral_offset), -1.0, 1.0))
+  except Exception:
+    return None
+
+
 def apply_metadrive_patches(arrive_dest_done=True):
   # By default, metadrive won't try to use cuda images unless it's used as a sensor for vehicles, so patch that in
   def add_image_sensor_patched(self, name: str, cls, args):
@@ -209,20 +226,27 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
         lead_action = lead_policy.act()
         lead_action = np.array(lead_action, dtype=np.float64)
         # Add lane-centering correction so lead follows curved lane geometry.
-        lane = getattr(lead_vehicle, "lane", None)
-        if lane is not None:
+        lane_steer = _lane_center_steer_from_lane(lead_vehicle, getattr(lead_vehicle, "lane", None))
+        if lane_steer is None:
+          # Fallback: project to ego lane and steer toward a point ahead on that centerline.
           try:
-            s_coord, lateral_offset = lane.local_coordinates(lead_vehicle.position)
-            p0 = np.array(lane.position(float(s_coord), 0.0), dtype=np.float64)[:2]
-            p1 = np.array(lane.position(float(s_coord) + 1.0, 0.0), dtype=np.float64)[:2]
-            tangent = p1 - p0
-            if np.linalg.norm(tangent) > 1e-6:
-              lane_heading = float(math.atan2(tangent[1], tangent[0]))
-              heading_error = _wrap_to_pi(lane_heading - float(lead_vehicle.heading_theta))
-              steer_correction = 1.2 * heading_error - 0.18 * float(lateral_offset)
-              lead_action[0] += steer_correction
+            ego_lane = getattr(env.vehicle, "lane", None)
+            if ego_lane is not None:
+              ego_s, _ = ego_lane.local_coordinates(env.vehicle.position)
+              target_s = float(ego_s + lead_vehicle_distance + 6.0)
+              target_xy = np.array(ego_lane.position(target_s, 0.0), dtype=np.float64)[:2]
+              lead_xy = np.array(lead_vehicle.position, dtype=np.float64)[:2]
+              vec = target_xy - lead_xy
+              if np.linalg.norm(vec) > 1e-6:
+                desired_heading = float(math.atan2(vec[1], vec[0]))
+                heading_error = _wrap_to_pi(desired_heading - float(lead_vehicle.heading_theta))
+                lane_steer = float(np.clip(1.8 * heading_error, -1.0, 1.0))
           except Exception:
-            pass
+            lane_steer = None
+
+        if lane_steer is not None:
+          # Blend IDM steer with lane-follow steer, biased toward lane tracking.
+          lead_action[0] = 0.2 * float(lead_action[0]) + 0.8 * lane_steer
 
         # Keep steering command in simulator bounds.
         lead_action[0] = float(np.clip(lead_action[0], -1.0, 1.0))
