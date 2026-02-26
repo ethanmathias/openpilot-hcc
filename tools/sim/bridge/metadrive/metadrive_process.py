@@ -99,11 +99,6 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
   lead_measurement = _get_lead_measurement(False)
   lead_prev_v_rel = 0.0
 
-  def get_current_lane_info(vehicle):
-    _, lane_info, on_lane = vehicle.navigation._get_current_lane(vehicle)
-    lane_idx = lane_info[2] if lane_info is not None else None
-    return lane_idx, on_lane
-
   def _vehicle_cls_for_model(model_name, fallback_cls):
     cls = vehicle_type.get(model_name)
     return cls if cls is not None else fallback_cls
@@ -226,7 +221,6 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
     spawn_lead_vehicle()
     lead_measurement = _get_lead_measurement(False)
     lead_prev_v_rel = 0.0
-    lane_idx_prev, _ = get_current_lane_info(env.vehicle)
 
     simulation_state = metadrive_simulation_state(
       running=True,
@@ -234,10 +228,7 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
       done_info=None,
     )
     simulation_state_send.send(simulation_state)
-
-    return lane_idx_prev
-
-  lane_idx_prev = reset()
+  reset()
   start_time = None
 
   def get_cam_as_rgb(cam):
@@ -279,7 +270,7 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
       vc = [steer_metadrive, gas]
 
       if should_reset:
-        lane_idx_prev = reset()
+        reset()
         start_time = None
 
     is_engaged = op_engaged.is_set()
@@ -291,15 +282,10 @@ def metadrive_process(dual_camera: bool, config: dict, camera_array, wide_camera
       _, _, terminated, _, _ = env.step(vc)
       update_lead_measurement()
       timeout = True if start_time is not None and time.monotonic() - start_time >= test_duration else False
-      lane_idx_curr, on_lane = get_current_lane_info(env.vehicle)
-      out_of_lane = lane_idx_curr != lane_idx_prev or not on_lane
-      lane_idx_prev = lane_idx_curr
 
-      if terminated or ((out_of_lane or timeout) and test_run):
+      if terminated or (timeout and test_run):
         if terminated:
           done_result = env.done_function("default_agent")
-        elif out_of_lane:
-          done_result = (True, {"out_of_lane" : True})
         elif timeout:
           done_result = (True, {"timeout" : True})
 
