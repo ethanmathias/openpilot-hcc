@@ -9,15 +9,22 @@ from openpilot.tools.sim.bridge.metadrive.metadrive_common import RGBCameraRoad,
 from openpilot.tools.sim.bridge.metadrive.metadrive_world import MetaDriveWorld
 from openpilot.tools.sim.lib.camerad import W, H
 
+SCENARIO_DEFAULT = "default"
+SCENARIO_HCCC_STEP = "hccc_step"
+SCENARIO_LEAD_LOOP = "lead_loop"
+STRAIGHT_ROAD_SCENARIOS = {SCENARIO_LEAD_LOOP, SCENARIO_HCCC_STEP}
+LEAD_SCENARIOS = {SCENARIO_DEFAULT, SCENARIO_LEAD_LOOP, SCENARIO_HCCC_STEP}
 
-def straight_block(length):
+
+def straight_block(length: float):
   return {
     "id": "S",
     "pre_block_socket_index": 0,
     "length": length
   }
 
-def curve_block(length, angle=45, direction=0):
+
+def curve_block(length: float, angle: float = 45, direction: int = 0):
   return {
     "id": "C",
     "pre_block_socket_index": 0,
@@ -61,9 +68,9 @@ def create_straight_map(length=10000):
 class MetaDriveBridge(SimulatorBridge):
   TICKS_PER_FRAME = 5
 
-  def __init__(self, dual_camera, high_quality, test_duration=math.inf, test_run=False, scenario="default",
+  def __init__(self, dual_camera, high_quality, test_duration=math.inf, test_run=False, scenario=SCENARIO_DEFAULT,
                enable_hcc=False):
-    enable_hcc = enable_hcc or scenario in ("lead_loop", "hccc_step")
+    enable_hcc = enable_hcc or scenario in STRAIGHT_ROAD_SCENARIOS
     super().__init__(dual_camera, high_quality, enable_hcc=enable_hcc)
 
     self.should_render = False
@@ -79,8 +86,8 @@ class MetaDriveBridge(SimulatorBridge):
     if self.dual_camera:
       sensors["rgb_wide"] = (RGBCameraWide, W, H)
 
-    straight_scenario = self.scenario in ("lead_loop", "hccc_step")
-    lead_enabled = self.scenario in ("default", "lead_loop", "hccc_step")
+    straight_scenario = self.scenario in STRAIGHT_ROAD_SCENARIOS
+    lead_enabled = self.scenario in LEAD_SCENARIOS
     map_config = create_straight_map() if straight_scenario else create_map()
 
     config = dict(
@@ -99,7 +106,7 @@ class MetaDriveBridge(SimulatorBridge):
       crash_vehicle_done=False,
       crash_object_done=False,
       arrive_dest_done=False,
-      traffic_density=0.0, # traffic is incredibly expensive
+      traffic_density=0.0,
       lead_vehicle_enabled=lead_enabled,
       lead_vehicle_distance=8.0,
       lead_start_delay_s=5.0,
