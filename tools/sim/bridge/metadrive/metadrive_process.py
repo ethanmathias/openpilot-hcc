@@ -234,6 +234,47 @@ def _spawn_lead_vehicle(env: MetaDriveEnv, lead_cfg: LeadConfig, lead_state: Lea
   print(f"[WARNING] Lead vehicle disabled after model spawn failures: {spawn_error}")
 
 
+def _clear_lead_vehicle(env: MetaDriveEnv, lead_state: LeadState):
+  vehicle = lead_state.vehicle
+  if vehicle is not None:
+    cleared = False
+    clear_errors = []
+
+    object_keys = []
+    for attr in ("name", "id", "index"):
+      value = getattr(vehicle, attr, None)
+      if value is not None:
+        object_keys.append(value)
+
+    for key in object_keys:
+      try:
+        env.engine.clear_objects([key])
+        cleared = True
+        break
+      except Exception as e:
+        clear_errors.append(str(e))
+
+    if not cleared:
+      try:
+        env.engine.clear_objects([vehicle])
+        cleared = True
+      except Exception as e:
+        clear_errors.append(str(e))
+
+    if not cleared and hasattr(vehicle, "destroy"):
+      try:
+        vehicle.destroy()
+      except Exception as e:
+        clear_errors.append(str(e))
+
+    if not cleared and clear_errors:
+      print(f"[WARNING] Failed to clear lead vehicle before reset: {' | '.join(clear_errors)}")
+
+  lead_state.vehicle = None
+  lead_state.policy = None
+  lead_state.start_time = None
+
+
 def _update_lead_vehicle(env: MetaDriveEnv, lead_cfg: LeadConfig, lead_state: LeadState):
   if lead_state.vehicle is None or lead_state.policy is None:
     return
@@ -255,9 +296,8 @@ def _update_lead_vehicle(env: MetaDriveEnv, lead_cfg: LeadConfig, lead_state: Le
 
     lead_state.vehicle.before_step(lead_action.tolist())
   except Exception as e:
-    print(f"[WARNING] Lead update failed, removing lead vehicle: {e}")
-    lead_state.vehicle = None
-    lead_state.policy = None
+    print(f"[WARNING] Lead update failed, clearing lead vehicle: {e}")
+    _clear_lead_vehicle(env, lead_state)
 
 
 def _update_lead_measurement(env: MetaDriveEnv, lead_state: LeadState, step_dt: float):
@@ -339,6 +379,7 @@ def metadrive_process(
   lead_state = LeadState()
 
   def reset_world():
+    _clear_lead_vehicle(env, lead_state)
     env.reset()
     env.vehicle.config["max_speed_km_h"] = 1000
     lead_state.measurement = _lead_measurement(False)
