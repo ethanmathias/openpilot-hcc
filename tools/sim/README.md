@@ -1,78 +1,83 @@
-openpilot in simulator
-=====================
+openpilot Simulator (MetaDrive)
+===============================
 
-openpilot implements a [bridge](run_bridge.py) that allows it to run in the [MetaDrive simulator](https://github.com/metadriverse/metadrive).
+This folder contains the simulator bridge that connects openpilot to [MetaDrive](https://github.com/metadriverse/metadrive).
 
-## Launching openpilot
-First, start openpilot.
-``` bash
-# Run locally
+## Quick Start
+Use two terminals from the repo root.
+
+Terminal 1:
+```bash
+source .venv/bin/activate
 ./tools/sim/launch_openpilot.sh
-to launch in big screen on pc run BIG=1 ./tools/sim/launch_openpilot.sh
 ```
-note: run the openpilot and bridge in two seperate terminal windows.
 
-## Bridge usage
-```
-$ ./run_bridge.py -h
-usage: run_bridge.py [-h] [--joystick] [--high_quality] [--dual_camera]
-Bridge between the simulator and openpilot.
-
-options:
-  -h, --help            show this help message and exit
-  --joystick
-  --high_quality
-  --dual_camera
-  --scenario {default,hccc_step,lead_loop}
-  --enable_hcc
-
-Notes:
-If you see warning: EnableHCCC param key is unavailable ... --enable_hcc ignored, then HCC was not enabled.
-To truly enable via flag, rebuild on Ubuntu so params key table includes EnableHCCC.
-From repo root on Ubuntu:
-
-rg -n "EnableHCCC" common/params_keys.h
-scons -u -j"$(nproc)"
-Then rerun:
-
+Terminal 2:
+```bash
+source .venv/bin/activate
 cd tools/sim
-./run_bridge.py --enable_hcc
+./run_bridge.py --mode default
 ```
 
-### hCCC step scenario
-Run a lead profile that ramps up and down in speed for acceleration/deceleration testing:
-```
-./run_bridge.py --scenario hccc_step
-```
-
-### Lead loop scenario
-Spawn a lead vehicle ~8 m ahead on a straight road, looping from 10 mph to 30 mph:
-```
-./run_bridge.py --scenario lead_loop
+Optional big-screen UI:
+```bash
+BIG=1 ./tools/sim/launch_openpilot.sh
 ```
 
-#### Bridge Controls:
-- To engage openpilot press 2, then press 1 to increase the speed and 2 to decrease.
-- To disengage, press "S" (simulates a user brake)
-
-#### All inputs:
-
+## Bridge CLI
+```bash
+./run_bridge.py -h
 ```
-| key  |   functionality       |
+
+Main options:
+- `--mode {default,hc3}`: scenario preset.
+- `--logitech_wheel`: use Logitech wheel/pedals input.
+- `--wheel_device /dev/input/eventX`: explicit input device path.
+- `--wheel_hz N`: wheel command publish rate (default `100`).
+- `--joystick`: generic joystick input instead of keyboard.
+- `--dual_camera`: publish wide + road camera.
+- `--high_quality`: use higher visual quality settings.
+
+## Modes
+- `default`: standard driving map.
+- `hc3`: hC3 preset (internally mapped to the straight-road hCCC scenario).
+
+Examples:
+```bash
+./run_bridge.py --mode default
+./run_bridge.py --mode hc3
+```
+
+## Logitech Wheel (G920/G29/G923)
+If autodetection works:
+```bash
+./run_bridge.py --mode hc3 --logitech_wheel
+```
+
+If you want to force a specific device:
+```bash
+./run_bridge.py --mode hc3 --logitech_wheel --wheel_device /dev/input/by-id/<your-wheel>-event-joystick
+```
+
+Find input devices:
+```bash
+ls -l /dev/input/by-id
+```
+
+On Ubuntu, if wheel access is denied, add your user to input group and re-login:
+```bash
+sudo usermod -aG input $USER
+```
+
+## Keyboard Controls
+```text
+| key  | functionality         |
 |------|-----------------------|
-|  1   | Cruise Resume / Accel |
-|  2   | Cruise Set    / Decel |
-|  3   | Cruise Cancel         |
-|  r   | Reset Simulation      |
-|  i   | Toggle Ignition       |
-|  q   | Exit all              |
-| wasd | Control manually      |
-```
-
-## MetaDrive
-
-### Launching Metadrive
-Start bridge processes located in tools/sim:
-``` bash
-./run_bridge.py
+| 1    | Cruise Resume / Accel |
+| 2    | Cruise Set / Decel    |
+| 3    | Cruise Cancel         |
+| r    | Reset simulation      |
+| i    | Toggle ignition       |
+| q    | Exit all              |
+| wasd | Manual control        |
 ```

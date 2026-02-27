@@ -45,6 +45,31 @@ Follow [these instructions](https://docs.microsoft.com/en-us/windows/wsl/install
 ## CTF
 Learn about the openpilot ecosystem and tools by playing our [CTF](/tools/CTF.md).
 
+## Simulator Quickstart
+Use the MetaDrive bridge from `tools/sim` to run openpilot on a PC.
+
+From the repo root, use two terminals:
+
+Terminal 1:
+```bash
+source .venv/bin/activate
+./tools/sim/launch_openpilot.sh
+```
+
+Terminal 2:
+```bash
+source .venv/bin/activate
+cd tools/sim
+./run_bridge.py --mode default
+```
+
+Useful variants:
+- `./run_bridge.py --mode hc3`
+- `./run_bridge.py --mode hc3 --logitech_wheel`
+- `./run_bridge.py --mode hc3 --logitech_wheel --wheel_device /dev/input/by-id/<wheel>-event-joystick`
+
+See `tools/sim/README.md` for full simulator usage and controls.
+
 ## Directory Structure
 
 ```
@@ -58,4 +83,15 @@ Learn about the openpilot ecosystem and tools by playing our [CTF](/tools/CTF.md
 ├── serial/             # Tools for using the comma serial
 ├── sim/                # Run openpilot in a simulator
 └── webcam/             # Run openpilot on a PC with webcams
+```
+
+## Setup Commands
+```bash
+tools/op.sh setup
+source .venv/bin/activate
+scons -u -j$(nproc)
+
+if error related to front_tire.gltf, then go through .venv directory to metadrive/.../assets and replace with assets folder from github repository. Make sure to patch the "check for updates" so that it doesn't auto patch and delete the assets again.
+
+for steering wheel, may need to install evdev in the venv
 ```

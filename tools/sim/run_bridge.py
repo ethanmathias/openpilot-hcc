@@ -6,10 +6,16 @@ from multiprocessing import Queue
 
 from openpilot.tools.sim.bridge.metadrive.metadrive_bridge import MetaDriveBridge
 
-def create_bridge(dual_camera, high_quality, scenario="default", enable_hcc=False):
+SIM_MODE_TO_SCENARIO = {
+  "default": "default",
+  "hc3": "hccc_step",
+}
+
+
+def create_bridge(dual_camera, high_quality, mode="default"):
   queue: Any = Queue()
 
-  simulator_bridge = MetaDriveBridge(dual_camera, high_quality, scenario=scenario, enable_hcc=enable_hcc)
+  simulator_bridge = MetaDriveBridge(dual_camera, high_quality, scenario=SIM_MODE_TO_SCENARIO[mode], enable_hcc=False)
   simulator_process = simulator_bridge.run(queue)
 
   return queue, simulator_process, simulator_bridge
@@ -29,17 +35,15 @@ def parse_args(add_args=None):
                       help='Wheel command publish rate (Hz) when using --logitech_wheel')
   parser.add_argument('--high_quality', action='store_true')
   parser.add_argument('--dual_camera', action='store_true')
-  parser.add_argument('--scenario', default="default", choices=["default", "hccc_step", "lead_loop"])
-  parser.add_argument('--enable_hcc', action='store_true',
-                      help='Enable HCC by setting EnableHCCC param before bridge startup')
+  parser.add_argument('--mode', default="default", choices=["default", "hc3"],
+                      help='Simulation mode preset: default or hc3')
 
   return parser.parse_args(add_args)
 
 if __name__ == "__main__":
   args = parse_args()
 
-  queue, simulator_process, simulator_bridge = create_bridge(args.dual_camera, args.high_quality,
-                                                             scenario=args.scenario, enable_hcc=args.enable_hcc)
+  queue, simulator_process, simulator_bridge = create_bridge(args.dual_camera, args.high_quality, mode=args.mode)
 
   if args.logitech_wheel:
     from openpilot.tools.sim.lib.logitech_wheel_ctrl import logitech_wheel_poll_thread
