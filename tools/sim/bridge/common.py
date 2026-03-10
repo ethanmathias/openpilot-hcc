@@ -97,6 +97,7 @@ class SimulatorBridge(ABC):
     lead_line = "Lead: unavailable"
     ego_line = "Ego: unavailable"
     loc_line = "Location: unavailable"
+    lane_line = "Lane: unavailable"
 
     if hasattr(self, "simulated_car"):
       sm = self.simulated_car.sm
@@ -124,6 +125,20 @@ class SimulatorBridge(ABC):
         f"bearing={self.simulator_state.bearing:.1f} deg"
       )
 
+    if self.simulator_state.debug_has_lane:
+      lane_s = self.simulator_state.debug_lane_s
+      lane_lateral = self.simulator_state.debug_lane_lateral
+      lane_heading_error_deg = self.simulator_state.debug_lane_heading_error_deg
+      lane_line = (
+        f"Lane: onLane={self.simulator_state.debug_on_lane} "
+        f"s={lane_s:.2f} m latOff={lane_lateral:.2f} m "
+        f"hdgErr={lane_heading_error_deg:.2f} deg "
+        f"yellow={self.simulator_state.debug_on_yellow_line} "
+        f"white={self.simulator_state.debug_on_white_line} "
+        f"sidewalk={self.simulator_state.debug_crash_sidewalk} "
+        f"outOfRoute={self.simulator_state.debug_out_of_route}"
+      )
+
     print(
     f"""
 State:
@@ -131,6 +146,7 @@ Ignition: {self.simulator_state.ignition} Engaged: {self.simulator_state.is_enga
 {ego_line}
 {lead_line}
 {loc_line}
+{lane_line}
     """)
 
   @abstractmethod

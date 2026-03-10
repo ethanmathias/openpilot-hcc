@@ -126,6 +126,15 @@ class MetaDriveWorld(World):
       state.lead_y_rel = md_vehicle.lead_y_rel
       state.lead_v_rel = md_vehicle.lead_v_rel
       state.lead_a_rel = md_vehicle.lead_a_rel
+      state.debug_has_lane = md_vehicle.debug_has_lane
+      state.debug_on_lane = md_vehicle.debug_on_lane
+      state.debug_lane_s = md_vehicle.debug_lane_s
+      state.debug_lane_lateral = md_vehicle.debug_lane_lateral
+      state.debug_lane_heading_error_deg = md_vehicle.debug_lane_heading_error_deg
+      state.debug_on_yellow_line = md_vehicle.debug_on_yellow_line
+      state.debug_on_white_line = md_vehicle.debug_on_white_line
+      state.debug_crash_sidewalk = md_vehicle.debug_crash_sidewalk
+      state.debug_out_of_route = md_vehicle.debug_out_of_route
       state.valid = True
 
       self._track_test_motion(curr_pos, state.is_engaged)

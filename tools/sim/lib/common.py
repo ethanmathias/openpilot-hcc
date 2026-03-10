@@ -45,6 +45,15 @@ class SimulatorState:
     self.bearing: float = 0
     self.gps = GPSState()
     self.imu = IMUState()
+    self.debug_has_lane: bool = False
+    self.debug_on_lane: bool = False
+    self.debug_lane_s: float | None = None
+    self.debug_lane_lateral: float | None = None
+    self.debug_lane_heading_error_deg: float | None = None
+    self.debug_on_yellow_line: bool = False
+    self.debug_on_white_line: bool = False
+    self.debug_crash_sidewalk: bool = False
+    self.debug_out_of_route: bool = False
 
     self.steering_angle: float = 0
 

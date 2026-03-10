@@ -37,7 +37,26 @@ EGO_LANE_LOOKAHEAD_M = 6.0
 metadrive_simulation_state = namedtuple("metadrive_simulation_state", ["running", "done", "done_info"])
 metadrive_vehicle_state = namedtuple(
   "metadrive_vehicle_state",
-  ["velocity", "position", "bearing", "steering_angle", "lead_status", "lead_d_rel", "lead_y_rel", "lead_v_rel", "lead_a_rel"],
+  [
+    "velocity",
+    "position",
+    "bearing",
+    "steering_angle",
+    "lead_status",
+    "lead_d_rel",
+    "lead_y_rel",
+    "lead_v_rel",
+    "lead_a_rel",
+    "debug_has_lane",
+    "debug_on_lane",
+    "debug_lane_s",
+    "debug_lane_lateral",
+    "debug_lane_heading_error_deg",
+    "debug_on_yellow_line",
+    "debug_on_white_line",
+    "debug_crash_sidewalk",
+    "debug_out_of_route",
+  ],
 )
 
 
@@ -93,6 +112,51 @@ def _wrap_to_pi(angle: float) -> float:
 
 def _planar_speed(velocity_xy) -> float:
   return float(np.linalg.norm([velocity_xy[0], velocity_xy[1]]))
+
+
+def _ego_debug_state(vehicle):
+  debug = {
+    "has_lane": False,
+    "on_lane": False,
+    "lane_s": float("nan"),
+    "lane_lateral": float("nan"),
+    "lane_heading_error_deg": float("nan"),
+    "on_yellow_line": bool(getattr(vehicle, "on_yellow_continuous_line", False)),
+    "on_white_line": bool(getattr(vehicle, "on_white_continuous_line", False)),
+    "crash_sidewalk": bool(getattr(vehicle, "crash_sidewalk", False)),
+    "out_of_route": bool(getattr(vehicle, "out_of_route", False)),
+  }
+
+  lane = getattr(vehicle, "lane", None)
+  if lane is None:
+    return debug
+
+  try:
+    lane_s, lane_lateral = lane.local_coordinates(vehicle.position)
+    p0 = np.array(lane.position(float(lane_s), 0.0), dtype=np.float64)[:2]
+    p1 = np.array(lane.position(float(lane_s) + 1.0, 0.0), dtype=np.float64)[:2]
+    tangent = p1 - p0
+    lane_heading_error_deg = float("nan")
+    if np.linalg.norm(tangent) > 1e-6:
+      lane_heading = float(math.atan2(tangent[1], tangent[0]))
+      lane_heading_error_deg = math.degrees(_wrap_to_pi(lane_heading - float(vehicle.heading_theta)))
+
+    lane_width = getattr(lane, "width", None)
+    on_lane = False
+    if lane_width is not None:
+      on_lane = abs(float(lane_lateral)) <= (float(lane_width) * 0.5)
+
+    debug.update({
+      "has_lane": True,
+      "on_lane": on_lane,
+      "lane_s": float(lane_s),
+      "lane_lateral": float(lane_lateral),
+      "lane_heading_error_deg": float(lane_heading_error_deg),
+    })
+  except Exception:
+    pass
+
+  return debug
 
 
 def _load_lead_speed_profile(csv_path: str, scenario_index: int):
@@ -615,6 +679,7 @@ def metadrive_process(
 
   while not exit_event.is_set():
     measurement = lead_state.measurement
+    debug = _ego_debug_state(env.vehicle)
     vehicle_state_send.send(
       metadrive_vehicle_state(
         velocity=vec3(x=float(env.vehicle.velocity[0]), y=float(env.vehicle.velocity[1]), z=0),
@@ -626,6 +691,15 @@ def metadrive_process(
         lead_y_rel=measurement["y_rel"],
         lead_v_rel=measurement["v_rel"],
         lead_a_rel=measurement["a_rel"],
+        debug_has_lane=debug["has_lane"],
+        debug_on_lane=debug["on_lane"],
+        debug_lane_s=debug["lane_s"],
+        debug_lane_lateral=debug["lane_lateral"],
+        debug_lane_heading_error_deg=debug["lane_heading_error_deg"],
+        debug_on_yellow_line=debug["on_yellow_line"],
+        debug_on_white_line=debug["on_white_line"],
+        debug_crash_sidewalk=debug["crash_sidewalk"],
+        debug_out_of_route=debug["out_of_route"],
       )
     )
 
