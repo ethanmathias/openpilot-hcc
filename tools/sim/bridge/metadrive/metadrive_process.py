@@ -344,6 +344,11 @@ def _patch_metadrive(arrive_dest_done: bool):
       return False
     MetaDriveEnv._is_arrive_destination = arrive_destination_patch
 
+  # Keep the simulator running even if MetaDrive thinks the vehicle is out of road.
+  def out_of_road_patch(self, *args, **kwargs):
+    return False
+  MetaDriveEnv._is_out_of_road = out_of_road_patch
+
 
 def _vehicle_cls_for_model(model_name, fallback_cls):
   cls = vehicle_type.get(model_name)
