@@ -96,6 +96,7 @@ class SimulatorBridge(ABC):
   def print_status(self):
     lead_line = "Lead: unavailable"
     ego_line = "Ego: unavailable"
+    loc_line = "Location: unavailable"
 
     if hasattr(self, "simulated_car"):
       sm = self.simulated_car.sm
@@ -115,12 +116,21 @@ class SimulatorBridge(ABC):
         else:
           lead_line = "Lead: no valid lead"
 
+    if self.simulator_state.position_xy is not None:
+      x, y = self.simulator_state.position_xy
+      loc_line = (
+        f"Location: x={x:.2f} m y={y:.2f} m "
+        f"lat={self.simulator_state.gps.latitude:.6f} lon={self.simulator_state.gps.longitude:.6f} "
+        f"bearing={self.simulator_state.bearing:.1f} deg"
+      )
+
     print(
     f"""
 State:
 Ignition: {self.simulator_state.ignition} Engaged: {self.simulator_state.is_engaged}
 {ego_line}
 {lead_line}
+{loc_line}
     """)
 
   @abstractmethod

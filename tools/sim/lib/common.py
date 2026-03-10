@@ -41,6 +41,7 @@ class SimulatorState:
     self.ignition = True
 
     self.velocity: vec3 = None
+    self.position_xy: tuple[float, float] | None = None
     self.bearing: float = 0
     self.gps = GPSState()
     self.imu = IMUState()
