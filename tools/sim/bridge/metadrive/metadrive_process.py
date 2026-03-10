@@ -114,6 +114,18 @@ def _planar_speed(velocity_xy) -> float:
   return float(np.linalg.norm([velocity_xy[0], velocity_xy[1]]))
 
 
+def _lane_identifier(lane) -> str:
+  if lane is None:
+    return "<none>"
+
+  parts = [lane.__class__.__name__]
+  for attr in ("index", "lane_index", "name"):
+    value = getattr(lane, attr, None)
+    if value is not None:
+      parts.append(f"{attr}={value}")
+  return " ".join(parts)
+
+
 def _ego_debug_state(vehicle):
   debug = {
     "has_lane": False,
@@ -121,6 +133,7 @@ def _ego_debug_state(vehicle):
     "lane_s": float("nan"),
     "lane_lateral": float("nan"),
     "lane_heading_error_deg": float("nan"),
+    "lane_id": _lane_identifier(getattr(vehicle, "lane", None)),
     "on_yellow_line": bool(getattr(vehicle, "on_yellow_continuous_line", False)),
     "on_white_line": bool(getattr(vehicle, "on_white_continuous_line", False)),
     "crash_sidewalk": bool(getattr(vehicle, "crash_sidewalk", False)),
@@ -157,6 +170,19 @@ def _ego_debug_state(vehicle):
     pass
 
   return debug
+
+
+def _format_debug_state(prefix: str, debug: dict, position_xy, heading_theta: float) -> str:
+  pos = np.array(position_xy, dtype=np.float64)[:2]
+  return (
+    f"{prefix}: pos=({pos[0]:.2f}, {pos[1]:.2f}) "
+    f"bearing={math.degrees(float(heading_theta)):.2f} deg "
+    f"laneId={debug['lane_id']} hasLane={debug['has_lane']} onLane={debug['on_lane']} "
+    f"s={debug['lane_s']:.2f} latOff={debug['lane_lateral']:.2f} "
+    f"hdgErr={debug['lane_heading_error_deg']:.2f} deg "
+    f"yellow={debug['on_yellow_line']} white={debug['on_white_line']} "
+    f"sidewalk={debug['crash_sidewalk']} outOfRoute={debug['out_of_route']}"
+  )
 
 
 def _load_lead_speed_profile(csv_path: str, scenario_index: int):
@@ -721,6 +747,9 @@ def metadrive_process(
 
     if rk.frame % sim_step_frames == 0:
       _update_lead_vehicle(env, lead_cfg, lead_state)
+      pre_debug = debug
+      pre_position = np.array(env.vehicle.position, dtype=np.float64)[:2]
+      pre_heading = float(env.vehicle.heading_theta)
       _, _, terminated, _, _ = env.step(ego_control)
       _update_lead_measurement(env, lead_state, step_dt)
 
@@ -729,6 +758,14 @@ def metadrive_process(
         done_result = env.done_function("default_agent") if terminated else (True, {"timeout": True})
 
         if terminated and bool(done_result[1].get("out_of_road", False)):
+          post_debug = _ego_debug_state(env.vehicle)
+          post_position = np.array(env.vehicle.position, dtype=np.float64)[:2]
+          post_heading = float(env.vehicle.heading_theta)
+          print("[DEBUG] MetaDrive out_of_road termination details:")
+          print(f"[DEBUG] done_info={done_result[1]}")
+          print(_format_debug_state("  preStep", pre_debug, pre_position, pre_heading))
+          print(_format_debug_state("  postStep", post_debug, post_position, post_heading))
+          print(f"[DEBUG] laneChanged={pre_debug['lane_id'] != post_debug['lane_id']}")
           print("[WARNING] Episode hit out_of_road. Auto-resetting scenario instead of exiting.")
           reset_world()
           engage_start_time = None
