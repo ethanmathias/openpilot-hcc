@@ -62,6 +62,7 @@ class LeadState:
   prev_v_rel: float = 0.0
   profile_t: np.ndarray | None = None
   profile_s: np.ndarray | None = None
+  profile_v: np.ndarray | None = None
   profile_lane: object | None = None
   profile_s_base: float | None = None
   pose_replay_failed: bool = False
@@ -94,12 +95,12 @@ def _planar_speed(velocity_xy) -> float:
   return float(np.linalg.norm([velocity_xy[0], velocity_xy[1]]))
 
 
-def _load_lead_position_profile(csv_path: str, scenario_index: int):
+def _load_lead_speed_profile(csv_path: str, scenario_index: int):
   if scenario_index < 1:
     raise ValueError(f"Scenario index must be >= 1, got {scenario_index}")
 
   t_samples: list[float] = []
-  s_samples: list[float] = []
+  v_samples: list[float] = []
   with open(csv_path, newline="") as f:
     reader = csv.reader(f)
     for row in reader:
@@ -112,41 +113,47 @@ def _load_lead_position_profile(csv_path: str, scenario_index: int):
         continue
 
       if scenario_index >= len(row):
-        if s_samples:
+        if v_samples:
           break
         continue
 
-      s_text = row[scenario_index].strip()
-      if not s_text:
-        if s_samples:
+      v_text = row[scenario_index].strip()
+      if not v_text:
+        if v_samples:
           break
         continue
 
       try:
-        s_val = float(s_text)
+        v_val = max(float(v_text), 0.0)
       except ValueError:
-        if s_samples:
+        if v_samples:
           break
         continue
 
       t_samples.append(t_val)
-      s_samples.append(s_val)
+      v_samples.append(v_val)
 
   if len(t_samples) < 2:
     raise RuntimeError(f"Scenario {scenario_index} has insufficient samples in {csv_path}")
 
   t_arr = np.asarray(t_samples, dtype=np.float64)
-  s_arr = np.asarray(s_samples, dtype=np.float64)
+  v_arr = np.asarray(v_samples, dtype=np.float64)
   order = np.argsort(t_arr)
   t_arr = t_arr[order]
-  s_arr = s_arr[order]
+  v_arr = v_arr[order]
 
   uniq_t, uniq_idx = np.unique(t_arr, return_index=True)
-  uniq_s = s_arr[uniq_idx]
+  uniq_v = v_arr[uniq_idx]
   if uniq_t.size < 2:
     raise RuntimeError(f"Scenario {scenario_index} needs at least two unique time samples in {csv_path}")
 
-  return uniq_t, uniq_s
+  # Integrate speed profile into cumulative longitudinal distance (meters).
+  uniq_s = np.zeros_like(uniq_v)
+  for i in range(1, uniq_t.size):
+    dt = max(float(uniq_t[i] - uniq_t[i - 1]), 0.0)
+    uniq_s[i] = uniq_s[i - 1] + 0.5 * (uniq_v[i - 1] + uniq_v[i]) * dt
+
+  return uniq_t, uniq_s, uniq_v
 
 
 def _profile_interp_position(lead_state: LeadState, elapsed_s: float) -> float:
@@ -163,11 +170,16 @@ def _profile_interp_position(lead_state: LeadState, elapsed_s: float) -> float:
 
 
 def _profile_interp_speed(lead_state: LeadState, elapsed_s: float) -> float:
-  assert lead_state.profile_t is not None and lead_state.profile_s is not None
-  dt = 0.05
-  s_prev = _profile_interp_position(lead_state, max(elapsed_s - dt, 0.0))
-  s_next = _profile_interp_position(lead_state, elapsed_s + dt)
-  return float((s_next - s_prev) / (2.0 * dt))
+  assert lead_state.profile_t is not None and lead_state.profile_v is not None
+  return float(
+    np.interp(
+      max(elapsed_s, 0.0),
+      lead_state.profile_t,
+      lead_state.profile_v,
+      left=lead_state.profile_v[0],
+      right=lead_state.profile_v[-1],
+    )
+  )
 
 
 def _set_vehicle_pose_2d(vehicle, position_xy, heading_theta: float, speed_mps: float):
@@ -578,9 +590,11 @@ def metadrive_process(
   if lead_cfg.profile_scn is not None:
     if lead_cfg.profile_csv is None:
       raise RuntimeError("lead_profile_scn is set but lead_profile_csv is missing")
-    lead_state.profile_t, lead_state.profile_s = _load_lead_position_profile(lead_cfg.profile_csv, int(lead_cfg.profile_scn))
+    lead_state.profile_t, lead_state.profile_s, lead_state.profile_v = _load_lead_speed_profile(
+      lead_cfg.profile_csv, int(lead_cfg.profile_scn)
+    )
     print(
-      f"[INFO] Loaded lead trajectory positions for scenario {lead_cfg.profile_scn} "
+      f"[INFO] Loaded lead trajectory speed profile for scenario {lead_cfg.profile_scn} "
       f"from {lead_cfg.profile_csv} ({len(lead_state.profile_t)} samples)"
     )
 
