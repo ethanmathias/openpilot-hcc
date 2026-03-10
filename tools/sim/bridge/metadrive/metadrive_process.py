@@ -1,3 +1,4 @@
+import csv
 import math
 import time
 from collections import namedtuple
@@ -48,6 +49,8 @@ class LeadConfig:
   lateral_offset_m: float
   model: str
   render: bool
+  profile_scn: int | None
+  profile_csv: str | None
 
 
 @dataclass
@@ -57,6 +60,11 @@ class LeadState:
   start_time: float | None = None
   measurement: dict[str, float | bool] = field(default_factory=lambda: _lead_measurement(False))
   prev_v_rel: float = 0.0
+  profile_t: np.ndarray | None = None
+  profile_s: np.ndarray | None = None
+  profile_lane: object | None = None
+  profile_s_base: float | None = None
+  pose_replay_failed: bool = False
 
 
 def _lead_measurement(enabled=False, d_rel=0.0, y_rel=0.0, v_rel=0.0, a_rel=0.0):
@@ -84,6 +92,135 @@ def _wrap_to_pi(angle: float) -> float:
 
 def _planar_speed(velocity_xy) -> float:
   return float(np.linalg.norm([velocity_xy[0], velocity_xy[1]]))
+
+
+def _load_lead_position_profile(csv_path: str, scenario_index: int):
+  if scenario_index < 1:
+    raise ValueError(f"Scenario index must be >= 1, got {scenario_index}")
+
+  t_samples: list[float] = []
+  s_samples: list[float] = []
+  with open(csv_path, newline="") as f:
+    reader = csv.reader(f)
+    for row in reader:
+      if not row or not row[0].strip():
+        continue
+
+      try:
+        t_val = float(row[0].strip())
+      except ValueError:
+        continue
+
+      if scenario_index >= len(row):
+        if s_samples:
+          break
+        continue
+
+      s_text = row[scenario_index].strip()
+      if not s_text:
+        if s_samples:
+          break
+        continue
+
+      try:
+        s_val = float(s_text)
+      except ValueError:
+        if s_samples:
+          break
+        continue
+
+      t_samples.append(t_val)
+      s_samples.append(s_val)
+
+  if len(t_samples) < 2:
+    raise RuntimeError(f"Scenario {scenario_index} has insufficient samples in {csv_path}")
+
+  t_arr = np.asarray(t_samples, dtype=np.float64)
+  s_arr = np.asarray(s_samples, dtype=np.float64)
+  order = np.argsort(t_arr)
+  t_arr = t_arr[order]
+  s_arr = s_arr[order]
+
+  uniq_t, uniq_idx = np.unique(t_arr, return_index=True)
+  uniq_s = s_arr[uniq_idx]
+  if uniq_t.size < 2:
+    raise RuntimeError(f"Scenario {scenario_index} needs at least two unique time samples in {csv_path}")
+
+  return uniq_t, uniq_s
+
+
+def _profile_interp_position(lead_state: LeadState, elapsed_s: float) -> float:
+  assert lead_state.profile_t is not None and lead_state.profile_s is not None
+  return float(
+    np.interp(
+      max(elapsed_s, 0.0),
+      lead_state.profile_t,
+      lead_state.profile_s,
+      left=lead_state.profile_s[0],
+      right=lead_state.profile_s[-1],
+    )
+  )
+
+
+def _profile_interp_speed(lead_state: LeadState, elapsed_s: float) -> float:
+  assert lead_state.profile_t is not None and lead_state.profile_s is not None
+  dt = 0.05
+  s_prev = _profile_interp_position(lead_state, max(elapsed_s - dt, 0.0))
+  s_next = _profile_interp_position(lead_state, elapsed_s + dt)
+  return float((s_next - s_prev) / (2.0 * dt))
+
+
+def _set_vehicle_pose_2d(vehicle, position_xy, heading_theta: float, speed_mps: float):
+  x = float(position_xy[0])
+  y = float(position_xy[1])
+  pos_ok = False
+
+  if hasattr(vehicle, "set_position"):
+    try:
+      vehicle.set_position([x, y])
+      pos_ok = True
+    except Exception:
+      pass
+  if not pos_ok and hasattr(vehicle, "set_pos"):
+    try:
+      vehicle.set_pos([x, y])
+      pos_ok = True
+    except Exception:
+      pass
+  if not pos_ok:
+    try:
+      vehicle.position = [x, y]
+      pos_ok = True
+    except Exception:
+      pass
+
+  heading_ok = False
+  for setter in ("set_heading_theta", "set_heading"):
+    if hasattr(vehicle, setter):
+      try:
+        getattr(vehicle, setter)(float(heading_theta))
+        heading_ok = True
+        break
+      except Exception:
+        pass
+  if not heading_ok:
+    try:
+      vehicle.heading_theta = float(heading_theta)
+      heading_ok = True
+    except Exception:
+      pass
+
+  vx = float(math.cos(heading_theta) * speed_mps)
+  vy = float(math.sin(heading_theta) * speed_mps)
+  for setter in ("set_velocity",):
+    if hasattr(vehicle, setter):
+      try:
+        getattr(vehicle, setter)([vx, vy])
+        break
+      except Exception:
+        pass
+
+  return pos_ok and heading_ok
 
 
 def _patch_metadrive(arrive_dest_done: bool):
@@ -191,6 +328,9 @@ def _spawn_lead_vehicle(env: MetaDriveEnv, lead_cfg: LeadConfig, lead_state: Lea
   lead_state.vehicle = None
   lead_state.policy = None
   lead_state.start_time = None
+  lead_state.profile_lane = None
+  lead_state.profile_s_base = None
+  lead_state.pose_replay_failed = False
 
   if not lead_cfg.enabled:
     return
@@ -219,9 +359,20 @@ def _spawn_lead_vehicle(env: MetaDriveEnv, lead_cfg: LeadConfig, lead_state: Lea
         position=target_position.tolist(),
         heading=target_heading,
       )
-      policy_seed = int((time.time() * 1000) % (2**31 - 1))
-      lead_state.policy = IDMPolicy(lead_state.vehicle, policy_seed)
+      if lead_state.profile_t is None:
+        policy_seed = int((time.time() * 1000) % (2**31 - 1))
+        lead_state.policy = IDMPolicy(lead_state.vehicle, policy_seed)
+      else:
+        lead_state.policy = None
       lead_state.start_time = time.monotonic()
+
+      if lead_state.profile_t is not None and lead_state.profile_s is not None:
+        lane_for_profile = getattr(lead_state.vehicle, "lane", None) or getattr(env.vehicle, "lane", None)
+        if lane_for_profile is not None:
+          lead_s, _ = lane_for_profile.local_coordinates(lead_state.vehicle.position)
+          lead_state.profile_lane = lane_for_profile
+          lead_state.profile_s_base = float(lead_s - lead_state.profile_s[0])
+
       print(f"[INFO] Spawned lead vehicle model '{model_name}'")
       return
     except (OSError, FileNotFoundError) as e:
@@ -273,16 +424,61 @@ def _clear_lead_vehicle(env: MetaDriveEnv, lead_state: LeadState):
   lead_state.vehicle = None
   lead_state.policy = None
   lead_state.start_time = None
+  lead_state.profile_lane = None
+  lead_state.profile_s_base = None
+  lead_state.pose_replay_failed = False
 
 
 def _update_lead_vehicle(env: MetaDriveEnv, lead_cfg: LeadConfig, lead_state: LeadState):
-  if lead_state.vehicle is None or lead_state.policy is None:
+  if lead_state.vehicle is None:
     return
 
   try:
-    if lead_cfg.start_delay_s > 0.0 and lead_state.start_time is not None and (time.monotonic() - lead_state.start_time) < lead_cfg.start_delay_s:
+    elapsed = 0.0 if lead_state.start_time is None else (time.monotonic() - lead_state.start_time)
+    if lead_cfg.start_delay_s > 0.0 and elapsed < lead_cfg.start_delay_s:
       lead_action = np.array([0.0, 0.0], dtype=np.float64)
+    elif lead_state.profile_t is not None and lead_state.profile_s is not None:
+      if lead_state.profile_lane is None:
+        lane_for_profile = getattr(lead_state.vehicle, "lane", None) or getattr(env.vehicle, "lane", None)
+        if lane_for_profile is not None:
+          lead_s, _ = lane_for_profile.local_coordinates(lead_state.vehicle.position)
+          lead_state.profile_lane = lane_for_profile
+          lead_state.profile_s_base = float(lead_s - lead_state.profile_s[0])
+
+      if lead_state.profile_lane is not None and lead_state.profile_s_base is not None:
+        s_rel = _profile_interp_position(lead_state, elapsed - lead_cfg.start_delay_s)
+        v_target = _profile_interp_speed(lead_state, elapsed - lead_cfg.start_delay_s)
+        target_s = float(lead_state.profile_s_base + s_rel)
+
+        p0 = np.array(lead_state.profile_lane.position(target_s, lead_cfg.lateral_offset_m), dtype=np.float64)[:2]
+        p1 = np.array(lead_state.profile_lane.position(target_s + 0.5, lead_cfg.lateral_offset_m), dtype=np.float64)[:2]
+        tangent = p1 - p0
+        if np.linalg.norm(tangent) > 1e-6:
+          heading = float(math.atan2(tangent[1], tangent[0]))
+        else:
+          heading = float(lead_state.vehicle.heading_theta)
+
+        if not _set_vehicle_pose_2d(lead_state.vehicle, p0, heading, max(v_target, 0.0)):
+          if not lead_state.pose_replay_failed:
+            print("[WARNING] Lead pose replay failed; falling back to controller tracking.")
+            lead_state.pose_replay_failed = True
+        else:
+          lead_state.pose_replay_failed = False
+          lead_action = np.array([0.0, 0.0], dtype=np.float64)
+          lead_state.vehicle.before_step(lead_action.tolist())
+          return
+
+      v_target = _profile_interp_speed(lead_state, elapsed - lead_cfg.start_delay_s)
+      v_now = _planar_speed(lead_state.vehicle.velocity)
+      lon_cmd = float(np.clip((v_target - v_now) * 0.35, -1.0, 1.0))
+      lane_steer = _lane_center_steer(lead_state.vehicle, getattr(lead_state.vehicle, "lane", None))
+      if lane_steer is None:
+        lane_steer = _ego_lane_fallback_steer(lead_state.vehicle, env.vehicle, lead_cfg.distance_m)
+      steer_cmd = 0.0 if lane_steer is None else float(np.clip(lane_steer, -1.0, 1.0))
+      lead_action = np.array([steer_cmd, lon_cmd], dtype=np.float64)
     else:
+      if lead_state.policy is None:
+        return
       lead_action = np.array(lead_state.policy.act(), dtype=np.float64)
 
       lane_steer = _lane_center_steer(lead_state.vehicle, getattr(lead_state.vehicle, "lane", None))
@@ -358,6 +554,8 @@ def metadrive_process(
     lateral_offset_m=float(config.pop("lead_vehicle_lateral_offset", 0.0)),
     model=config.pop("lead_vehicle_model", "s"),
     render=bool(config.pop("lead_vehicle_render", True)),
+    profile_scn=config.pop("lead_profile_scn", None),
+    profile_csv=config.pop("lead_profile_csv", None),
   )
   for legacy_key in LEGACY_LEAD_KEYS:
     config.pop(legacy_key, None)
@@ -377,6 +575,14 @@ def metadrive_process(
 
   env = MetaDriveEnv(config)
   lead_state = LeadState()
+  if lead_cfg.profile_scn is not None:
+    if lead_cfg.profile_csv is None:
+      raise RuntimeError("lead_profile_scn is set but lead_profile_csv is missing")
+    lead_state.profile_t, lead_state.profile_s = _load_lead_position_profile(lead_cfg.profile_csv, int(lead_cfg.profile_scn))
+    print(
+      f"[INFO] Loaded lead trajectory positions for scenario {lead_cfg.profile_scn} "
+      f"from {lead_cfg.profile_csv} ({len(lead_state.profile_t)} samples)"
+    )
 
   def reset_world():
     _clear_lead_vehicle(env, lead_state)

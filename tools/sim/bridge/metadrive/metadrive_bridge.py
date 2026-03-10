@@ -69,14 +69,16 @@ class MetaDriveBridge(SimulatorBridge):
   TICKS_PER_FRAME = 2
 
   def __init__(self, dual_camera, high_quality, test_duration=math.inf, test_run=False, scenario=SCENARIO_DEFAULT,
-               enable_hcc=False):
-    enable_hcc = enable_hcc or scenario in STRAIGHT_ROAD_SCENARIOS
+               enable_hcc=False, scn=None, scn_csv=None):
+    enable_hcc = enable_hcc or scenario in STRAIGHT_ROAD_SCENARIOS or scn is not None
     super().__init__(dual_camera, high_quality, enable_hcc=enable_hcc)
 
     self.should_render = False
     self.test_run = test_run
     self.test_duration = test_duration if self.test_run else math.inf
     self.scenario = scenario
+    self.scn = scn
+    self.scn_csv = scn_csv
 
   def spawn_world(self, queue: Queue):
     sensors = {
@@ -86,9 +88,11 @@ class MetaDriveBridge(SimulatorBridge):
     if self.dual_camera:
       sensors["rgb_wide"] = (RGBCameraWide, W, H)
 
-    straight_scenario = self.scenario in STRAIGHT_ROAD_SCENARIOS
-    lead_enabled = self.scenario in LEAD_SCENARIOS
+    replay_scenario = self.scn is not None
+    straight_scenario = replay_scenario or self.scenario in STRAIGHT_ROAD_SCENARIOS
+    lead_enabled = replay_scenario or self.scenario in LEAD_SCENARIOS
     map_config = create_straight_map() if straight_scenario else create_map()
+    lead_start_delay_s = 0.0 if replay_scenario else 5.0
 
     config = dict(
       use_render=self.should_render,
@@ -109,10 +113,12 @@ class MetaDriveBridge(SimulatorBridge):
       traffic_density=0.0,
       lead_vehicle_enabled=lead_enabled,
       lead_vehicle_distance=8.0,
-      lead_start_delay_s=5.0,
+      lead_start_delay_s=lead_start_delay_s,
       lead_vehicle_lateral_offset=0.0,
       lead_vehicle_model="m",
       lead_vehicle_render=True,
+      lead_profile_scn=self.scn,
+      lead_profile_csv=self.scn_csv,
       steer_cmd_ratio=1.2,
       sim_step_frames=self.TICKS_PER_FRAME,
       camera_capture_frames=5,
