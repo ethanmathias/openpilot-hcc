@@ -40,6 +40,12 @@ ButtonType = car.CarState.ButtonEvent.Type
 SafetyModel = car.CarParams.SafetyModel
 
 IGNORED_SAFETY_MODES = (SafetyModel.silent, SafetyModel.noOutput)
+COLLISION_ALERT_EVENTS = {
+  EventName.fcw,
+  EventName.aeb,
+  EventName.stockAeb,
+  EventName.stockFcw,
+}
 
 
 class SelfdriveD:
@@ -394,6 +400,9 @@ class SelfdriveD:
         self.personality = (self.personality - 1) % 3
         self.params.put_nonblocking('LongitudinalPersonality', self.personality)
         self.events.add(EventName.personalityChanged)
+
+    # Disable FCW/AEB-family alerts at the openpilot layer.
+    self.events.events = [e for e in self.events.events if e not in COLLISION_ALERT_EVENTS]
 
   def data_sample(self):
     _car_state = messaging.recv_one(self.car_state_sock)
