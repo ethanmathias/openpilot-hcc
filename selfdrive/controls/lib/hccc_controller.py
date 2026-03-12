@@ -1,5 +1,6 @@
 import numpy as np
 
+# HCCC_CHANGE_NOTE: standalone hCCC implementation used by longcontrol and dedicated tests.
 
 class hCCC:
   """Human-in-the-Loop Cooperative Cruise Control (hCCC) for OpenPilot."""

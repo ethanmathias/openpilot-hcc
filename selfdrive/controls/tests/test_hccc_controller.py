@@ -2,6 +2,7 @@ from types import SimpleNamespace
 
 from openpilot.selfdrive.controls.lib.hccc_controller import hCCC
 
+# HCCC_CHANGE_NOTE: regression coverage for core hCCC lead/no-lead accel behavior.
 
 def _cs(v_ego):
   return SimpleNamespace(vEgo=v_ego)

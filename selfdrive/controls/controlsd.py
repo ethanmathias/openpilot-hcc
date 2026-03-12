@@ -36,6 +36,7 @@ class Controls:
 
     self.CI = interfaces[self.CP.carFingerprint](self.CP)
 
+    # HCCC_CHANGE_NOTE: radarState is subscribed so longcontrol can consume leadOne for hCCC.
     self.sm = messaging.SubMaster(['liveDelay', 'liveParameters', 'liveTorqueParameters', 'modelV2', 'selfdriveState',
                                    'liveCalibration', 'livePose', 'longitudinalPlan', 'carState', 'carOutput',
                                    'radarState', 'driverMonitoringState', 'onroadEvents', 'driverAssistance'], poll='selfdriveState')
@@ -98,6 +99,7 @@ class Controls:
     #                (not standstill or self.CP.steerAtStandstill)
     # Manual-steering mode: keep longitudinal automation, disable all lateral actuation.
     CC.latActive = False
+    # HCCC_CHANGE_NOTE: on-road longActive can be enabled via the EnableHCCC toggle.
     cp_hccc_flag = getattr(self.CP, "enableHCCC", None)
     hccc_enabled = cp_hccc_flag if cp_hccc_flag is not None else self.params.get_bool("EnableHCCC")
     CC.longActive = CC.enabled and not any(e.overrideLongitudinal for e in self.sm['onroadEvents']) and \
@@ -118,6 +120,7 @@ class Controls:
 
     # accel PID loop
     pid_accel_limits = self.CI.get_pid_accel_limits(self.CP, CS.vEgo, CS.vCruise * CV.KPH_TO_MS)
+    # HCCC_CHANGE_NOTE: pass radar lead directly into longcontrol update.
     actuators.accel = float(self.LoC.update(CC.longActive, CS, long_plan.aTarget, long_plan.shouldStop,
                                             pid_accel_limits, radar_state.leadOne))
 
@@ -194,6 +197,7 @@ class Controls:
     cs.lateralPlanMonoTime = self.sm.logMonoTime['modelV2']
     cs.desiredCurvature = self.desired_curvature
     cs.longControlState = self.LoC.long_control_state
+    # HCCC_CHANGE_NOTE: LoC may not expose PID internals after hCCC refactor; guard telemetry fields.
     pid = getattr(self.LoC, "pid", None)
     if pid is not None:
       cs.upAccelCmd = float(pid.p)

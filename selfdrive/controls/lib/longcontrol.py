@@ -12,6 +12,7 @@ CONTROL_N_T_IDX = ModelConstants.T_IDXS[:CONTROL_N]
 LongCtrlState = car.CarControl.Actuators.LongControlState
 SIMULATION = os.environ.get("SIMULATION", "0") == "1"
 
+# HCCC_CHANGE_NOTE: longcontrol was refactored from PID-based accel control to hCCC + manual pedal blending.
 
 def _normalize_pedal(value: float) -> float:
   v = float(value)
@@ -84,6 +85,7 @@ class LongControl:
     self._refresh_hccc(force_reset=True)
 
   def _hccc_enabled(self):
+    # HCCC_CHANGE_NOTE: enable from CarParams override or persistent EnableHCCC toggle.
     cp_flag = getattr(self.CP, 'enableHCCC', None)
     if cp_flag is not None:
       return cp_flag
@@ -103,7 +105,6 @@ class LongControl:
     """Update longitudinal control. This updates the state machine and runs hCCC."""
     self._refresh_hccc()
     accel_min, accel_max = accel_limits
-   
 
     hccc_output = None
     if self.use_hccc and self.hccc is not None:
@@ -111,7 +112,7 @@ class LongControl:
       self.hccc._max_accl = accel_max
       hccc_output = self.hccc.run_step(CS, lead)
 
-    # BeamNG-style blending: add raw manual pedal net input directly.
+    # HCCC_CHANGE_NOTE: BeamNG-style blending adds raw manual pedal net input to hCCC output.
     manual_accel = _manual_longitudinal_input(CS)
 
     if hccc_output is not None:

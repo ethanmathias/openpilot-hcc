@@ -182,6 +182,7 @@ def get_lead(v_ego: float, ready: bool, tracks: dict[int, Track], lead_msg: capn
       if (not lead_dict['status']) or (closest_track.dRel < lead_dict['dRel']):
         lead_dict = closest_track.get_RadarState()
 
+  # HCCC_CHANGE_NOTE: fallback to closest forward track when lead matching fails.
   if not lead_dict['status'] and len(tracks) > 0:
     sim_tracks = [c for c in tracks.values() if c.dRel > 0.5]
     if len(sim_tracks) > 0:

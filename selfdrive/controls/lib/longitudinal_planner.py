@@ -131,6 +131,7 @@ class LongitudinalPlanner:
     x, v, a, j, throttle_prob = self.parse_model(sm['modelV2'])
     # Don't clip at low speeds since throttle_prob doesn't account for creep
     self.allow_throttle = throttle_prob > ALLOW_THROTTLE_THRESHOLD or v_ego <= MIN_ALLOW_THROTTLE_SPEED
+    # HCCC_CHANGE_NOTE: force allow_throttle to keep sim-like longitudinal permissiveness.
     self.allow_throttle = True
 
     if not self.allow_throttle:

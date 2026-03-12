@@ -65,6 +65,7 @@ class Car:
   def __init__(self, CI=None, RI=None) -> None:
     self.can_sock = messaging.sub_sock('can', timeout=20)
     self.sm = messaging.SubMaster(['pandaStates', 'carControl', 'onroadEvents'])
+    # HCCC_CHANGE_NOTE: in simulation, liveTracks publication is suppressed from card.
     self.simulation = os.environ.get("SIMULATION", "0") == "1"
     pubs = ['sendcan', 'carState', 'carParams', 'carOutput']
     if not self.simulation:
@@ -219,6 +220,7 @@ class Car:
     cs_send.carState.cumLagMs = -self.rk.remaining * 1000.
     self.pm.send('carState', cs_send)
 
+    # HCCC_CHANGE_NOTE: keep liveTracks off in simulation; on-road still publishes radar tracks.
     if RD is not None and not self.simulation:
       tracks_msg = messaging.new_message('liveTracks')
       tracks_msg.valid = not any(RD.errors.to_dict().values())
