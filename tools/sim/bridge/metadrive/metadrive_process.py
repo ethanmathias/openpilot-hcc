@@ -4,6 +4,7 @@ import time
 from collections import namedtuple
 from dataclasses import dataclass, field
 from multiprocessing.connection import Connection
+from pathlib import Path
 
 import numpy as np
 from panda3d.core import Vec3
@@ -74,6 +75,7 @@ class LeadConfig:
   render: bool
   profile_scn: int | None
   profile_csv: str | None
+  output_csv: str | None
 
 
 @dataclass
@@ -679,6 +681,48 @@ def _send_done_state(simulation_state_send: Connection, done_result):
   simulation_state_send.send(metadrive_simulation_state(running=False, done=done_result[0], done_info=done_result[1]))
 
 
+def _profile_is_complete(lead_cfg: LeadConfig, lead_state: LeadState, now_monotonic_s: float) -> bool:
+  """Return True when replay time exceeds the final sample timestamp in profile CSV."""
+  if lead_state.profile_t is None or lead_state.start_time is None:
+    return False
+
+  replay_elapsed_s = now_monotonic_s - lead_state.start_time - lead_cfg.start_delay_s
+  return replay_elapsed_s >= float(lead_state.profile_t[-1])
+
+
+def _default_output_csv_path(lead_cfg: LeadConfig) -> str:
+  """Build a default output CSV path for bridge telemetry logs."""
+  timestamp = time.strftime("%Y%m%d_%H%M%S")
+  if lead_cfg.profile_csv:
+    source_path = Path(lead_cfg.profile_csv)
+    scenario_tag = f".scn{lead_cfg.profile_scn}" if lead_cfg.profile_scn is not None else ""
+    return str(source_path.with_name(f"{source_path.stem}.openpilot{scenario_tag}.{timestamp}.csv"))
+  return str(Path.cwd() / f"metadrive_bridge_log.{timestamp}.csv")
+
+
+def _open_output_csv(path: str):
+  """Create output CSV writer and write the header matching requested schema."""
+  output_path = Path(path).expanduser()
+  output_path.parent.mkdir(parents=True, exist_ok=True)
+  output_file = output_path.open("w", newline="")
+  output_writer = csv.writer(output_file)
+  output_writer.writerow([
+    "time[s]",
+    "position_ego[m]",
+    "position_pre[m]",
+    "speed_ego[m/s]",
+    "speed_pre[m/s]",
+    "acceleration_ego[m/s2]",
+    "headway[m]",
+    "deltav[m/s]",
+    "engine_throttle",
+    "engine_brake",
+    "Controller_throttle",
+    "Controller_brake",
+  ])
+  return output_file, output_writer, str(output_path)
+
+
 # Main worker entrypoint running in the MetaDrive subprocess.
 def metadrive_process(
   dual_camera: bool,
@@ -706,6 +750,7 @@ def metadrive_process(
     render=bool(config.pop("lead_vehicle_render", True)),
     profile_scn=config.pop("lead_profile_scn", None),
     profile_csv=config.pop("lead_profile_csv", None),
+    output_csv=config.pop("lead_profile_output_csv", None),
   )
   for legacy_key in LEGACY_LEAD_KEYS:
     config.pop(legacy_key, None)
@@ -751,81 +796,147 @@ def metadrive_process(
   ratekeeper = Ratekeeper(100, None)
   ego_control = [0.0, 0.0]
   engage_start_time = None
+  bridge_start_time_s = time.monotonic()
+  prev_ego_speed_mps = _planar_speed(env.vehicle.velocity)
 
-  while not exit_event.is_set():
-    lead_measurement = lead_state.measurement
-    ego_debug_state = _ego_debug_state(env.vehicle)
-    vehicle_state_send.send(
-      metadrive_vehicle_state(
-        velocity=vec3(x=float(env.vehicle.velocity[0]), y=float(env.vehicle.velocity[1]), z=0),
-        position=env.vehicle.position,
-        bearing=float(math.degrees(env.vehicle.heading_theta)),
-        steering_angle=env.vehicle.steering * env.vehicle.MAX_STEERING,
-        lead_status=lead_measurement["status"],
-        lead_d_rel=lead_measurement["d_rel"],
-        lead_y_rel=lead_measurement["y_rel"],
-        lead_v_rel=lead_measurement["v_rel"],
-        lead_a_rel=lead_measurement["a_rel"],
-        debug_has_lane=ego_debug_state["has_lane"],
-        debug_on_lane=ego_debug_state["on_lane"],
-        debug_lane_s=ego_debug_state["lane_s"],
-        debug_lane_lateral=ego_debug_state["lane_lateral"],
-        debug_lane_heading_error_deg=ego_debug_state["lane_heading_error_deg"],
-        debug_on_yellow_line=ego_debug_state["on_yellow_line"],
-        debug_on_white_line=ego_debug_state["on_white_line"],
-        debug_crash_sidewalk=ego_debug_state["crash_sidewalk"],
-        debug_out_of_route=ego_debug_state["out_of_route"],
+  output_csv_path = lead_cfg.output_csv or _default_output_csv_path(lead_cfg)
+  output_file, output_writer, output_csv_path = _open_output_csv(output_csv_path)
+  print(f"[INFO] Writing bridge telemetry CSV to {output_csv_path}")
+
+  try:
+    while not exit_event.is_set():
+      lead_measurement = lead_state.measurement
+      ego_debug_state = _ego_debug_state(env.vehicle)
+      vehicle_state_send.send(
+        metadrive_vehicle_state(
+          velocity=vec3(x=float(env.vehicle.velocity[0]), y=float(env.vehicle.velocity[1]), z=0),
+          position=env.vehicle.position,
+          bearing=float(math.degrees(env.vehicle.heading_theta)),
+          steering_angle=env.vehicle.steering * env.vehicle.MAX_STEERING,
+          lead_status=lead_measurement["status"],
+          lead_d_rel=lead_measurement["d_rel"],
+          lead_y_rel=lead_measurement["y_rel"],
+          lead_v_rel=lead_measurement["v_rel"],
+          lead_a_rel=lead_measurement["a_rel"],
+          debug_has_lane=ego_debug_state["has_lane"],
+          debug_on_lane=ego_debug_state["on_lane"],
+          debug_lane_s=ego_debug_state["lane_s"],
+          debug_lane_lateral=ego_debug_state["lane_lateral"],
+          debug_lane_heading_error_deg=ego_debug_state["lane_heading_error_deg"],
+          debug_on_yellow_line=ego_debug_state["on_yellow_line"],
+          debug_on_white_line=ego_debug_state["on_white_line"],
+          debug_crash_sidewalk=ego_debug_state["crash_sidewalk"],
+          debug_out_of_route=ego_debug_state["out_of_route"],
+        )
       )
-    )
 
-    should_reset = False
-    if controls_recv.poll(0):
-      while controls_recv.poll(0):
-        steer_angle, gas, should_reset = controls_recv.recv()
+      should_reset = False
+      if controls_recv.poll(0):
+        while controls_recv.poll(0):
+          steer_angle, gas, should_reset = controls_recv.recv()
 
-      steer_limit = float(env.vehicle.MAX_STEERING) * max(steer_command_ratio, 1e-3)
-      steer_cmd = float(np.interp(steer_angle, [-steer_limit, steer_limit], [-1.0, 1.0]))
-      ego_control = [float(np.clip(steer_cmd, -1.0, 1.0)), gas]
+        steer_limit = float(env.vehicle.MAX_STEERING) * max(steer_command_ratio, 1e-3)
+        steer_cmd = float(np.interp(steer_angle, [-steer_limit, steer_limit], [-1.0, 1.0]))
+        ego_control = [float(np.clip(steer_cmd, -1.0, 1.0)), gas]
 
-    if should_reset:
-      reset_world()
-      engage_start_time = None
+      if should_reset:
+        reset_world()
+        engage_start_time = None
 
-    if op_engaged.is_set() and engage_start_time is None:
-      engage_start_time = time.monotonic()
+      if op_engaged.is_set() and engage_start_time is None:
+        engage_start_time = time.monotonic()
 
-    if ratekeeper.frame % sim_step_interval_frames == 0:
-      _update_lead_vehicle(env, lead_cfg, lead_state)
-      pre_step_debug = ego_debug_state
-      pre_step_position_xy = np.array(env.vehicle.position, dtype=np.float64)[:2]
-      pre_step_heading = float(env.vehicle.heading_theta)
-      _, _, terminated, _, _ = env.step(ego_control)
-      _update_lead_measurement(env, lead_state, sim_step_dt_s)
+      if ratekeeper.frame % sim_step_interval_frames == 0:
+        _update_lead_vehicle(env, lead_cfg, lead_state)
+        pre_step_debug = ego_debug_state
+        pre_step_position_xy = np.array(env.vehicle.position, dtype=np.float64)[:2]
+        pre_step_heading = float(env.vehicle.heading_theta)
+        _, _, terminated, _, _ = env.step(ego_control)
+        _update_lead_measurement(env, lead_state, sim_step_dt_s)
 
-      timeout = engage_start_time is not None and (time.monotonic() - engage_start_time) >= test_duration
-      if terminated or (timeout and test_run):
-        done_result = env.done_function("default_agent") if terminated else (True, {"timeout": True})
+        ego_speed_mps = _planar_speed(env.vehicle.velocity)
+        ego_accel_mps2 = (ego_speed_mps - prev_ego_speed_mps) / max(sim_step_dt_s, 1e-3)
+        prev_ego_speed_mps = ego_speed_mps
+        lead_speed_mps = _planar_speed(lead_state.vehicle.velocity) if lead_state.vehicle is not None else 0.0
 
-        if terminated and bool(done_result[1].get("out_of_road", False)):
-          post_step_debug = _ego_debug_state(env.vehicle)
-          post_step_position_xy = np.array(env.vehicle.position, dtype=np.float64)[:2]
-          post_step_heading = float(env.vehicle.heading_theta)
-          print("[DEBUG] MetaDrive out_of_road termination details:")
-          print(f"[DEBUG] done_info={done_result[1]}")
-          print(_format_debug_state("  preStep", pre_step_debug, pre_step_position_xy, pre_step_heading))
-          print(_format_debug_state("  postStep", post_step_debug, post_step_position_xy, post_step_heading))
-          print(f"[DEBUG] laneChanged={pre_step_debug['lane_id'] != post_step_debug['lane_id']}")
-          print("[WARNING] Episode hit out_of_road. Auto-resetting scenario instead of exiting.")
-          reset_world()
-          engage_start_time = None
-          continue
+        engine_long_cmd = float(getattr(env.vehicle, "throttle_brake", ego_control[1]))
+        engine_throttle = max(engine_long_cmd, 0.0)
+        engine_brake = max(-engine_long_cmd, 0.0)
+        controller_throttle = max(float(ego_control[1]), 0.0)
+        controller_brake = max(-float(ego_control[1]), 0.0)
 
-        _send_done_state(simulation_state_send, done_result)
+        ego_position = np.array(env.vehicle.position, dtype=np.float64)
+        ego_position_xyz = [
+          float(ego_position[0]),
+          float(ego_position[1]),
+          float(ego_position[2]) if ego_position.size > 2 else 0.0,
+        ]
+        if lead_state.vehicle is not None:
+          lead_position = np.array(lead_state.vehicle.position, dtype=np.float64)
+          lead_position_xyz = [
+            float(lead_position[0]),
+            float(lead_position[1]),
+            float(lead_position[2]) if lead_position.size > 2 else 0.0,
+          ]
+        else:
+          lead_position_xyz = ["", "", ""]
 
-    if ratekeeper.frame % camera_capture_frames == 0:
-      if dual_camera and wide_road_image is not None:
-        wide_road_image[...] = _capture_rgb_image(env, "rgb_wide")
-      road_image[...] = _capture_rgb_image(env, "rgb_road")
-      image_lock.release()
+        elapsed_time_s = round(time.monotonic() - bridge_start_time_s, 6)
+        output_writer.writerow([
+          elapsed_time_s,
+          ego_position_xyz,
+          lead_position_xyz,
+          float(ego_speed_mps),
+          float(lead_speed_mps),
+          float(ego_accel_mps2),
+          float(lead_measurement["d_rel"]) if lead_measurement["status"] else "",
+          float(lead_measurement["v_rel"]) if lead_measurement["status"] else "",
+          float(engine_throttle),
+          float(engine_brake),
+          float(controller_throttle),
+          float(controller_brake),
+        ])
 
-    ratekeeper.keep_time()
+        now_s = time.monotonic()
+        if _profile_is_complete(lead_cfg, lead_state, now_s):
+          done_result = (
+            True,
+            {
+              "csv_profile_complete": True,
+              "profile_scn": lead_cfg.profile_scn,
+              "output_csv": output_csv_path,
+            },
+          )
+          _send_done_state(simulation_state_send, done_result)
+          break
+
+        timeout = engage_start_time is not None and (now_s - engage_start_time) >= test_duration
+        if terminated or (timeout and test_run):
+          done_result = env.done_function("default_agent") if terminated else (True, {"timeout": True})
+
+          if terminated and bool(done_result[1].get("out_of_road", False)):
+            post_step_debug = _ego_debug_state(env.vehicle)
+            post_step_position_xy = np.array(env.vehicle.position, dtype=np.float64)[:2]
+            post_step_heading = float(env.vehicle.heading_theta)
+            print("[DEBUG] MetaDrive out_of_road termination details:")
+            print(f"[DEBUG] done_info={done_result[1]}")
+            print(_format_debug_state("  preStep", pre_step_debug, pre_step_position_xy, pre_step_heading))
+            print(_format_debug_state("  postStep", post_step_debug, post_step_position_xy, post_step_heading))
+            print(f"[DEBUG] laneChanged={pre_step_debug['lane_id'] != post_step_debug['lane_id']}")
+            print("[WARNING] Episode hit out_of_road. Auto-resetting scenario instead of exiting.")
+            reset_world()
+            engage_start_time = None
+            continue
+
+          _send_done_state(simulation_state_send, done_result)
+
+      if ratekeeper.frame % camera_capture_frames == 0:
+        if dual_camera and wide_road_image is not None:
+          wide_road_image[...] = _capture_rgb_image(env, "rgb_wide")
+        road_image[...] = _capture_rgb_image(env, "rgb_road")
+        image_lock.release()
+
+      ratekeeper.keep_time()
+  finally:
+    output_file.flush()
+    output_file.close()

@@ -29,7 +29,7 @@ def _resolve_scn_csv_path(scn_csv: str | None) -> str | None:
   return None
 
 
-def create_bridge(dual_camera, high_quality, mode="default", scn=None, scn_csv=None):
+def create_bridge(dual_camera, high_quality, mode="default", scn=None, scn_csv=None, output_csv=None):
   queue: Any = Queue()
 
   if scn is not None and scn < 1:
@@ -41,7 +41,7 @@ def create_bridge(dual_camera, high_quality, mode="default", scn=None, scn_csv=N
 
   simulator_bridge = MetaDriveBridge(dual_camera, high_quality,
                                      scenario=SIM_MODE_TO_SCENARIO[mode], enable_hcc=False,
-                                     scn=scn, scn_csv=scn_csv)
+                                     scn=scn, scn_csv=scn_csv, output_csv=output_csv)
   simulator_process = simulator_bridge.run(queue)
 
   return queue, simulator_process, simulator_bridge
@@ -67,6 +67,8 @@ def parse_args(add_args=None):
                       help='Replay lead trajectory from scenario column index in Scenarios.csv (e.g., 48)')
   parser.add_argument('--scn_csv', default=None,
                       help='Path to scenario CSV file (defaults to tools/sim/lib/Scenarios.csv if present)')
+  parser.add_argument('--output_csv', default=None,
+                      help='Path to write bridge telemetry CSV output')
 
   return parser.parse_args(add_args)
 
@@ -74,7 +76,8 @@ if __name__ == "__main__":
   args = parse_args()
 
   queue, simulator_process, simulator_bridge = create_bridge(args.dual_camera, args.high_quality,
-                                                             mode=args.mode, scn=args.scn, scn_csv=args.scn_csv)
+                                                             mode=args.mode, scn=args.scn, scn_csv=args.scn_csv,
+                                                             output_csv=args.output_csv)
 
   if args.logitech_wheel:
     from openpilot.tools.sim.lib.logitech_wheel_ctrl import logitech_wheel_poll_thread
