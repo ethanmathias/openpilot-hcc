@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 import math
-import os
 from numbers import Number
 
 from cereal import car, log
@@ -26,7 +25,6 @@ LaneChangeState = log.LaneChangeState
 LaneChangeDirection = log.LaneChangeDirection
 
 ACTUATOR_FIELDS = tuple(car.CarControl.Actuators.schema.fields.keys())
-SIMULATION = os.environ.get("SIMULATION", "0") == "1"
 
 
 class Controls:
@@ -100,7 +98,10 @@ class Controls:
     #                (not standstill or self.CP.steerAtStandstill)
     # Manual-steering mode: keep longitudinal automation, disable all lateral actuation.
     CC.latActive = False
-    CC.longActive = CC.enabled and not any(e.overrideLongitudinal for e in self.sm['onroadEvents']) and (self.CP.openpilotLongitudinalControl or SIMULATION)
+    cp_hccc_flag = getattr(self.CP, "enableHCCC", None)
+    hccc_enabled = cp_hccc_flag if cp_hccc_flag is not None else self.params.get_bool("EnableHCCC")
+    CC.longActive = CC.enabled and not any(e.overrideLongitudinal for e in self.sm['onroadEvents']) and \
+                    (self.CP.openpilotLongitudinalControl or hccc_enabled)
 
     actuators = CC.actuators
     actuators.longControlState = self.LoC.long_control_state

@@ -25,6 +25,9 @@ DESCRIPTIONS = {
     "Enable this to switch to openpilot longitudinal control. Enabling Experimental mode is recommended when enabling openpilot longitudinal control alpha. " +
     "Changing this setting will restart openpilot if the car is powered on."
   ),
+  'hccc_onroad': tr_noop(
+    "Enable Human-in-the-Loop Cooperative Cruise Control (hCCC) logic for on-road longitudinal control."
+  ),
 }
 
 
@@ -75,6 +78,13 @@ class DeveloperLayout(Widget):
       enabled=lambda: not ui_state.engaged,
     )
 
+    self._hccc_toggle = toggle_item(
+      lambda: tr("Enable HCCC Onroad"),
+      description=lambda: tr(DESCRIPTIONS["hccc_onroad"]),
+      initial_state=self._params.get_bool("EnableHCCC"),
+      callback=self._on_enable_hccc,
+    )
+
     self._ui_debug_toggle = toggle_item(
       lambda: tr("UI Debug Mode"),
       description="",
@@ -90,6 +100,7 @@ class DeveloperLayout(Widget):
       self._joystick_toggle,
       self._long_maneuver_toggle,
       self._alpha_long_toggle,
+      self._hccc_toggle,
       self._ui_debug_toggle,
     ], line_separator=True, spacing=0)
 
@@ -137,6 +148,7 @@ class DeveloperLayout(Widget):
       ("JoystickDebugMode", self._joystick_toggle),
       ("LongitudinalManeuverMode", self._long_maneuver_toggle),
       ("AlphaLongitudinalEnabled", self._alpha_long_toggle),
+      ("EnableHCCC", self._hccc_toggle),
       ("ShowDebugInfo", self._ui_debug_toggle),
     ):
       item.action_item.set_state(self._params.get_bool(key))
@@ -183,3 +195,6 @@ class DeveloperLayout(Widget):
       self._params.put_bool("AlphaLongitudinalEnabled", False)
       self._params.put_bool("OnroadCycleRequested", True)
       self._update_toggles()
+
+  def _on_enable_hccc(self, state: bool):
+    self._params.put_bool("EnableHCCC", state)
