@@ -35,6 +35,7 @@ LEGACY_LEAD_KEYS = (
 LEAD_STEER_BLEND_IDM = 0.2
 LEAD_STEER_BLEND_LANE = 0.8
 EGO_LANE_LOOKAHEAD_M = 6.0
+CSV_LOG_INTERVAL_S = 0.1
 
 # IPC message payloads shared with MetaDriveWorld.
 metadrive_simulation_state = namedtuple("metadrive_simulation_state", ["running", "done", "done_info"])
@@ -798,6 +799,7 @@ def metadrive_process(
   engage_start_time = None
   bridge_start_time_s = time.monotonic()
   prev_ego_speed_mps = _planar_speed(env.vehicle.velocity)
+  next_csv_log_time_s = 0.0
 
   output_csv_path = lead_cfg.output_csv or _default_output_csv_path(lead_cfg)
   output_file, output_writer, output_csv_path = _open_output_csv(output_csv_path)
@@ -881,23 +883,25 @@ def metadrive_process(
         else:
           lead_position_xyz = ["", "", ""]
 
-        elapsed_time_s = round(time.monotonic() - bridge_start_time_s, 6)
-        output_writer.writerow([
-          elapsed_time_s,
-          ego_position_xyz,
-          lead_position_xyz,
-          float(ego_speed_mps),
-          float(lead_speed_mps),
-          float(ego_accel_mps2),
-          float(lead_measurement["d_rel"]) if lead_measurement["status"] else "",
-          float(lead_measurement["v_rel"]) if lead_measurement["status"] else "",
-          float(engine_throttle),
-          float(engine_brake),
-          float(controller_throttle),
-          float(controller_brake),
-        ])
-
         now_s = time.monotonic()
+        elapsed_time_s = now_s - bridge_start_time_s
+        if elapsed_time_s + 1e-9 >= next_csv_log_time_s:
+          output_writer.writerow([
+            round(elapsed_time_s, 6),
+            ego_position_xyz,
+            lead_position_xyz,
+            float(ego_speed_mps),
+            float(lead_speed_mps),
+            float(ego_accel_mps2),
+            float(lead_measurement["d_rel"]) if lead_measurement["status"] else "",
+            float(lead_measurement["v_rel"]) if lead_measurement["status"] else "",
+            float(engine_throttle),
+            float(engine_brake),
+            float(controller_throttle),
+            float(controller_brake),
+          ])
+          next_csv_log_time_s = elapsed_time_s + CSV_LOG_INTERVAL_S
+
         if _profile_is_complete(lead_cfg, lead_state, now_s):
           done_result = (
             True,
