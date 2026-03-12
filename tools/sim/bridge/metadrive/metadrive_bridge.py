@@ -56,7 +56,7 @@ def create_map(track_size=60):
     ]
   )
 
-def create_straight_map(length=30000):
+def create_straight_map(length=35000):
   """Build a long straight map used by replay/lead-follow scenarios."""
   return dict(
     type=MapGenerateMethod.PG_MAP_FILE,
