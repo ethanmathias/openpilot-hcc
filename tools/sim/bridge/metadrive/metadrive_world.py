@@ -17,9 +17,13 @@ NOT_MOVING_CHECK_PERIOD_S = 29.0
 
 
 class MetaDriveWorld(World):
+  """Bridge-side world wrapper that hosts a dedicated MetaDrive worker process."""
   def __init__(self, status_q, config: dict, test_duration, test_run, dual_camera=False):
+    """Start the MetaDrive worker process and initialize bridge-side shared state."""
     super().__init__(dual_camera)
     self.status_q = status_q
+
+    # Shared memory backing for camera frames produced by the MetaDrive process.
     self.camera_array = Array(ctypes.c_uint8, W * H * 3)
     self.road_image = np.frombuffer(self.camera_array.get_obj(), dtype=np.uint8).reshape((H, W, 3))
 
@@ -28,6 +32,7 @@ class MetaDriveWorld(World):
       self.wide_camera_array = Array(ctypes.c_uint8, W * H * 3)
       self.wide_road_image = np.frombuffer(self.wide_camera_array.get_obj(), dtype=np.uint8).reshape((H, W, 3))
 
+    # IPC channels with the dedicated MetaDrive worker process.
     self.controls_send, self.controls_recv = Pipe()
     self.simulation_state_send, self.simulation_state_recv = Pipe()
     self.vehicle_state_send, self.vehicle_state_recv = Pipe()
@@ -37,9 +42,9 @@ class MetaDriveWorld(World):
 
     self.test_run = test_run
 
-    self.first_engage = None
-    self.last_check_timestamp = 0
-    self.distance_moved = 0
+    self.first_engage_time = None
+    self.last_motion_check_time = 0.0
+    self.distance_moved_since_check = 0.0
 
     self.metadrive_process = multiprocessing.Process(
       name="metadrive process",
@@ -68,20 +73,24 @@ class MetaDriveWorld(World):
     print("----------------------------------------------------------")
 
     # Wait for a state message to ensure metadrive has launched.
-    self.vehicle_last_pos = self.vehicle_state_recv.recv().position
+    self.last_vehicle_position_xy = self.vehicle_state_recv.recv().position
     self.status_q.put(QueueMessage(QueueMessageType.START_STATUS, "started"))
 
-    self.vc = [0.0, 0.0]
+    self.ego_control_command = [0.0, 0.0]
+    # Backward-compatible alias used in older local patches.
+    self.vc = self.ego_control_command
     self.should_reset = False
 
   def apply_controls(self, steer_angle, throttle_out, brake_out):
-    self.vc[0] = steer_angle
-    self.vc[1] = throttle_out if throttle_out else -brake_out
+    """Send latest steering/throttle/brake command to the worker process."""
+    self.ego_control_command[0] = steer_angle
+    self.ego_control_command[1] = throttle_out if throttle_out else -brake_out
 
-    self.controls_send.send([*self.vc, self.should_reset])
+    self.controls_send.send([*self.ego_control_command, self.should_reset])
     self.should_reset = False
 
   def read_state(self):
+    """Consume simulation lifecycle updates (running/done) from the worker."""
     while self.simulation_state_recv.poll(0):
       md_state: metadrive_simulation_state = self.simulation_state_recv.recv()
       if md_state.done:
@@ -89,29 +98,36 @@ class MetaDriveWorld(World):
         self.exit_event.set()
 
   def _track_test_motion(self, curr_pos, is_engaged: bool):
-    if is_engaged and self.first_engage is None:
-      self.first_engage = time.monotonic()
+    """Track post-engagement movement and terminate test-runs if ego is stuck."""
+    if is_engaged and self.first_engage_time is None:
+      self.first_engage_time = time.monotonic()
       self.op_engaged.set()
 
-    after_engaged_check = is_engaged and self.first_engage is not None and (time.monotonic() - self.first_engage >= NOT_MOVING_CHECK_AFTER_ENGAGE_S) and self.test_run
+    should_check_not_moving = (
+      is_engaged and
+      self.first_engage_time is not None and
+      (time.monotonic() - self.first_engage_time >= NOT_MOVING_CHECK_AFTER_ENGAGE_S) and
+      self.test_run
+    )
 
-    x_dist = abs(curr_pos[0] - self.vehicle_last_pos[0])
-    y_dist = abs(curr_pos[1] - self.vehicle_last_pos[1])
-    if x_dist >= DISTANCE_MOVE_THRESHOLD_M or y_dist >= DISTANCE_MOVE_THRESHOLD_M:
-      self.distance_moved += x_dist + y_dist
+    delta_x_m = abs(curr_pos[0] - self.last_vehicle_position_xy[0])
+    delta_y_m = abs(curr_pos[1] - self.last_vehicle_position_xy[1])
+    if delta_x_m >= DISTANCE_MOVE_THRESHOLD_M or delta_y_m >= DISTANCE_MOVE_THRESHOLD_M:
+      self.distance_moved_since_check += delta_x_m + delta_y_m
 
-    current_time = time.monotonic()
-    since_last_check = current_time - self.last_check_timestamp
-    if since_last_check >= NOT_MOVING_CHECK_PERIOD_S:
-      if after_engaged_check and self.distance_moved == 0:
+    now_monotonic = time.monotonic()
+    seconds_since_last_check = now_monotonic - self.last_motion_check_time
+    if seconds_since_last_check >= NOT_MOVING_CHECK_PERIOD_S:
+      if should_check_not_moving and self.distance_moved_since_check == 0:
         self.status_q.put(QueueMessage(QueueMessageType.TERMINATION_INFO, {"vehicle_not_moving": True}))
         self.exit_event.set()
 
-      self.last_check_timestamp = current_time
-      self.distance_moved = 0
-      self.vehicle_last_pos = curr_pos
+      self.last_motion_check_time = now_monotonic
+      self.distance_moved_since_check = 0.0
+      self.last_vehicle_position_xy = curr_pos
 
   def read_sensors(self, state: SimulatorState):
+    """Drain latest vehicle state samples from worker into SimulatorState."""
     while self.vehicle_state_recv.poll(0):
       md_vehicle: metadrive_vehicle_state = self.vehicle_state_recv.recv()
       curr_pos = md_vehicle.position
@@ -140,15 +156,19 @@ class MetaDriveWorld(World):
       self._track_test_motion(curr_pos, state.is_engaged)
 
   def read_cameras(self):
+    """Camera frames are already written via shared memory; no pull step needed."""
     pass
 
   def tick(self):
+    """No-op tick hook for API compatibility with other simulator worlds."""
     pass
 
   def reset(self):
+    """Request a world reset in the worker process on next control cycle."""
     self.should_reset = True
 
   def close(self, reason: str):
+    """Stop the worker process and publish bridge close status."""
     self.status_q.put(QueueMessage(QueueMessageType.CLOSE_STATUS, reason))
     self.exit_event.set()
     self.metadrive_process.join()

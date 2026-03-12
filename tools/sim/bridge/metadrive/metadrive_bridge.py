@@ -17,6 +17,7 @@ LEAD_SCENARIOS = {SCENARIO_LEAD_LOOP, SCENARIO_HCCC_STEP}
 
 
 def straight_block(length: float):
+  """Return a PGMap straight-road block configuration."""
   return {
     "id": "S",
     "pre_block_socket_index": 0,
@@ -25,6 +26,7 @@ def straight_block(length: float):
 
 
 def curve_block(length: float, angle: float = 45, direction: int = 0):
+  """Return a PGMap curve block configuration."""
   return {
     "id": "C",
     "pre_block_socket_index": 0,
@@ -35,6 +37,7 @@ def curve_block(length: float, angle: float = 45, direction: int = 0):
   }
 
 def create_map(track_size=60):
+  """Build a closed-loop map composed of straights and 90-degree curves."""
   curve_len = track_size * 2
   return dict(
     type=MapGenerateMethod.PG_MAP_FILE,
@@ -54,6 +57,7 @@ def create_map(track_size=60):
   )
 
 def create_straight_map(length=10000):
+  """Build a long straight map used by replay/lead-follow scenarios."""
   return dict(
     type=MapGenerateMethod.PG_MAP_FILE,
     lane_num=2,
@@ -66,12 +70,14 @@ def create_straight_map(length=10000):
 
 
 class MetaDriveBridge(SimulatorBridge):
+  """SimulatorBridge implementation backed by MetaDrive."""
   TICKS_PER_FRAME = 2
 
   def __init__(self, dual_camera, high_quality, test_duration=math.inf, test_run=False, scenario=SCENARIO_DEFAULT,
                enable_hcc=False, scn=None, scn_csv=None):
-    enable_hcc = enable_hcc or scenario in STRAIGHT_ROAD_SCENARIOS or scn is not None
-    super().__init__(dual_camera, high_quality, enable_hcc=enable_hcc)
+    """Configure bridge behavior and test/scenario options before spawning world."""
+    should_enable_hcc = enable_hcc or scenario in STRAIGHT_ROAD_SCENARIOS or scn is not None
+    super().__init__(dual_camera, high_quality, enable_hcc=should_enable_hcc)
 
     self.should_render = False
     self.test_run = test_run
@@ -81,27 +87,29 @@ class MetaDriveBridge(SimulatorBridge):
     self.scn_csv = scn_csv
 
   def spawn_world(self, queue: Queue):
-    sensors = {
+    """Create and return a MetaDriveWorld instance with scenario-specific config."""
+    # Base camera sensor setup expected by camerad bridge.
+    sensor_config = {
       "rgb_road": (RGBCameraRoad, W, H, )
     }
 
     if self.dual_camera:
-      sensors["rgb_wide"] = (RGBCameraWide, W, H)
+      sensor_config["rgb_wide"] = (RGBCameraWide, W, H)
 
-    replay_scenario = self.scn is not None
-    straight_scenario = replay_scenario or self.scenario in STRAIGHT_ROAD_SCENARIOS
-    lead_enabled = replay_scenario or self.scenario in LEAD_SCENARIOS
-    map_config = create_straight_map() if straight_scenario else create_map()
-    lead_start_delay_s = 0.0 if replay_scenario else 5.0
+    is_replay_profile = self.scn is not None
+    uses_straight_map = is_replay_profile or self.scenario in STRAIGHT_ROAD_SCENARIOS
+    enable_lead_vehicle = is_replay_profile or self.scenario in LEAD_SCENARIOS
+    map_config = create_straight_map() if uses_straight_map else create_map()
+    lead_start_delay_s = 0.0 if is_replay_profile else 5.0
 
-    config = dict(
+    world_config = dict(
       use_render=self.should_render,
       vehicle_config=dict(
         enable_reverse=False,
         render_vehicle=False,
         image_source="rgb_road",
       ),
-      sensors=sensors,
+      sensors=sensor_config,
       image_on_cuda=_cuda_enable,
       image_observation=True,
       interface_panel=[],
@@ -111,7 +119,7 @@ class MetaDriveBridge(SimulatorBridge):
       crash_object_done=False,
       arrive_dest_done=False,
       traffic_density=0.0,
-      lead_vehicle_enabled=lead_enabled,
+      lead_vehicle_enabled=enable_lead_vehicle,
       lead_vehicle_distance=8.0,
       lead_start_delay_s=lead_start_delay_s,
       lead_vehicle_lateral_offset=0.0,
@@ -130,4 +138,4 @@ class MetaDriveBridge(SimulatorBridge):
       anisotropic_filtering=False
     )
 
-    return MetaDriveWorld(queue, config, self.test_duration, self.test_run, self.dual_camera)
+    return MetaDriveWorld(queue, world_config, self.test_duration, self.test_run, self.dual_camera)

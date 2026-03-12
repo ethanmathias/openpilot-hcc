@@ -19,6 +19,7 @@ from openpilot.common.realtime import Ratekeeper
 from openpilot.tools.sim.lib.camerad import W, H
 from openpilot.tools.sim.lib.common import vec3
 
+# Camera mounting used by both road and wide streams in MetaDrive.
 C3_POSITION = Vec3(0.0, 0, 1.22)
 C3_HPR = Vec3(0, 0, 0)
 
@@ -34,6 +35,7 @@ LEAD_STEER_BLEND_IDM = 0.2
 LEAD_STEER_BLEND_LANE = 0.8
 EGO_LANE_LOOKAHEAD_M = 6.0
 
+# IPC message payloads shared with MetaDriveWorld.
 metadrive_simulation_state = namedtuple("metadrive_simulation_state", ["running", "done", "done_info"])
 metadrive_vehicle_state = namedtuple(
   "metadrive_vehicle_state",
@@ -60,8 +62,10 @@ metadrive_vehicle_state = namedtuple(
 )
 
 
+# Lead vehicle config/state containers.
 @dataclass
 class LeadConfig:
+  """Configuration knobs for spawning and driving the synthetic lead vehicle."""
   enabled: bool
   distance_m: float
   start_delay_s: float
@@ -74,6 +78,7 @@ class LeadConfig:
 
 @dataclass
 class LeadState:
+  """Mutable runtime state for the synthetic lead vehicle."""
   vehicle: object | None = None
   policy: IDMPolicy | None = None
   start_time: float | None = None
@@ -87,7 +92,9 @@ class LeadState:
   pose_replay_failed: bool = False
 
 
+# Geometry and profile utility helpers.
 def _lead_measurement(enabled=False, d_rel=0.0, y_rel=0.0, v_rel=0.0, a_rel=0.0):
+  """Create a normalized lead measurement dict used by bridge IPC."""
   return {
     "status": bool(enabled),
     "d_rel": float(d_rel),
@@ -98,23 +105,27 @@ def _lead_measurement(enabled=False, d_rel=0.0, y_rel=0.0, v_rel=0.0, a_rel=0.0)
 
 
 def _compute_rel(ego_position, ego_heading, lead_position):
-  c = math.cos(float(ego_heading))
-  s = math.sin(float(ego_heading))
-  forward = np.array([c, s], dtype=np.float64)
-  left = np.array([-s, c], dtype=np.float64)
-  delta = np.array(lead_position, dtype=np.float64) - np.array(ego_position, dtype=np.float64)
-  return float(np.dot(delta, forward)), float(np.dot(delta, left))
+  """Project lead position into ego forward/left relative coordinates."""
+  cos_heading = math.cos(float(ego_heading))
+  sin_heading = math.sin(float(ego_heading))
+  ego_forward_unit = np.array([cos_heading, sin_heading], dtype=np.float64)
+  ego_left_unit = np.array([-sin_heading, cos_heading], dtype=np.float64)
+  lead_delta_xy = np.array(lead_position, dtype=np.float64) - np.array(ego_position, dtype=np.float64)
+  return float(np.dot(lead_delta_xy, ego_forward_unit)), float(np.dot(lead_delta_xy, ego_left_unit))
 
 
 def _wrap_to_pi(angle: float) -> float:
+  """Wrap any angle in radians to [-pi, pi)."""
   return float((angle + math.pi) % (2.0 * math.pi) - math.pi)
 
 
-def _planar_speed(velocity_xy) -> float:
-  return float(np.linalg.norm([velocity_xy[0], velocity_xy[1]]))
+def _planar_speed(velocity_vector_xy) -> float:
+  """Return planar speed magnitude from XY velocity components."""
+  return float(np.linalg.norm([velocity_vector_xy[0], velocity_vector_xy[1]]))
 
 
 def _lane_identifier(lane) -> str:
+  """Build a readable lane identifier string for debug logging."""
   if lane is None:
     return "<none>"
 
@@ -127,7 +138,8 @@ def _lane_identifier(lane) -> str:
 
 
 def _ego_debug_state(vehicle):
-  debug = {
+  """Collect lane and route diagnostics for the ego vehicle."""
+  debug_state = {
     "has_lane": False,
     "on_lane": False,
     "lane_s": float("nan"),
@@ -142,7 +154,7 @@ def _ego_debug_state(vehicle):
 
   lane = getattr(vehicle, "lane", None)
   if lane is None:
-    return debug
+    return debug_state
 
   try:
     lane_s, lane_lateral = lane.local_coordinates(vehicle.position)
@@ -159,7 +171,7 @@ def _ego_debug_state(vehicle):
     if lane_width is not None:
       on_lane = abs(float(lane_lateral)) <= (float(lane_width) * 0.5)
 
-    debug.update({
+    debug_state.update({
       "has_lane": True,
       "on_lane": on_lane,
       "lane_s": float(lane_s),
@@ -169,13 +181,14 @@ def _ego_debug_state(vehicle):
   except Exception:
     pass
 
-  return debug
+  return debug_state
 
 
 def _format_debug_state(prefix: str, debug: dict, position_xy, heading_theta: float) -> str:
-  pos = np.array(position_xy, dtype=np.float64)[:2]
+  """Format a single-line, human-readable debug state summary."""
+  position_xy_arr = np.array(position_xy, dtype=np.float64)[:2]
   return (
-    f"{prefix}: pos=({pos[0]:.2f}, {pos[1]:.2f}) "
+    f"{prefix}: pos=({position_xy_arr[0]:.2f}, {position_xy_arr[1]:.2f}) "
     f"bearing={math.degrees(float(heading_theta)):.2f} deg "
     f"laneId={debug['lane_id']} hasLane={debug['has_lane']} onLane={debug['on_lane']} "
     f"s={debug['lane_s']:.2f} latOff={debug['lane_lateral']:.2f} "
@@ -186,67 +199,72 @@ def _format_debug_state(prefix: str, debug: dict, position_xy, heading_theta: fl
 
 
 def _load_lead_speed_profile(csv_path: str, scenario_index: int):
+  """Load a scenario speed profile from CSV and integrate it to distance."""
   if scenario_index < 1:
     raise ValueError(f"Scenario index must be >= 1, got {scenario_index}")
 
-  t_samples: list[float] = []
-  v_samples: list[float] = []
-  with open(csv_path, newline="") as f:
-    reader = csv.reader(f)
-    for row in reader:
-      if not row or not row[0].strip():
+  time_samples_s: list[float] = []
+  speed_samples_mps: list[float] = []
+  with open(csv_path, newline="") as csv_file:
+    csv_reader = csv.reader(csv_file)
+    for csv_row in csv_reader:
+      if not csv_row or not csv_row[0].strip():
         continue
 
       try:
-        t_val = float(row[0].strip())
+        timestamp_s = float(csv_row[0].strip())
       except ValueError:
         continue
 
-      if scenario_index >= len(row):
-        if v_samples:
+      if scenario_index >= len(csv_row):
+        if speed_samples_mps:
           break
         continue
 
-      v_text = row[scenario_index].strip()
-      if not v_text:
-        if v_samples:
+      speed_text = csv_row[scenario_index].strip()
+      if not speed_text:
+        if speed_samples_mps:
           break
         continue
 
       try:
-        v_val = max(float(v_text), 0.0)
+        speed_mps = max(float(speed_text), 0.0)
       except ValueError:
-        if v_samples:
+        if speed_samples_mps:
           break
         continue
 
-      t_samples.append(t_val)
-      v_samples.append(v_val)
+      time_samples_s.append(timestamp_s)
+      speed_samples_mps.append(speed_mps)
 
-  if len(t_samples) < 2:
+  if len(time_samples_s) < 2:
     raise RuntimeError(f"Scenario {scenario_index} has insufficient samples in {csv_path}")
 
-  t_arr = np.asarray(t_samples, dtype=np.float64)
-  v_arr = np.asarray(v_samples, dtype=np.float64)
-  order = np.argsort(t_arr)
-  t_arr = t_arr[order]
-  v_arr = v_arr[order]
+  time_arr = np.asarray(time_samples_s, dtype=np.float64)
+  speed_arr = np.asarray(speed_samples_mps, dtype=np.float64)
+  sort_index = np.argsort(time_arr)
+  time_arr = time_arr[sort_index]
+  speed_arr = speed_arr[sort_index]
 
-  uniq_t, uniq_idx = np.unique(t_arr, return_index=True)
-  uniq_v = v_arr[uniq_idx]
-  if uniq_t.size < 2:
+  unique_time_s, first_unique_index = np.unique(time_arr, return_index=True)
+  unique_speed_mps = speed_arr[first_unique_index]
+  if unique_time_s.size < 2:
     raise RuntimeError(f"Scenario {scenario_index} needs at least two unique time samples in {csv_path}")
 
   # Integrate speed profile into cumulative longitudinal distance (meters).
-  uniq_s = np.zeros_like(uniq_v)
-  for i in range(1, uniq_t.size):
-    dt = max(float(uniq_t[i] - uniq_t[i - 1]), 0.0)
-    uniq_s[i] = uniq_s[i - 1] + 0.5 * (uniq_v[i - 1] + uniq_v[i]) * dt
+  cumulative_distance_m = np.zeros_like(unique_speed_mps)
+  for sample_idx in range(1, unique_time_s.size):
+    delta_t_s = max(float(unique_time_s[sample_idx] - unique_time_s[sample_idx - 1]), 0.0)
+    cumulative_distance_m[sample_idx] = (
+      cumulative_distance_m[sample_idx - 1] +
+      0.5 * (unique_speed_mps[sample_idx - 1] + unique_speed_mps[sample_idx]) * delta_t_s
+    )
 
-  return uniq_t, uniq_s, uniq_v
+  return unique_time_s, cumulative_distance_m, unique_speed_mps
 
 
 def _profile_interp_position(lead_state: LeadState, elapsed_s: float) -> float:
+  """Interpolate cumulative longitudinal profile distance at elapsed time."""
   assert lead_state.profile_t is not None and lead_state.profile_s is not None
   return float(
     np.interp(
@@ -260,6 +278,7 @@ def _profile_interp_position(lead_state: LeadState, elapsed_s: float) -> float:
 
 
 def _profile_interp_speed(lead_state: LeadState, elapsed_s: float) -> float:
+  """Interpolate target lead speed at elapsed time."""
   assert lead_state.profile_t is not None and lead_state.profile_v is not None
   return float(
     np.interp(
@@ -273,60 +292,65 @@ def _profile_interp_speed(lead_state: LeadState, elapsed_s: float) -> float:
 
 
 def _set_vehicle_pose_2d(vehicle, position_xy, heading_theta: float, speed_mps: float):
-  x = float(position_xy[0])
-  y = float(position_xy[1])
-  pos_ok = False
+  """Best-effort direct pose/speed injection for a MetaDrive vehicle."""
+  target_x = float(position_xy[0])
+  target_y = float(position_xy[1])
+  position_set = False
 
   if hasattr(vehicle, "set_position"):
     try:
-      vehicle.set_position([x, y])
-      pos_ok = True
+      vehicle.set_position([target_x, target_y])
+      position_set = True
     except Exception:
       pass
-  if not pos_ok and hasattr(vehicle, "set_pos"):
+  if not position_set and hasattr(vehicle, "set_pos"):
     try:
-      vehicle.set_pos([x, y])
-      pos_ok = True
+      vehicle.set_pos([target_x, target_y])
+      position_set = True
     except Exception:
       pass
-  if not pos_ok:
+  if not position_set:
     try:
-      vehicle.position = [x, y]
-      pos_ok = True
+      vehicle.position = [target_x, target_y]
+      position_set = True
     except Exception:
       pass
 
-  heading_ok = False
+  heading_set = False
   for setter in ("set_heading_theta", "set_heading"):
     if hasattr(vehicle, setter):
       try:
         getattr(vehicle, setter)(float(heading_theta))
-        heading_ok = True
+        heading_set = True
         break
       except Exception:
         pass
-  if not heading_ok:
+  if not heading_set:
     try:
       vehicle.heading_theta = float(heading_theta)
-      heading_ok = True
+      heading_set = True
     except Exception:
       pass
 
-  vx = float(math.cos(heading_theta) * speed_mps)
-  vy = float(math.sin(heading_theta) * speed_mps)
+  velocity_x = float(math.cos(heading_theta) * speed_mps)
+  velocity_y = float(math.sin(heading_theta) * speed_mps)
   for setter in ("set_velocity",):
     if hasattr(vehicle, setter):
       try:
-        getattr(vehicle, setter)([vx, vy])
+        getattr(vehicle, setter)([velocity_x, velocity_y])
         break
       except Exception:
         pass
 
-  return pos_ok and heading_ok
+  return position_set and heading_set
 
 
+# MetaDrive runtime patch points for bridge behavior.
 def _patch_metadrive(arrive_dest_done: bool):
+  """Monkey-patch MetaDrive internals to match bridge runtime expectations."""
+  # Inject sensor and termination behavior patches to keep bridge semantics stable.
   def add_image_sensor_patched(self, name: str, cls, args):
+    """Create image sensors with optional CUDA support."""
     use_cuda = bool(self.global_config.get("image_on_cuda", False))
     sensor = cls(*args, self, cuda=use_cuda)
     assert isinstance(sensor, ImageBuffer), "This API is for adding image sensor"
@@ -335,65 +359,72 @@ def _patch_metadrive(arrive_dest_done: bool):
   EngineCore.add_image_sensor = add_image_sensor_patched
 
   def observe_patched(self, *args, **kwargs):
+    """Return cached image observation state without extra rendering work."""
     return self.state
 
   ImageObservation.observe = observe_patched
 
   if not arrive_dest_done:
     def arrive_destination_patch(self, *args, **kwargs):
+      """Disable destination-complete termination."""
       return False
     MetaDriveEnv._is_arrive_destination = arrive_destination_patch
 
   # Keep the simulator running even if MetaDrive thinks the vehicle is out of road.
   def out_of_road_patch(self, *args, **kwargs):
+    """Disable out-of-road termination to keep episodes running."""
     return False
   MetaDriveEnv._is_out_of_road = out_of_road_patch
 
 
 def _vehicle_cls_for_model(model_name, fallback_cls):
-  cls = vehicle_type.get(model_name)
-  return cls if cls is not None else fallback_cls
+  """Resolve a MetaDrive vehicle class for a model name with fallback."""
+  vehicle_cls = vehicle_type.get(model_name)
+  return vehicle_cls if vehicle_cls is not None else fallback_cls
 
 
 def _candidate_models(primary_model, ego_model):
-  ordered = [primary_model, ego_model, "s", "m", "l", "xl", "default"]
-  return [model for i, model in enumerate(ordered) if model and model not in ordered[:i]]
+  """Generate de-duplicated lead model candidates in priority order."""
+  candidate_order = [primary_model, ego_model, "s", "m", "l", "xl", "default"]
+  return [model_name for i, model_name in enumerate(candidate_order) if model_name and model_name not in candidate_order[:i]]
 
 
 def _lane_center_steer(vehicle, lane) -> float | None:
+  """Compute steering correction to center a vehicle within its current lane."""
   if lane is None:
     return None
 
   try:
-    s_coord, lateral_offset = lane.local_coordinates(vehicle.position)
-    p0 = np.array(lane.position(float(s_coord), 0.0), dtype=np.float64)[:2]
-    p1 = np.array(lane.position(float(s_coord) + 1.0, 0.0), dtype=np.float64)[:2]
-    tangent = p1 - p0
-    if np.linalg.norm(tangent) <= 1e-6:
+    lane_s_coord, lane_lateral_offset = lane.local_coordinates(vehicle.position)
+    lane_point_start = np.array(lane.position(float(lane_s_coord), 0.0), dtype=np.float64)[:2]
+    lane_point_end = np.array(lane.position(float(lane_s_coord) + 1.0, 0.0), dtype=np.float64)[:2]
+    lane_tangent = lane_point_end - lane_point_start
+    if np.linalg.norm(lane_tangent) <= 1e-6:
       return None
 
-    lane_heading = float(math.atan2(tangent[1], tangent[0]))
+    lane_heading = float(math.atan2(lane_tangent[1], lane_tangent[0]))
     heading_error = _wrap_to_pi(lane_heading - float(vehicle.heading_theta))
-    return float(np.clip(1.2 * heading_error - 0.18 * float(lateral_offset), -1.0, 1.0))
+    return float(np.clip(1.2 * heading_error - 0.18 * float(lane_lateral_offset), -1.0, 1.0))
   except Exception:
     return None
 
 
 def _ego_lane_fallback_steer(lead_vehicle, ego_vehicle, lead_distance_m: float) -> float | None:
+  """Fallback steering target that keeps lead ahead on ego's lane centerline."""
   try:
     ego_lane = getattr(ego_vehicle, "lane", None)
     if ego_lane is None:
       return None
 
-    ego_s, _ = ego_lane.local_coordinates(ego_vehicle.position)
-    target_s = float(ego_s + lead_distance_m + EGO_LANE_LOOKAHEAD_M)
-    target_xy = np.array(ego_lane.position(target_s, 0.0), dtype=np.float64)[:2]
-    lead_xy = np.array(lead_vehicle.position, dtype=np.float64)[:2]
-    vec = target_xy - lead_xy
-    if np.linalg.norm(vec) <= 1e-6:
+    ego_lane_s, _ = ego_lane.local_coordinates(ego_vehicle.position)
+    lead_target_s = float(ego_lane_s + lead_distance_m + EGO_LANE_LOOKAHEAD_M)
+    lead_target_xy = np.array(ego_lane.position(lead_target_s, 0.0), dtype=np.float64)[:2]
+    lead_current_xy = np.array(lead_vehicle.position, dtype=np.float64)[:2]
+    lead_to_target_vec = lead_target_xy - lead_current_xy
+    if np.linalg.norm(lead_to_target_vec) <= 1e-6:
       return None
 
-    desired_heading = float(math.atan2(vec[1], vec[0]))
+    desired_heading = float(math.atan2(lead_to_target_vec[1], lead_to_target_vec[0]))
     heading_error = _wrap_to_pi(desired_heading - float(lead_vehicle.heading_theta))
     return float(np.clip(1.8 * heading_error, -1.0, 1.0))
   except Exception:
@@ -401,16 +432,17 @@ def _ego_lane_fallback_steer(lead_vehicle, ego_vehicle, lead_distance_m: float) 
 
 
 def _lead_spawn_pose(ego_vehicle, lead_cfg: LeadConfig):
-  fallback_heading = float(ego_vehicle.heading_theta)
-  heading_vec = np.array([math.cos(fallback_heading), math.sin(fallback_heading)], dtype=np.float64)
-  fallback_position = np.array(ego_vehicle.position, dtype=np.float64) + heading_vec * lead_cfg.distance_m
+  """Compute initial XY/heading for spawning the synthetic lead vehicle."""
+  fallback_heading_rad = float(ego_vehicle.heading_theta)
+  heading_unit_vec = np.array([math.cos(fallback_heading_rad), math.sin(fallback_heading_rad)], dtype=np.float64)
+  fallback_position_xy = np.array(ego_vehicle.position, dtype=np.float64) + heading_unit_vec * lead_cfg.distance_m
   if abs(lead_cfg.lateral_offset_m) > 1e-3:
-    lateral_direction = np.array([-heading_vec[1], heading_vec[0]], dtype=np.float64)
-    fallback_position += lateral_direction * lead_cfg.lateral_offset_m
+    lane_left_unit_vec = np.array([-heading_unit_vec[1], heading_unit_vec[0]], dtype=np.float64)
+    fallback_position_xy += lane_left_unit_vec * lead_cfg.lateral_offset_m
 
   lane = getattr(ego_vehicle, "lane", None)
   if lane is None:
-    return fallback_position, fallback_heading
+    return fallback_position_xy, fallback_heading_rad
 
   try:
     ego_s, _ = lane.local_coordinates(ego_vehicle.position)
@@ -424,14 +456,16 @@ def _lead_spawn_pose(ego_vehicle, lead_cfg: LeadConfig):
     if np.linalg.norm(tangent) > 1e-6:
       target_heading = float(math.atan2(tangent[1], tangent[0]))
     else:
-      target_heading = fallback_heading
+      target_heading = fallback_heading_rad
 
     return target_position, target_heading
   except Exception:
-    return fallback_position, fallback_heading
+    return fallback_position_xy, fallback_heading_rad
 
 
+# Lead vehicle lifecycle and update loop.
 def _spawn_lead_vehicle(env: MetaDriveEnv, lead_cfg: LeadConfig, lead_state: LeadState):
+  """Spawn and initialize the lead vehicle plus optional policy/profile state."""
   lead_state.vehicle = None
   lead_state.policy = None
   lead_state.start_time = None
@@ -446,23 +480,23 @@ def _spawn_lead_vehicle(env: MetaDriveEnv, lead_cfg: LeadConfig, lead_state: Lea
   target_position, target_heading = _lead_spawn_pose(ego_vehicle, lead_cfg)
   ego_model = ego_vehicle.config.get("vehicle_model", None)
 
-  lead_config_base = dict(env.config.get("vehicle_config", {}))
-  lead_config_base["render_vehicle"] = lead_cfg.render
+  lead_vehicle_config_template = dict(env.config.get("vehicle_config", {}))
+  lead_vehicle_config_template["render_vehicle"] = lead_cfg.render
   for key in ("show_navi_mark", "show_dest_mark", "show_line_to_dest", "show_line_to_navi_mark"):
-    if key in lead_config_base:
-      lead_config_base[key] = False
+    if key in lead_vehicle_config_template:
+      lead_vehicle_config_template[key] = False
 
-  fallback_cls = ego_vehicle.__class__
+  fallback_vehicle_cls = ego_vehicle.__class__
   spawn_error = None
   for model_name in _candidate_models(lead_cfg.model, ego_model):
-    lead_config = dict(lead_config_base)
-    lead_config["vehicle_model"] = model_name
-    vehicle_cls = _vehicle_cls_for_model(model_name, fallback_cls)
+    candidate_vehicle_config = dict(lead_vehicle_config_template)
+    candidate_vehicle_config["vehicle_model"] = model_name
+    candidate_vehicle_cls = _vehicle_cls_for_model(model_name, fallback_vehicle_cls)
 
     try:
       lead_state.vehicle = env.engine.spawn_object(
-        vehicle_cls,
-        vehicle_config=lead_config,
+        candidate_vehicle_cls,
+        vehicle_config=candidate_vehicle_config,
         position=target_position.tolist(),
         heading=target_heading,
       )
@@ -493,40 +527,41 @@ def _spawn_lead_vehicle(env: MetaDriveEnv, lead_cfg: LeadConfig, lead_state: Lea
 
 
 def _clear_lead_vehicle(env: MetaDriveEnv, lead_state: LeadState):
-  vehicle = lead_state.vehicle
-  if vehicle is not None:
+  """Remove lead vehicle from simulation and reset lead runtime state."""
+  lead_vehicle = lead_state.vehicle
+  if lead_vehicle is not None:
     cleared = False
-    clear_errors = []
+    clear_error_messages = []
 
-    object_keys = []
+    candidate_object_keys = []
     for attr in ("name", "id", "index"):
-      value = getattr(vehicle, attr, None)
+      value = getattr(lead_vehicle, attr, None)
       if value is not None:
-        object_keys.append(value)
+        candidate_object_keys.append(value)
 
-    for key in object_keys:
+    for object_key in candidate_object_keys:
       try:
-        env.engine.clear_objects([key])
+        env.engine.clear_objects([object_key])
         cleared = True
         break
       except Exception as e:
-        clear_errors.append(str(e))
+        clear_error_messages.append(str(e))
 
     if not cleared:
       try:
-        env.engine.clear_objects([vehicle])
+        env.engine.clear_objects([lead_vehicle])
         cleared = True
       except Exception as e:
-        clear_errors.append(str(e))
+        clear_error_messages.append(str(e))
 
-    if not cleared and hasattr(vehicle, "destroy"):
+    if not cleared and hasattr(lead_vehicle, "destroy"):
       try:
-        vehicle.destroy()
+        lead_vehicle.destroy()
       except Exception as e:
-        clear_errors.append(str(e))
+        clear_error_messages.append(str(e))
 
-    if not cleared and clear_errors:
-      print(f"[WARNING] Failed to clear lead vehicle before reset: {' | '.join(clear_errors)}")
+    if not cleared and clear_error_messages:
+      print(f"[WARNING] Failed to clear lead vehicle before reset: {' | '.join(clear_error_messages)}")
 
   lead_state.vehicle = None
   lead_state.policy = None
@@ -537,12 +572,13 @@ def _clear_lead_vehicle(env: MetaDriveEnv, lead_state: LeadState):
 
 
 def _update_lead_vehicle(env: MetaDriveEnv, lead_cfg: LeadConfig, lead_state: LeadState):
+  """Advance lead vehicle behavior for one bridge step."""
   if lead_state.vehicle is None:
     return
 
   try:
-    elapsed = 0.0 if lead_state.start_time is None else (time.monotonic() - lead_state.start_time)
-    if lead_cfg.start_delay_s > 0.0 and elapsed < lead_cfg.start_delay_s:
+    elapsed_s = 0.0 if lead_state.start_time is None else (time.monotonic() - lead_state.start_time)
+    if lead_cfg.start_delay_s > 0.0 and elapsed_s < lead_cfg.start_delay_s:
       lead_action = np.array([0.0, 0.0], dtype=np.float64)
     elif lead_state.profile_t is not None and lead_state.profile_s is not None:
       if lead_state.profile_lane is None:
@@ -553,9 +589,9 @@ def _update_lead_vehicle(env: MetaDriveEnv, lead_cfg: LeadConfig, lead_state: Le
           lead_state.profile_s_base = float(lead_s - lead_state.profile_s[0])
 
       if lead_state.profile_lane is not None and lead_state.profile_s_base is not None:
-        s_rel = _profile_interp_position(lead_state, elapsed - lead_cfg.start_delay_s)
-        v_target = _profile_interp_speed(lead_state, elapsed - lead_cfg.start_delay_s)
-        target_s = float(lead_state.profile_s_base + s_rel)
+        profile_distance_m = _profile_interp_position(lead_state, elapsed_s - lead_cfg.start_delay_s)
+        target_speed_mps = _profile_interp_speed(lead_state, elapsed_s - lead_cfg.start_delay_s)
+        target_s = float(lead_state.profile_s_base + profile_distance_m)
 
         p0 = np.array(lead_state.profile_lane.position(target_s, lead_cfg.lateral_offset_m), dtype=np.float64)[:2]
         p1 = np.array(lead_state.profile_lane.position(target_s + 0.5, lead_cfg.lateral_offset_m), dtype=np.float64)[:2]
@@ -565,7 +601,7 @@ def _update_lead_vehicle(env: MetaDriveEnv, lead_cfg: LeadConfig, lead_state: Le
         else:
           heading = float(lead_state.vehicle.heading_theta)
 
-        if not _set_vehicle_pose_2d(lead_state.vehicle, p0, heading, max(v_target, 0.0)):
+        if not _set_vehicle_pose_2d(lead_state.vehicle, p0, heading, max(target_speed_mps, 0.0)):
           if not lead_state.pose_replay_failed:
             print("[WARNING] Lead pose replay failed; falling back to controller tracking.")
             lead_state.pose_replay_failed = True
@@ -575,14 +611,14 @@ def _update_lead_vehicle(env: MetaDriveEnv, lead_cfg: LeadConfig, lead_state: Le
           lead_state.vehicle.before_step(lead_action.tolist())
           return
 
-      v_target = _profile_interp_speed(lead_state, elapsed - lead_cfg.start_delay_s)
-      v_now = _planar_speed(lead_state.vehicle.velocity)
-      lon_cmd = float(np.clip((v_target - v_now) * 0.35, -1.0, 1.0))
+      target_speed_mps = _profile_interp_speed(lead_state, elapsed_s - lead_cfg.start_delay_s)
+      current_speed_mps = _planar_speed(lead_state.vehicle.velocity)
+      longitudinal_command = float(np.clip((target_speed_mps - current_speed_mps) * 0.35, -1.0, 1.0))
       lane_steer = _lane_center_steer(lead_state.vehicle, getattr(lead_state.vehicle, "lane", None))
       if lane_steer is None:
         lane_steer = _ego_lane_fallback_steer(lead_state.vehicle, env.vehicle, lead_cfg.distance_m)
       steer_cmd = 0.0 if lane_steer is None else float(np.clip(lane_steer, -1.0, 1.0))
-      lead_action = np.array([steer_cmd, lon_cmd], dtype=np.float64)
+      lead_action = np.array([steer_cmd, longitudinal_command], dtype=np.float64)
     else:
       if lead_state.policy is None:
         return
@@ -604,41 +640,46 @@ def _update_lead_vehicle(env: MetaDriveEnv, lead_cfg: LeadConfig, lead_state: Le
 
 
 def _update_lead_measurement(env: MetaDriveEnv, lead_state: LeadState, step_dt: float):
+  """Update relative lead state (dRel/yRel/vRel/aRel) from current sim state."""
   if lead_state.vehicle is None:
     lead_state.prev_v_rel = 0.0
     lead_state.measurement = _lead_measurement(False)
     return
 
-  d_rel, y_rel = _compute_rel(env.vehicle.position, env.vehicle.heading_theta, lead_state.vehicle.position)
-  if d_rel <= 0.5:
+  d_rel_m, y_rel_m = _compute_rel(env.vehicle.position, env.vehicle.heading_theta, lead_state.vehicle.position)
+  if d_rel_m <= 0.5:
     lead_state.prev_v_rel = 0.0
     lead_state.measurement = _lead_measurement(False)
     return
 
-  v_rel = _planar_speed(lead_state.vehicle.velocity) - _planar_speed(env.vehicle.velocity)
-  dt = max(step_dt, 1e-3)
-  a_rel = (v_rel - lead_state.prev_v_rel) / dt
-  lead_state.prev_v_rel = v_rel
-  lead_state.measurement = _lead_measurement(True, d_rel, y_rel, v_rel, a_rel)
+  v_rel_mps = _planar_speed(lead_state.vehicle.velocity) - _planar_speed(env.vehicle.velocity)
+  delta_t_s = max(step_dt, 1e-3)
+  a_rel_mps2 = (v_rel_mps - lead_state.prev_v_rel) / delta_t_s
+  lead_state.prev_v_rel = v_rel_mps
+  lead_state.measurement = _lead_measurement(True, d_rel_m, y_rel_m, v_rel_mps, a_rel_mps2)
 
 
 def _capture_rgb_image(env: MetaDriveEnv, sensor_name: str):
-  cam = env.engine.sensors[sensor_name]
-  cam.get_cam().reparentTo(env.vehicle.origin)
-  cam.get_cam().setPos(C3_POSITION)
-  cam.get_cam().setHpr(C3_HPR)
-  image = cam.perceive(to_float=False)
-  return image if isinstance(image, np.ndarray) else image.get()
+  """Capture an RGB frame from a named MetaDrive camera sensor."""
+  camera_sensor = env.engine.sensors[sensor_name]
+  camera_sensor.get_cam().reparentTo(env.vehicle.origin)
+  camera_sensor.get_cam().setPos(C3_POSITION)
+  camera_sensor.get_cam().setHpr(C3_HPR)
+  captured_frame = camera_sensor.perceive(to_float=False)
+  return captured_frame if isinstance(captured_frame, np.ndarray) else captured_frame.get()
 
 
 def _send_running_state(simulation_state_send: Connection):
+  """Publish a 'running' simulation lifecycle message to the bridge."""
   simulation_state_send.send(metadrive_simulation_state(running=True, done=False, done_info=None))
 
 
 def _send_done_state(simulation_state_send: Connection, done_result):
+  """Publish a terminal simulation lifecycle message to the bridge."""
   simulation_state_send.send(metadrive_simulation_state(running=False, done=done_result[0], done_info=done_result[1]))
 
 
+# Main worker entrypoint running in the MetaDrive subprocess.
 def metadrive_process(
   dual_camera: bool,
   config: dict,
@@ -653,6 +694,8 @@ def metadrive_process(
   test_duration,
   test_run,
 ):
+  """Run the MetaDrive simulation worker loop and exchange data with the bridge."""
+  # Pull bridge-specific knobs out of the world config dictionary.
   arrive_dest_done = bool(config.pop("arrive_dest_done", True))
   lead_cfg = LeadConfig(
     enabled=bool(config.pop("lead_vehicle_enabled", False)),
@@ -667,10 +710,10 @@ def metadrive_process(
   for legacy_key in LEGACY_LEAD_KEYS:
     config.pop(legacy_key, None)
 
-  steer_cmd_ratio = float(config.pop("steer_cmd_ratio", 1.2))
-  sim_step_frames = max(1, int(config.pop("sim_step_frames", 5)))
+  steer_command_ratio = float(config.pop("steer_cmd_ratio", 1.2))
+  sim_step_interval_frames = max(1, int(config.pop("sim_step_frames", 5)))
   camera_capture_frames = max(1, int(config.pop("camera_capture_frames", 5)))
-  step_dt = float(config.get("physics_world_step_size", 0.05)) * float(config.get("decision_repeat", 1))
+  sim_step_dt_s = float(config.get("physics_world_step_size", 0.05)) * float(config.get("decision_repeat", 1))
 
   _patch_metadrive(arrive_dest_done)
 
@@ -694,6 +737,7 @@ def metadrive_process(
     )
 
   def reset_world():
+    """Reset env and lead-vehicle state while keeping bridge worker alive."""
     _clear_lead_vehicle(env, lead_state)
     env.reset()
     env.vehicle.config["max_speed_km_h"] = 1000
@@ -704,33 +748,33 @@ def metadrive_process(
 
   reset_world()
 
-  rk = Ratekeeper(100, None)
+  ratekeeper = Ratekeeper(100, None)
   ego_control = [0.0, 0.0]
   engage_start_time = None
 
   while not exit_event.is_set():
-    measurement = lead_state.measurement
-    debug = _ego_debug_state(env.vehicle)
+    lead_measurement = lead_state.measurement
+    ego_debug_state = _ego_debug_state(env.vehicle)
     vehicle_state_send.send(
       metadrive_vehicle_state(
         velocity=vec3(x=float(env.vehicle.velocity[0]), y=float(env.vehicle.velocity[1]), z=0),
         position=env.vehicle.position,
         bearing=float(math.degrees(env.vehicle.heading_theta)),
         steering_angle=env.vehicle.steering * env.vehicle.MAX_STEERING,
-        lead_status=measurement["status"],
-        lead_d_rel=measurement["d_rel"],
-        lead_y_rel=measurement["y_rel"],
-        lead_v_rel=measurement["v_rel"],
-        lead_a_rel=measurement["a_rel"],
-        debug_has_lane=debug["has_lane"],
-        debug_on_lane=debug["on_lane"],
-        debug_lane_s=debug["lane_s"],
-        debug_lane_lateral=debug["lane_lateral"],
-        debug_lane_heading_error_deg=debug["lane_heading_error_deg"],
-        debug_on_yellow_line=debug["on_yellow_line"],
-        debug_on_white_line=debug["on_white_line"],
-        debug_crash_sidewalk=debug["crash_sidewalk"],
-        debug_out_of_route=debug["out_of_route"],
+        lead_status=lead_measurement["status"],
+        lead_d_rel=lead_measurement["d_rel"],
+        lead_y_rel=lead_measurement["y_rel"],
+        lead_v_rel=lead_measurement["v_rel"],
+        lead_a_rel=lead_measurement["a_rel"],
+        debug_has_lane=ego_debug_state["has_lane"],
+        debug_on_lane=ego_debug_state["on_lane"],
+        debug_lane_s=ego_debug_state["lane_s"],
+        debug_lane_lateral=ego_debug_state["lane_lateral"],
+        debug_lane_heading_error_deg=ego_debug_state["lane_heading_error_deg"],
+        debug_on_yellow_line=ego_debug_state["on_yellow_line"],
+        debug_on_white_line=ego_debug_state["on_white_line"],
+        debug_crash_sidewalk=ego_debug_state["crash_sidewalk"],
+        debug_out_of_route=ego_debug_state["out_of_route"],
       )
     )
 
@@ -739,7 +783,7 @@ def metadrive_process(
       while controls_recv.poll(0):
         steer_angle, gas, should_reset = controls_recv.recv()
 
-      steer_limit = float(env.vehicle.MAX_STEERING) * max(steer_cmd_ratio, 1e-3)
+      steer_limit = float(env.vehicle.MAX_STEERING) * max(steer_command_ratio, 1e-3)
       steer_cmd = float(np.interp(steer_angle, [-steer_limit, steer_limit], [-1.0, 1.0]))
       ego_control = [float(np.clip(steer_cmd, -1.0, 1.0)), gas]
 
@@ -750,27 +794,27 @@ def metadrive_process(
     if op_engaged.is_set() and engage_start_time is None:
       engage_start_time = time.monotonic()
 
-    if rk.frame % sim_step_frames == 0:
+    if ratekeeper.frame % sim_step_interval_frames == 0:
       _update_lead_vehicle(env, lead_cfg, lead_state)
-      pre_debug = debug
-      pre_position = np.array(env.vehicle.position, dtype=np.float64)[:2]
-      pre_heading = float(env.vehicle.heading_theta)
+      pre_step_debug = ego_debug_state
+      pre_step_position_xy = np.array(env.vehicle.position, dtype=np.float64)[:2]
+      pre_step_heading = float(env.vehicle.heading_theta)
       _, _, terminated, _, _ = env.step(ego_control)
-      _update_lead_measurement(env, lead_state, step_dt)
+      _update_lead_measurement(env, lead_state, sim_step_dt_s)
 
       timeout = engage_start_time is not None and (time.monotonic() - engage_start_time) >= test_duration
       if terminated or (timeout and test_run):
         done_result = env.done_function("default_agent") if terminated else (True, {"timeout": True})
 
         if terminated and bool(done_result[1].get("out_of_road", False)):
-          post_debug = _ego_debug_state(env.vehicle)
-          post_position = np.array(env.vehicle.position, dtype=np.float64)[:2]
-          post_heading = float(env.vehicle.heading_theta)
+          post_step_debug = _ego_debug_state(env.vehicle)
+          post_step_position_xy = np.array(env.vehicle.position, dtype=np.float64)[:2]
+          post_step_heading = float(env.vehicle.heading_theta)
           print("[DEBUG] MetaDrive out_of_road termination details:")
           print(f"[DEBUG] done_info={done_result[1]}")
-          print(_format_debug_state("  preStep", pre_debug, pre_position, pre_heading))
-          print(_format_debug_state("  postStep", post_debug, post_position, post_heading))
-          print(f"[DEBUG] laneChanged={pre_debug['lane_id'] != post_debug['lane_id']}")
+          print(_format_debug_state("  preStep", pre_step_debug, pre_step_position_xy, pre_step_heading))
+          print(_format_debug_state("  postStep", post_step_debug, post_step_position_xy, post_step_heading))
+          print(f"[DEBUG] laneChanged={pre_step_debug['lane_id'] != post_step_debug['lane_id']}")
           print("[WARNING] Episode hit out_of_road. Auto-resetting scenario instead of exiting.")
           reset_world()
           engage_start_time = None
@@ -778,10 +822,10 @@ def metadrive_process(
 
         _send_done_state(simulation_state_send, done_result)
 
-    if rk.frame % camera_capture_frames == 0:
+    if ratekeeper.frame % camera_capture_frames == 0:
       if dual_camera and wide_road_image is not None:
         wide_road_image[...] = _capture_rgb_image(env, "rgb_wide")
       road_image[...] = _capture_rgb_image(env, "rgb_road")
       image_lock.release()
 
-    rk.keep_time()
+    ratekeeper.keep_time()
