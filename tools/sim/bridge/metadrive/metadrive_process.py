@@ -693,11 +693,12 @@ def _profile_is_complete(lead_cfg: LeadConfig, lead_state: LeadState, now_monoto
 def _default_output_csv_path(lead_cfg: LeadConfig) -> str:
   """Build a default output CSV path for bridge telemetry logs."""
   timestamp = time.strftime("%Y%m%d_%H%M%S")
+  sim_data_dir = Path(__file__).resolve().parents[2] / "data"
   if lead_cfg.profile_csv:
     source_path = Path(lead_cfg.profile_csv)
     scenario_tag = f".scn{lead_cfg.profile_scn}" if lead_cfg.profile_scn is not None else ""
-    return str(source_path.with_name(f"{source_path.stem}.openpilot{scenario_tag}.{timestamp}.csv"))
-  return str(Path.cwd() / f"metadrive_bridge_log.{timestamp}.csv")
+    return str(sim_data_dir / f"{source_path.stem}.openpilot{scenario_tag}.{timestamp}.csv")
+  return str(sim_data_dir / f"metadrive_bridge_log.{timestamp}.csv")
 
 
 def _open_output_csv(path: str):

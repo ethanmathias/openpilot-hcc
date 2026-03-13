@@ -52,9 +52,11 @@ def main():
 
 def parse_args(add_args=None):
   parser = argparse.ArgumentParser(description='Bridge between the simulator and openpilot.')
+  parser.add_argument('--keyboard', action='store_true',
+                      help='Force keyboard input instead of auto-preferring a Logitech wheel')
   parser.add_argument('--joystick', action='store_true')
   parser.add_argument('--logitech_wheel', action='store_true',
-                      help='Use Logitech wheel/pedals via /dev/input/event* (Linux)')
+                      help='Use Logitech wheel/pedals via /dev/input/event* (Linux); now the default unless --keyboard or --joystick is used')
   parser.add_argument('--wheel_device', default=None,
                       help='Optional event device path, e.g. /dev/input/event5')
   parser.add_argument('--wheel_hz', type=float, default=100.0,
@@ -79,9 +81,22 @@ if __name__ == "__main__":
                                                              mode=args.mode, scn=args.scn, scn_csv=args.scn_csv,
                                                              output_csv=args.output_csv)
 
+  use_logitech_wheel = not args.keyboard and not args.joystick
   if args.logitech_wheel:
-    from openpilot.tools.sim.lib.logitech_wheel_ctrl import logitech_wheel_poll_thread
-    logitech_wheel_poll_thread(queue, device_path=args.wheel_device, publish_hz=args.wheel_hz)
+    use_logitech_wheel = True
+
+  if use_logitech_wheel:
+    try:
+      from openpilot.tools.sim.lib.logitech_wheel_ctrl import logitech_wheel_poll_thread
+      logitech_wheel_poll_thread(queue, device_path=args.wheel_device, publish_hz=args.wheel_hz)
+    except RuntimeError as err:
+      if args.logitech_wheel:
+        raise
+
+      print(f"[logitech] {err}")
+      print("[logitech] Falling back to keyboard input. Use --keyboard to skip wheel autodetect.")
+      from openpilot.tools.sim.lib.keyboard_ctrl import keyboard_poll_thread
+      keyboard_poll_thread(queue)
   elif args.joystick:
     # start input poll for joystick
     from openpilot.tools.sim.lib.manual_ctrl import wheel_poll_thread
