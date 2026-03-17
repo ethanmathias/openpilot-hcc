@@ -76,6 +76,7 @@ class LeadConfig:
   profile_scn: int | None
   profile_csv: str | None
   output_csv: str | None
+  output_graph: str | None
 
 
 @dataclass
@@ -701,6 +702,12 @@ def _default_output_csv_path(lead_cfg: LeadConfig) -> str:
   return str(sim_data_dir / f"metadrive_bridge_log.{timestamp}.csv")
 
 
+def _default_output_graph_path(output_csv_path: str) -> str:
+  """Create a default PNG path beside the CSV output."""
+  csv_path = Path(output_csv_path).expanduser()
+  return str(csv_path.with_suffix(".png"))
+
+
 def _open_output_csv(path: str):
   """Create output CSV writer and write the header matching requested schema."""
   output_path = Path(path).expanduser()
@@ -722,6 +729,47 @@ def _open_output_csv(path: str):
     "Controller_brake",
   ])
   return output_file, output_writer, str(output_path)
+
+
+def _write_output_graph(csv_path: str, graph_path: str):
+  """Render a speed-vs-time graph from the bridge telemetry CSV."""
+  try:
+    import matplotlib.pyplot as plt
+  except ImportError as exc:
+    raise RuntimeError("matplotlib is required to generate graph output") from exc
+
+  times_s: list[float] = []
+  speed_ego_mps: list[float] = []
+  speed_pre_mps: list[float] = []
+
+  with Path(csv_path).expanduser().open("r", newline="") as csv_file:
+    reader = csv.DictReader(csv_file)
+    for row in reader:
+      try:
+        times_s.append(float(row["time[s]"]))
+        speed_ego_mps.append(float(row["speed_ego[m/s]"]))
+        speed_pre_mps.append(float(row["speed_pre[m/s]"]))
+      except (KeyError, TypeError, ValueError):
+        continue
+
+  if not times_s:
+    raise RuntimeError(f"No plottable telemetry rows found in {csv_path}")
+
+  graph_output_path = Path(graph_path).expanduser()
+  graph_output_path.parent.mkdir(parents=True, exist_ok=True)
+
+  plt.figure(figsize=(12, 6))
+  plt.plot(times_s, speed_pre_mps, label="Preceding Vehicle")
+  plt.plot(times_s, speed_ego_mps, label="Ego Vehicle")
+  plt.xlabel("Time [s]")
+  plt.ylabel("Speed [m/s]")
+  plt.title("Speed vs Time")
+  plt.legend()
+  plt.grid(True)
+  plt.tight_layout()
+  plt.savefig(graph_output_path)
+  plt.show()
+  plt.close()
 
 
 # Main worker entrypoint running in the MetaDrive subprocess.
@@ -752,6 +800,7 @@ def metadrive_process(
     profile_scn=config.pop("lead_profile_scn", None),
     profile_csv=config.pop("lead_profile_csv", None),
     output_csv=config.pop("lead_profile_output_csv", None),
+    output_graph=config.pop("lead_profile_output_graph", None),
   )
   for legacy_key in LEGACY_LEAD_KEYS:
     config.pop(legacy_key, None)
@@ -802,7 +851,9 @@ def metadrive_process(
 
   output_csv_path = lead_cfg.output_csv or _default_output_csv_path(lead_cfg)
   output_file, output_writer, output_csv_path = _open_output_csv(output_csv_path)
+  output_graph_path = lead_cfg.output_graph or _default_output_graph_path(output_csv_path)
   print(f"[INFO] Writing bridge telemetry CSV to {output_csv_path}")
+  print(f"[INFO] Writing bridge telemetry graph to {output_graph_path}")
 
   try:
     while not exit_event.is_set():
@@ -906,6 +957,7 @@ def metadrive_process(
               "csv_profile_complete": True,
               "profile_scn": lead_cfg.profile_scn,
               "output_csv": output_csv_path,
+              "output_graph": output_graph_path,
             },
           )
           _send_done_state(simulation_state_send, done_result)
@@ -941,3 +993,8 @@ def metadrive_process(
   finally:
     output_file.flush()
     output_file.close()
+    try:
+      _write_output_graph(output_csv_path, output_graph_path)
+      print(f"[INFO] Saved bridge telemetry graph to {output_graph_path}")
+    except Exception as exc:
+      print(f"[WARNING] Failed to generate bridge telemetry graph: {exc}")

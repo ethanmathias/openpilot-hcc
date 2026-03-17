@@ -74,7 +74,7 @@ class MetaDriveBridge(SimulatorBridge):
   TICKS_PER_FRAME = 2
 
   def __init__(self, dual_camera, high_quality, test_duration=math.inf, test_run=False, scenario=SCENARIO_DEFAULT,
-               enable_hcc=False, scn=None, scn_csv=None, output_csv=None):
+               enable_hcc=False, scn=None, scn_csv=None, output_csv=None, output_graph=None):
     """Configure bridge behavior and test/scenario options before spawning world."""
     should_enable_hcc = enable_hcc or scenario in STRAIGHT_ROAD_SCENARIOS or scn is not None
     super().__init__(dual_camera, high_quality, enable_hcc=should_enable_hcc)
@@ -86,6 +86,7 @@ class MetaDriveBridge(SimulatorBridge):
     self.scn = scn
     self.scn_csv = scn_csv
     self.output_csv = output_csv
+    self.output_graph = output_graph
 
   def spawn_world(self, queue: Queue):
     """Create and return a MetaDriveWorld instance with scenario-specific config."""
@@ -129,6 +130,7 @@ class MetaDriveBridge(SimulatorBridge):
       lead_profile_scn=self.scn,
       lead_profile_csv=self.scn_csv,
       lead_profile_output_csv=self.output_csv,
+      lead_profile_output_graph=self.output_graph,
       steer_cmd_ratio=1.2,
       sim_step_frames=self.TICKS_PER_FRAME,
       camera_capture_frames=5,
