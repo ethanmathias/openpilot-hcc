@@ -714,12 +714,12 @@ def _default_output_graph_path(output_csv_path: str) -> str:
 
 def _default_output_paths(lead_cfg: LeadConfig) -> tuple[str, str]:
   """Build BeamNG-style default CSV and graph output paths."""
-  sim_dir = Path(__file__).resolve().parents[2]
   control_method = (lead_cfg.output_control_method or "default").lower()
   vehicle_name = lead_cfg.output_vehicle_name or "vehicle"
 
-  data_dir = sim_dir / "data" / control_method
-  graph_dir = sim_dir / "graphs" / control_method
+  output_root = Path("/home/linklab/ethanmathias/dataoutput")
+  data_dir = output_root / "csv" / control_method
+  graph_dir = output_root / "images" / control_method
   data_dir.mkdir(parents=True, exist_ok=True)
   graph_dir.mkdir(parents=True, exist_ok=True)
 
