@@ -12,7 +12,9 @@ CONTROL_N_T_IDX = ModelConstants.T_IDXS[:CONTROL_N]
 LongCtrlState = car.CarControl.Actuators.LongControlState
 SIMULATION = os.environ.get("SIMULATION", "0") == "1"
 
-# HCCC_CHANGE_NOTE: longcontrol was refactored from PID-based accel control to hCCC + manual pedal blending.
+# HCCC_CHANGE_NOTE: longcontrol uses BeamNG-style cooperative blending:
+# controller contribution + signed manual pedal input, blended once in the shared
+# longitudinal path so it works for both simulation and real-car execution.
 
 def _normalize_pedal(value: float) -> float:
   v = float(value)
@@ -106,13 +108,16 @@ class LongControl:
     self._refresh_hccc()
     accel_min, accel_max = accel_limits
 
+    controller_accel = 0.0
     hccc_output = None
     if self.use_hccc and self.hccc is not None:
       self.hccc._max_decel = accel_min
       self.hccc._max_accl = accel_max
       hccc_output = self.hccc.run_step(CS, lead)
+      if hccc_output is not None:
+        controller_accel = hccc_output
 
-    # HCCC_CHANGE_NOTE: BeamNG-style blending adds raw manual pedal net input to hCCC output.
+    # HCCC_CHANGE_NOTE: BeamNG-style cooperative input is a single signed manual command.
     manual_accel = _manual_longitudinal_input(CS)
 
     if hccc_output is not None:
@@ -139,10 +144,7 @@ class LongControl:
       self.reset()
 
     else:  # LongCtrlState.pid
-      output_accel = (hccc_output + manual_accel) if hccc_output is not None else 0.0
+      output_accel = controller_accel + manual_accel
 
-    if hccc_output is not None:
-      self.last_output_accel = np.clip(output_accel, accel_min, accel_max)
-    else:
-      self.last_output_accel = np.clip(output_accel, accel_limits[0], accel_limits[1])
+    self.last_output_accel = np.clip(output_accel, accel_min, accel_max)
     return self.last_output_accel

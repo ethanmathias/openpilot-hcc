@@ -4,6 +4,7 @@ from opendbc.car.car_helpers import interfaces
 from opendbc.car.interfaces import MAX_CTRL_SPEED
 from opendbc.car.toyota.values import ToyotaFlags
 
+from openpilot.common.params import Params
 from openpilot.selfdrive.selfdrived.events import Events
 
 ButtonType = structs.CarState.ButtonEvent.Type
@@ -15,11 +16,18 @@ NetworkLocation = structs.CarParams.NetworkLocation
 class CarSpecificEvents:
   def __init__(self, CP: structs.CarParams):
     self.CP = CP
+    self.params = Params()
 
     self.steering_unpressed = 0
     self.low_speed_alert = False
     self.no_steer_warning = False
     self.silent_steer_warning = True
+
+  def _cooperative_longitudinal_enabled(self):
+    cp_flag = getattr(self.CP, 'enableHCCC', None)
+    if cp_flag is not None:
+      return cp_flag
+    return self.params.check_key("EnableHCCC") and self.params.get_bool("EnableHCCC")
 
   def update(self, CS: car.CarState, CS_prev: car.CarState, CC: car.CarControl):
     if self.CP.brand in ('body', 'mock'):
@@ -138,7 +146,7 @@ class CarSpecificEvents:
       events.add(EventName.steerDisengage)
     if CS.brakePressed and CS.standstill:
       events.add(EventName.preEnableStandstill)
-    if CS.gasPressed:
+    if CS.gasPressed and not self._cooperative_longitudinal_enabled():
       events.add(EventName.gasPressedOverride)
     if CS.vehicleSensorsInvalid:
       events.add(EventName.vehicleSensorsInvalid)

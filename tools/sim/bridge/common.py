@@ -259,17 +259,9 @@ Ignition: {self.simulator_state.ignition} Engaged: {self.simulator_state.is_enga
         self.startup_button_prev = not self.startup_button_prev
 
       if self.simulator_state.is_engaged:
-        # Human keeps authority: manual brake/throttle can override engaged longitudinal control.
-        if brake_manual > 1e-6:
-          throttle_out = 0.0
-          brake_out = np.clip(brake_op + brake_manual * (1.0 - brake_op), 0.0, 1.0)
-        elif throttle_manual > 1e-6:
-          throttle_out = np.clip(throttle_op + throttle_manual * (1.0 - throttle_op), 0.0, 1.0)
-          brake_out = 0.0
-        else:
-          throttle_out = throttle_op
-          brake_out = brake_op
-
+        # Cooperative manual input is already blended into actuators.accel upstream.
+        throttle_out = throttle_op
+        brake_out = brake_op
         steer_out = steer_manual
       else:
         throttle_out = throttle_manual
