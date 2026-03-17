@@ -43,7 +43,7 @@ def _manual_longitudinal_input(CS) -> float:
   # This should be revisited for the real-car version, where actuators.accel is
   # not simply converted back into throttle/brake with the simulator scaling.
   if manual_cmd >= 0.0:
-    return manual_cmd * 1.3
+    return manual_cmd * 1.4
   return manual_cmd * 4.0
 
 
