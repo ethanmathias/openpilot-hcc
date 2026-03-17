@@ -36,7 +36,15 @@ def _manual_longitudinal_input(CS) -> float:
   if getattr(CS, "brakePressed", False):
     brake = max(brake, 1.0)
 
-  return float(np.clip(gas - brake, -1.0, 1.0))
+  manual_cmd = float(np.clip(gas - brake, -1.0, 1.0))
+
+  # NOTE: This maps manual pedal input into the simulator's accel-command space
+  # so the existing bridge conversion reproduces BeamNG-like pedal authority.
+  # This should be revisited for the real-car version, where actuators.accel is
+  # not simply converted back into throttle/brake with the simulator scaling.
+  if manual_cmd >= 0.0:
+    return manual_cmd * 1.6
+  return manual_cmd * 4.0
 
 
 def long_control_state_trans(CP, active, long_control_state, v_ego,
