@@ -1,5 +1,6 @@
 import csv
 import math
+import re
 import time
 from collections import namedtuple
 from dataclasses import dataclass, field
@@ -77,6 +78,8 @@ class LeadConfig:
   profile_csv: str | None
   output_csv: str | None
   output_graph: str | None
+  output_control_method: str | None
+  output_vehicle_name: str | None
 
 
 @dataclass
@@ -691,21 +694,39 @@ def _profile_is_complete(lead_cfg: LeadConfig, lead_state: LeadState, now_monoto
   return replay_elapsed_s >= float(lead_state.profile_t[-1])
 
 
-def _default_output_csv_path(lead_cfg: LeadConfig) -> str:
-  """Build a default output CSV path for bridge telemetry logs."""
-  timestamp = time.strftime("%Y%m%d_%H%M%S")
-  sim_data_dir = Path(__file__).resolve().parents[2] / "data"
-  if lead_cfg.profile_csv:
-    source_path = Path(lead_cfg.profile_csv)
-    scenario_tag = f".scn{lead_cfg.profile_scn}" if lead_cfg.profile_scn is not None else ""
-    return str(sim_data_dir / f"{source_path.stem}.openpilot{scenario_tag}.{timestamp}.csv")
-  return str(sim_data_dir / f"metadrive_bridge_log.{timestamp}.csv")
+def _get_next_test_number(directory: Path) -> int:
+  """Find the next TestN index for BeamNG-style output naming."""
+  test_numbers: list[int] = []
+  pattern = re.compile(r"Test(\d+)\.vehicle\..*\.csv$")
+  if directory.exists():
+    for filename in directory.iterdir():
+      match = pattern.match(filename.name)
+      if match:
+        test_numbers.append(int(match.group(1)))
+  return (max(test_numbers) + 1) if test_numbers else 1
 
 
 def _default_output_graph_path(output_csv_path: str) -> str:
   """Create a default PNG path beside the CSV output."""
   csv_path = Path(output_csv_path).expanduser()
   return str(csv_path.with_suffix(".png"))
+
+
+def _default_output_paths(lead_cfg: LeadConfig) -> tuple[str, str]:
+  """Build BeamNG-style default CSV and graph output paths."""
+  sim_dir = Path(__file__).resolve().parents[2]
+  control_method = (lead_cfg.output_control_method or "default").lower()
+  vehicle_name = lead_cfg.output_vehicle_name or "vehicle"
+
+  data_dir = sim_dir / "data" / control_method
+  graph_dir = sim_dir / "graphs" / control_method
+  data_dir.mkdir(parents=True, exist_ok=True)
+  graph_dir.mkdir(parents=True, exist_ok=True)
+
+  test_number = _get_next_test_number(data_dir)
+  scenario_tag = f".scn{lead_cfg.profile_scn}" if lead_cfg.profile_scn is not None else ""
+  stem = f"Test{test_number}.vehicle.{vehicle_name}_ICE{scenario_tag}.{control_method}"
+  return str(data_dir / f"{stem}.csv"), str(graph_dir / f"{stem}.png")
 
 
 def _open_output_csv(path: str):
@@ -801,6 +822,8 @@ def metadrive_process(
     profile_csv=config.pop("lead_profile_csv", None),
     output_csv=config.pop("lead_profile_output_csv", None),
     output_graph=config.pop("lead_profile_output_graph", None),
+    output_control_method=config.pop("lead_profile_output_control_method", None),
+    output_vehicle_name=config.pop("lead_profile_output_vehicle_name", None),
   )
   for legacy_key in LEGACY_LEAD_KEYS:
     config.pop(legacy_key, None)
@@ -849,9 +872,13 @@ def metadrive_process(
   bridge_start_time_s = time.monotonic()
   prev_ego_speed_mps = _planar_speed(env.vehicle.velocity)
 
-  output_csv_path = lead_cfg.output_csv or _default_output_csv_path(lead_cfg)
+  if lead_cfg.output_csv is None:
+    output_csv_path, default_graph_path = _default_output_paths(lead_cfg)
+  else:
+    output_csv_path = lead_cfg.output_csv
+    default_graph_path = _default_output_graph_path(output_csv_path)
   output_file, output_writer, output_csv_path = _open_output_csv(output_csv_path)
-  output_graph_path = lead_cfg.output_graph or _default_output_graph_path(output_csv_path)
+  output_graph_path = lead_cfg.output_graph or default_graph_path
   print(f"[INFO] Writing bridge telemetry CSV to {output_csv_path}")
   print(f"[INFO] Writing bridge telemetry graph to {output_graph_path}")
 

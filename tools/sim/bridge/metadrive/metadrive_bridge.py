@@ -87,6 +87,8 @@ class MetaDriveBridge(SimulatorBridge):
     self.scn_csv = scn_csv
     self.output_csv = output_csv
     self.output_graph = output_graph
+    self.output_control_method = "hccc" if should_enable_hcc else "default"
+    self.output_vehicle_name = "honda_civic_2022"
 
   def spawn_world(self, queue: Queue):
     """Create and return a MetaDriveWorld instance with scenario-specific config."""
@@ -131,6 +133,8 @@ class MetaDriveBridge(SimulatorBridge):
       lead_profile_csv=self.scn_csv,
       lead_profile_output_csv=self.output_csv,
       lead_profile_output_graph=self.output_graph,
+      lead_profile_output_control_method=self.output_control_method,
+      lead_profile_output_vehicle_name=self.output_vehicle_name,
       steer_cmd_ratio=1.2,
       sim_step_frames=self.TICKS_PER_FRAME,
       camera_capture_frames=5,
