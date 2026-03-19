@@ -3,6 +3,7 @@ from multiprocessing import Queue
 
 from metadrive.component.sensors.base_camera import _cuda_enable
 from metadrive.component.map.pg_map import MapGenerateMethod
+from metadrive.component.map.base_map import BaseMap
 
 from openpilot.tools.sim.bridge.common import SimulatorBridge
 from openpilot.tools.sim.bridge.metadrive.metadrive_common import RGBCameraRoad, RGBCameraWide
@@ -14,6 +15,14 @@ SCENARIO_HCCC_STEP = "hccc_step"
 SCENARIO_LEAD_LOOP = "lead_loop"
 STRAIGHT_ROAD_SCENARIOS = {SCENARIO_LEAD_LOOP, SCENARIO_HCCC_STEP}
 LEAD_SCENARIOS = {SCENARIO_LEAD_LOOP, SCENARIO_HCCC_STEP}
+
+
+
+
+
+
+
+
 
 
 def straight_block(length: float):
@@ -56,20 +65,30 @@ def create_map(track_size=60):
     ]
   )
 
-def create_straight_map(length=1000):
-  """Build a long straight map used by replay/lead-follow scenarios."""
-  return dict(
-    type=MapGenerateMethod.PG_MAP_FILE,
-    lane_num=2,
-    lane_width=4.5,
-    config=[
-      None,
-      straight_block(length),
-      straight_block(length),
-      straight_block(length),
-      straight_block(length),
-    ],
-  )
+def create_straight_map(num_blocks=200):
+  return {
+    BaseMap.GENERATE_TYPE: MapGenerateMethod.BIG_BLOCK_SEQUENCE,
+    BaseMap.GENERATE_CONFIG: "S" * num_blocks,
+    BaseMap.LANE_NUM: 2,
+    BaseMap.LANE_WIDTH: 4.5,
+    "exit_length": 80,
+    "start_position": [0, 0],
+  }
+
+# def create_straight_map(length=1000):
+#   """Build a long straight map used by replay/lead-follow scenarios."""
+#   return dict(
+#     type=MapGenerateMethod.PG_MAP_FILE,
+#     lane_num=2,
+#     lane_width=4.5,
+#     config=[
+#       None,
+#       straight_block(length),
+#       straight_block(length),
+#       straight_block(length),
+#       straight_block(length),
+#     ],
+#   )
 
 
 class MetaDriveBridge(SimulatorBridge):
