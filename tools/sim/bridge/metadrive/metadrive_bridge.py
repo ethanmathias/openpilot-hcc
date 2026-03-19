@@ -65,30 +65,18 @@ def create_map(track_size=60):
     ]
   )
 
-def create_straight_map(num_blocks=2000):
-  return {
-    BaseMap.GENERATE_TYPE: MapGenerateMethod.BIG_BLOCK_SEQUENCE,
-    BaseMap.GENERATE_CONFIG: "S" * num_blocks,
-    BaseMap.LANE_NUM: 2,
-    BaseMap.LANE_WIDTH: 4.5,
-    "exit_length": 80,
-    "start_position": [0, 0],
-  }
-
-# def create_straight_map(length=1000):
-#   """Build a long straight map used by replay/lead-follow scenarios."""
-#   return dict(
-#     type=MapGenerateMethod.PG_MAP_FILE,
-#     lane_num=2,
-#     lane_width=4.5,
-#     config=[
-#       None,
-#       straight_block(length),
-#       straight_block(length),
-#       straight_block(length),
-#       straight_block(length),
-#     ],
-#   )
+def create_straight_map(num_blocks=200):
+  """Build an effectively endless straight map from a long block sequence."""
+  return dict(
+    **{
+      BaseMap.GENERATE_TYPE: MapGenerateMethod.BIG_BLOCK_SEQUENCE,
+      BaseMap.GENERATE_CONFIG: "S" * num_blocks,
+      BaseMap.LANE_NUM: 2,
+      BaseMap.LANE_WIDTH: 4.5,
+    },
+    exit_length=80,
+    start_position=[0, 0],
+  )
 
 
 class MetaDriveBridge(SimulatorBridge):
