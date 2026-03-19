@@ -16,13 +16,13 @@ STRAIGHT_ROAD_SCENARIOS = {SCENARIO_LEAD_LOOP, SCENARIO_HCCC_STEP}
 LEAD_SCENARIOS = {SCENARIO_LEAD_LOOP, SCENARIO_HCCC_STEP}
 
 
-def straight_block(length: float):
-  """Return a PGMap straight-road block configuration."""
-  return {
-    "id": "S",
-    "pre_block_socket_index": 0,
-    "length": length
-  }
+# def straight_block(length: float):
+#   """Return a PGMap straight-road block configuration."""
+#   return {
+#     "id": "S",
+#     "pre_block_socket_index": 0,
+#     "length": length
+#   }
 
 
 def curve_block(length: float, angle: float = 45, direction: int = 0):
@@ -56,7 +56,7 @@ def create_map(track_size=60):
     ]
   )
 
-def create_straight_map(length=10000):
+def create_straight_map(length=1000):
   """Build a long straight map used by replay/lead-follow scenarios."""
   return dict(
     type=MapGenerateMethod.PG_MAP_FILE,
@@ -65,6 +65,9 @@ def create_straight_map(length=10000):
     config=[
       None,
       straight_block(length),
+      straight_block(length),
+      straight_block(length),
+      straight_block(length)
     ],
   )
 
