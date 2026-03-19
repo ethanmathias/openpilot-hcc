@@ -111,7 +111,7 @@ class LongControl:
       self.hccc = hCCC(dt=DT_CTRL, max_deceleration=self.CP.stopAccel, max_acceleration=max(self.CP.startAccel, 1.6))
     self.use_hccc = enabled
 
-  def update(self, active, CS, a_target, should_stop, accel_limits, lead=None):
+  def update(self, active, CS, a_target, should_stop, accel_limits, lead=None, lead_time_ns=None):
     """Update longitudinal control. This updates the state machine and runs hCCC."""
     self._refresh_hccc()
     accel_min, accel_max = accel_limits
@@ -121,7 +121,7 @@ class LongControl:
     if self.use_hccc and self.hccc is not None:
       self.hccc._max_decel = accel_min
       self.hccc._max_accl = accel_max
-      hccc_output = self.hccc.run_step(CS, lead)
+      hccc_output = self.hccc.run_step(CS, lead, lead_time_ns=lead_time_ns)
       if hccc_output is not None:
         controller_accel = hccc_output
 
