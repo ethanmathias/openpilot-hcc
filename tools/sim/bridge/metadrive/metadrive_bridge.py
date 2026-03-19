@@ -16,13 +16,13 @@ STRAIGHT_ROAD_SCENARIOS = {SCENARIO_LEAD_LOOP, SCENARIO_HCCC_STEP}
 LEAD_SCENARIOS = {SCENARIO_LEAD_LOOP, SCENARIO_HCCC_STEP}
 
 
-# def straight_block(length: float):
-#   """Return a PGMap straight-road block configuration."""
-#   return {
-#     "id": "S",
-#     "pre_block_socket_index": 0,
-#     "length": length
-#   }
+def straight_block(length: float):
+  """Return a PGMap straight-road block configuration."""
+  return {
+    "id": "S",
+    "pre_block_socket_index": 0,
+    "length": length
+  }
 
 
 def curve_block(length: float, angle: float = 45, direction: int = 0):
@@ -67,7 +67,7 @@ def create_straight_map(length=1000):
       straight_block(length),
       straight_block(length),
       straight_block(length),
-      straight_block(length)
+      straight_block(length),
     ],
   )
 
