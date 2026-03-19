@@ -122,8 +122,7 @@ class Controls:
     pid_accel_limits = self.CI.get_pid_accel_limits(self.CP, CS.vEgo, CS.vCruise * CV.KPH_TO_MS)
     # HCCC_CHANGE_NOTE: pass radar lead directly into longcontrol update.
     actuators.accel = float(self.LoC.update(CC.longActive, CS, long_plan.aTarget, long_plan.shouldStop,
-                                            pid_accel_limits, radar_state.leadOne,
-                                            lead_time_ns=self.sm.logMonoTime['radarState']))
+                                            pid_accel_limits, radar_state.leadOne))
 
     # Steering PID loop and lateral MPC
     # Reset desired curvature to current to avoid violating the limits on engage

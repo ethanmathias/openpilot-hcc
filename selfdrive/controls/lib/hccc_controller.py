@@ -16,8 +16,6 @@ class hCCC:
 
     # Keep only scalar state needed for the controller update. So that infinite memory is not needed for the feedforward filter.
     self._prev_lead_speed = None
-    self._prev_lead_time_ns = None
-    self._prev_lead_accel = 0.0
     self.ff_y_prev = 0.0
 
   def feedforward_no_delay(self, a_lead):
@@ -27,32 +25,23 @@ class hCCC:
     self.ff_y_prev = y
     return y
 
-  def run_step(self, CS, lead, lead_time_ns=None):
+  def run_step(self, CS, lead):
     if lead is None or not lead.status:
       self._prev_lead_speed = None
-      self._prev_lead_time_ns = None
-      self._prev_lead_accel = 0.0
       self.ff_y_prev = 0.0
       return None
 
     ego_speed = CS.vEgo
-    lead_speed = float(getattr(lead, "vLead", ego_speed + lead.vRel))
+    lead_speed = ego_speed + lead.vRel
 
-    # Refresh the differentiated lead acceleration only when a new lead sample
-    # arrives, using the actual elapsed time between radar updates.
-    if (lead_time_ns is not None and self._prev_lead_speed is not None and
-        self._prev_lead_time_ns is not None and lead_time_ns > self._prev_lead_time_ns):
-      delta_t = max((lead_time_ns - self._prev_lead_time_ns) * 1e-9, 1e-3)
-      pre_accl_current = (lead_speed - self._prev_lead_speed) / delta_t
-    elif lead_time_ns is not None and lead_time_ns == self._prev_lead_time_ns:
-      pre_accl_current = self._prev_lead_accel
+    radar_lead_accel = getattr(lead, "aLeadK", None)
+    if radar_lead_accel is not None and np.isfinite(radar_lead_accel):
+      pre_accl_current = float(radar_lead_accel)
     elif self._prev_lead_speed is not None:
       pre_accl_current = (lead_speed - self._prev_lead_speed) / self._dt
     else:
       pre_accl_current = 0.0
     self._prev_lead_speed = lead_speed
-    self._prev_lead_time_ns = lead_time_ns
-    self._prev_lead_accel = pre_accl_current
 
     feedforward_state = self.feedforward_no_delay(pre_accl_current)
     accl_command = (self._beta * (lead_speed - ego_speed) + feedforward_state) * 0.6
