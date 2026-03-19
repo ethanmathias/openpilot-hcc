@@ -65,7 +65,7 @@ def create_map(track_size=60):
     ]
   )
 
-def create_straight_map(num_blocks=20000):
+def create_straight_map(num_blocks=2000):
   return {
     BaseMap.GENERATE_TYPE: MapGenerateMethod.BIG_BLOCK_SEQUENCE,
     BaseMap.GENERATE_CONFIG: "S" * num_blocks,
