@@ -1,100 +1,169 @@
-## Before You Start
+openpilot-hcc
+=============
 
-- You need a GitHub account. Make one if you don't already have one.
-- Enable SSH on your comma device: `Settings -> Network -> Advanced -> Enable SSH`.
-- Pre-installed OpenSSH Client on Windows 10+ and macOS: Both Windows 10 and newer, and macOS come with a pre-installed SSH client, so no additional software download or installation is required.
+This repository contains the `openpilot-hcc` codebase.
 
-## Step 1: Open Terminal or PowerShell
+This top-level README focuses on installing the repository onto a comma device. For local development and simulator setup, see:
 
-- **Windows:** Open PowerShell by pressing the Start Menu and typing "PowerShell". Command Prompt is not a substitute.
-- **macOS:** Open Terminal by opening Spotlight in the top-right corner and typing "Terminal".
+- [tools/README.md](/Users/ethanmathias/Desktop/UVA/LinkLab/openpilot-hcc/tools/README.md)
+- [tools/sim/README.md](/Users/ethanmathias/Desktop/UVA/LinkLab/openpilot-hcc/tools/sim/README.md)
 
-## Step 2: Create and Upload SSH Key to GitHub
+## Purpose
 
-If you haven't already created an SSH key and uploaded it to GitHub, follow these steps:
+Use this guide when you want to:
 
-1. Generate an SSH key:
+- connect to a comma device over SSH
+- replace the device's existing `openpilot` checkout with this repository
+- reboot into the updated checkout
+
+## Requirements
+
+Before starting:
+
+- create a GitHub account if you do not already have one
+- ensure the comma device and your computer are on the same network
+- enable SSH on the device at `Settings -> Network -> Advanced -> Enable SSH`
+
+OpenSSH is already available on:
+
+- Windows 10 and newer
+- macOS
+
+## 1. Open a Terminal
+
+Use one of the following:
+
+- Windows: PowerShell
+- macOS: Terminal
+
+Command Prompt is not recommended for this workflow.
+
+## 2. Create an SSH Key
+
+If you do not already have an SSH key configured for GitHub, generate one:
+
 ```bash
-   ssh-keygen -t ed25519 -f $HOME/.ssh/id_ed25519
+ssh-keygen -t ed25519 -f $HOME/.ssh/id_ed25519
 ```
 
-   When prompted to "Enter passphrase (empty for no passphrase):", just press Enter for no passphrase.
+When prompted for a passphrase, you may press Enter to leave it empty if that matches your preferred setup.
 
-2. Copy the public key to your clipboard:
+## 3. Copy the Public Key
 
-   **Windows:**
+Windows:
+
 ```powershell
-   Get-Content $HOME\.ssh\id_ed25519.pub | Set-Clipboard
+Get-Content $HOME\.ssh\id_ed25519.pub | Set-Clipboard
 ```
 
-   **macOS:**
+macOS:
+
 ```bash
-   cat $HOME/.ssh/id_ed25519.pub | pbcopy
+cat $HOME/.ssh/id_ed25519.pub | pbcopy
 ```
 
-3. Add the SSH key to GitHub:
+## 4. Add the Key to GitHub
 
-   Visit [GitHub SSH settings](https://github.com/settings/keys), paste the contents of your clipboard into "Key", give it a name of your choice in "Title", and press **Add SSH Key**.
+Open [GitHub SSH settings](https://github.com/settings/keys), paste the public key into the `Key` field, choose a title, and select **Add SSH key**.
 
-## Step 3: Verify SSH Key with GitHub
+## 5. Verify GitHub SSH Access
 
-Run the following command to check if GitHub can identify you with the private key on your local system:
+Verify that GitHub recognizes your key:
+
 ```bash
 ssh -T git@github.com
 ```
 
-You should get a message saying: "Hi \<your GitHub username\>! You've successfully authenticated, but GitHub does not provide shell access."
+Expected result:
 
-## Step 4: Get the IP Address of Your Device
+```text
+Hi <your GitHub username>! You've successfully authenticated, but GitHub does not provide shell access.
+```
 
-Make sure your C3 and your connecting device are connected to the same WiFi or network: `Settings [⚙️ icon] > Network > Advanced`.
+## 6. Find the Device IP Address
 
-## Step 5: Add SSH Key to Your Device
+On the device, confirm the current network and obtain the IP address from:
 
-Go to `Settings [⚙️ icon] > Network [ > Advanced, if C3] > SSH Keys` and press **Add**.
+```text
+Settings -> Network -> Advanced
+```
 
-Enter your GitHub username and press "⏎". You should see the SSH Keys option change to include your GitHub username with the **Add** button changed to **Remove**.
+## 7. Authorize Your GitHub Key on the Device
 
-- If a GitHub username is already there, press **Remove** to make **Add** reappear.
-- If you change or add new SSH keys on GitHub, repeat this step to refresh the authorized SSH keys data on the device.
+On the device:
 
-## Step 6: Enable SSH
+```text
+Settings -> Network -> SSH Keys
+```
 
-Make sure `Settings [⚙️ icon] > Network [ > Advanced, if C3] > Enable SSH` is enabled. It should be green.
+Select **Add**, enter your GitHub username, and confirm.
 
-## Step 7: Connect via SSH
+After a successful refresh:
 
-Run the following command, replacing `555.555.555.555` with the IP address you discovered earlier:
+- your GitHub username should appear in the SSH Keys list
+- the **Add** button should change to **Remove**
+
+If a different GitHub username is already present, remove it first if needed.
+
+If you later add or rotate SSH keys on GitHub, repeat this step so the device refreshes the authorized keys.
+
+## 8. Confirm SSH Is Enabled
+
+Verify that:
+
+```text
+Settings -> Network -> Enable SSH
+```
+
+is enabled and shown in green.
+
+## 9. Connect to the Device
+
+Replace `555.555.555.555` with the device IP address:
+
 ```bash
 ssh comma@555.555.555.555
 ```
 
-You should see a blue-ish prompt with "/data/openpilot", confirming you are connected.
+On first connection, if SSH asks whether the host authenticity can be established, answer:
 
-- If you get an "authenticity of host cannot be determined" message, answer `yes`.
-
-## Clone openpilot-hcc
-
-1. Navigate to the data directory and remove existing openpilot:
-```bash
-   cd /data
-   rm -rf openpilot
+```text
+yes
 ```
 
-2. Clone the repository (Default branch assumed; no specific branch specified in the repo):
+Once connected, you should see a shell prompt in `/data/openpilot`.
+
+## 10. Replace the Device Checkout
+
+If you intend to replace the existing device checkout, remove the current `/data/openpilot` directory and clone this repository in its place.
+
+From the device shell:
+
 ```bash
-   git clone --recurse-submodules https://github.com/ethanmathias/openpilot-hcc.git openpilot
+cd /data
+rm -rf openpilot
+git clone --recurse-submodules https://github.com/ethanmathias/openpilot-hcc.git openpilot
 ```
 
-## Git LFS
+## 11. Pull Git LFS Objects
 
-If the repository uses Git LFS (recommended to run just in case):
+If the repository uses Git LFS, or if you want to ensure LFS-managed files are present, run:
+
 ```bash
-cd openpilot
+cd /data/openpilot
 git lfs pull
 ```
 
-## Reboot
+## 12. Reboot
+
+Reboot the device to start from the updated checkout:
+
 ```bash
 sudo reboot
 ```
+
+## Notes
+
+- The clone step above installs this repository into `/data/openpilot`, which is the expected path on the device.
+- Removing `/data/openpilot` deletes the existing checkout on the device. Use that step only when you intend to replace it.
+- For local setup, development tooling, and simulator usage, use the READMEs under `tools/`.

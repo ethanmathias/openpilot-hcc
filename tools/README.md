@@ -1,97 +1,135 @@
-# openpilot tools
+# openpilot Tools
 
-## System Requirements
+This directory contains local development utilities, setup scripts, simulator entry points, and supporting tooling for working with the repository on a development machine.
 
-openpilot is developed and tested on **Ubuntu 24.04**, which is the primary development target aside from the [supported embedded hardware](https://github.com/commaai/openpilot#running-on-a-dedicated-device-in-a-car).
+For device installation instructions, see [README.md](/Users/ethanmathias/Desktop/UVA/LinkLab/openpilot-hcc/README.md). For simulator-specific documentation, see [tools/sim/README.md](/Users/ethanmathias/Desktop/UVA/LinkLab/openpilot-hcc/tools/sim/README.md).
 
-Most of openpilot should work natively on macOS. On Windows you can use WSL for a nearly native Ubuntu experience. Running natively on any other system is not currently recommended and will likely require modifications.
+## Supported Development Environments
 
-## Native setup on Ubuntu 24.04 and macOS
+The primary development target is **Ubuntu 24.04**.
 
-Follow these instructions for a fully managed setup experience. If you'd like to manage the dependencies yourself, just read the setup scripts in this directory.
+Additional notes:
 
-**1. Clone openpilot**
-``` bash
-git clone https://github.com/commaai/openpilot.git
+- macOS is supported for much of the local development workflow
+- Windows is best used through WSL with Ubuntu 24.04
+- native development on other operating systems is not recommended and may require local modifications
+
+## Managed Local Setup
+
+The repository includes a managed setup path through `tools/op.sh`.
+
+### 1. Clone the repository
+
+```bash
+git clone https://github.com/ethanmathias/openpilot-hcc.git
+cd openpilot-hcc
 ```
 
-**2. Run the setup script**
-``` bash
-cd openpilot
+### 2. Run setup
+
+```bash
 tools/op.sh setup
 ```
 
-**3. Activate a Python shell**
-Activate a shell with the Python dependencies installed:
-``` bash
+### 3. Activate the virtual environment
+
+```bash
 source .venv/bin/activate
 ```
 
-**4. Build openpilot**
-``` bash
+### 4. Build the project
 
-export PATH=/usr/bin:/usr/lib/x86_64-linux-gnu/qt5/bin:$PATH (this is only for the dell pc since it defaults to old Qt)
+```bash
+scons -u -j$(nproc)
+```
+
+If your machine defaults to an older Qt installation, prepend the newer Qt path before building. A local example used in this environment is:
+
+```bash
+export PATH=/usr/bin:/usr/lib/x86_64-linux-gnu/qt5/bin:$PATH
 scons -u -j$(nproc)
 ```
 
 ## WSL on Windows
 
-[Windows Subsystem for Linux (WSL)](https://docs.microsoft.com/en-us/windows/wsl/about) should provide a similar experience to native Ubuntu. [WSL 2](https://docs.microsoft.com/en-us/windows/wsl/compare-versions) specifically has been reported by several users to be a seamless experience.
+[Windows Subsystem for Linux (WSL)](https://learn.microsoft.com/en-us/windows/wsl/about) can provide a development experience close to native Ubuntu.
 
-Follow [these instructions](https://docs.microsoft.com/en-us/windows/wsl/install) to setup the WSL and install the `Ubuntu-24.04` distribution. Once your Ubuntu WSL environment is setup, follow the Linux setup instructions to finish setting up your environment. See [these instructions](https://learn.microsoft.com/en-us/windows/wsl/tutorials/gui-apps) for running GUI apps.
+Recommended setup:
 
-**NOTE**: If you are running WSL and any GUIs are failing (segfaulting or other strange issues) even after following the steps above, you may need to enable software rendering with `LIBGL_ALWAYS_SOFTWARE=1`, e.g. `LIBGL_ALWAYS_SOFTWARE=1 selfdrive/ui/ui`.
+1. Install WSL.
+2. Install the `Ubuntu-24.04` distribution.
+3. Follow the Linux setup steps above from within WSL.
 
-## CTF
-Learn about the openpilot ecosystem and tools by playing our [CTF](/tools/CTF.md).
+For GUI applications under WSL, see Microsoft's documentation for [Linux GUI apps on WSL](https://learn.microsoft.com/en-us/windows/wsl/tutorials/gui-apps).
 
-## Simulator Quickstart
-Use the MetaDrive bridge from `tools/sim` to run openpilot on a PC.
+If GUI applications fail under WSL, software rendering may help:
 
-From the repo root, use two terminals:
+```bash
+LIBGL_ALWAYS_SOFTWARE=1 selfdrive/ui/ui
+```
+
+## Simulator
+
+The MetaDrive simulator is located in `tools/sim`.
+
+Basic startup:
 
 Terminal 1:
+
 ```bash
 source .venv/bin/activate
 ./tools/sim/launch_openpilot.sh
 ```
 
 Terminal 2:
+
 ```bash
 source .venv/bin/activate
 cd tools/sim
 ./run_bridge.py --mode default
 ```
 
-Useful variants:
-- `./run_bridge.py --mode hc3`
-- `./run_bridge.py --mode hc3 --logitech_wheel`
-- `./run_bridge.py --mode hc3 --logitech_wheel --wheel_device /dev/input/by-id/<wheel>-event-joystick`
+Common variants:
 
-See `tools/sim/README.md` for full simulator usage and controls.
-
-## Directory Structure
-
-```
-├── cabana/             # View and plot CAN messages from drives or in realtime
-├── camerastream/       # Cameras stream over the network
-├── joystick/           # Control your car with a joystick
-├── lib/                # Libraries to support the tools and reading openpilot logs
-├── plotjuggler/        # A tool to plot openpilot logs
-├── replay/             # Replay drives and mock openpilot services
-├── scripts/            # Miscellaneous scripts
-├── serial/             # Tools for using the comma serial
-├── sim/                # Run openpilot in a simulator
-└── webcam/             # Run openpilot on a PC with webcams
-```
-
-## Setup Commands
 ```bash
-tools/op.sh setup
-source .venv/bin/activate
-scons -u -j$(nproc)
+./run_bridge.py --mode hc3
+./run_bridge.py --mode hc3 --logitech_wheel
+./run_bridge.py --mode hc3 --logitech_wheel --wheel_device /dev/input/by-id/<wheel>-event-joystick
+```
 
-if error related to front_tire.gltf, then go through .venv directory to metadrive/.../assets and replace with assets folder from github repository. Make sure to patch the "check for updates" so that it doesn't auto patch and delete the assets again.
+For architecture, controls, replay workflow, and limitations, see [tools/sim/README.md](/Users/ethanmathias/Desktop/UVA/LinkLab/openpilot-hcc/tools/sim/README.md).
 
-for steering wheel, may need to install evdev in the venv
+## CTF
+
+To explore the openpilot ecosystem and tooling through guided exercises, see [tools/CTF.md](/Users/ethanmathias/Desktop/UVA/LinkLab/openpilot-hcc/tools/CTF.md).
+
+## Directory Overview
+
+```text
+├── cabana/             View and plot CAN messages from logs or live streams
+├── camerastream/       Stream cameras over the network
+├── joystick/           Control a vehicle with a joystick
+├── lib/                Shared libraries used by tools and log readers
+├── plotjuggler/        Plot openpilot logs
+├── replay/             Replay drives and mock openpilot services
+├── scripts/            Miscellaneous scripts
+├── serial/             Serial-related tooling for comma hardware
+├── sim/                Run openpilot in the MetaDrive simulator
+└── webcam/             Run openpilot on a PC with webcams
+```
+
+## Notes and Known Issues
+
+### MetaDrive asset issues
+
+If setup or runtime errors reference MetaDrive assets such as `front_tire.gltf`, inspect the MetaDrive installation inside the virtual environment.
+
+In some local environments, replacing the installed MetaDrive `assets/` directory with the upstream repository assets resolves the issue. If you use this workaround, ensure any automatic update path does not immediately overwrite the replacement assets.
+
+### Steering wheel dependencies
+
+Some wheel setups may require `evdev` inside the virtual environment:
+
+```bash
+pip install evdev
 ```
