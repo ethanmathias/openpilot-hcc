@@ -314,12 +314,16 @@ Ignition: {self.simulator_state.ignition} Engaged: {self.simulator_state.is_enga
       radar_lead_v_rel = 0.0
       radar_lead_d_rel = 0.0
       radar_lead_status = False
+      radar_lead_is_radar = False
+      radar_lead_track_id = -1
       if self.simulated_car.sm.valid.get('radarState', False):
         radar_lead = self.simulated_car.sm['radarState'].leadOne
         radar_lead_status = bool(radar_lead.status)
         if radar_lead_status:
           radar_lead_v_rel = float(radar_lead.vRel)
           radar_lead_d_rel = float(radar_lead.dRel)
+          radar_lead_is_radar = bool(radar_lead.radar)
+          radar_lead_track_id = int(radar_lead.radarTrackId)
       self.simulator_state.hccc_active = bool(
         self.enable_hcc and
         self.simulator_state.is_engaged and
@@ -333,6 +337,8 @@ Ignition: {self.simulator_state.ignition} Engaged: {self.simulator_state.is_enga
         "radar_lead_status": radar_lead_status,
         "radar_lead_v_rel": radar_lead_v_rel,
         "radar_lead_d_rel": radar_lead_d_rel,
+        "radar_lead_is_radar": radar_lead_is_radar,
+        "radar_lead_track_id": radar_lead_track_id,
         "radar_lead_speed_est": (carstate_v_ego + radar_lead_v_rel) if radar_lead_status else 0.0,
         "planner_a_target": self.simulator_state.planner_a_target,
         "hccc_accel": self.simulator_state.hccc_accel,

@@ -252,6 +252,8 @@ The replay CSV includes BeamNG comparison signals such as:
 - the exact openpilot HC3 input speeds:
   - `hccc_input_v_ego[m/s]`
   - `hccc_input_radar_v_rel[m/s]`
+  - `hccc_input_lead_is_radar`
+  - `hccc_input_lead_track_id`
   - `hccc_input_lead_speed_est[m/s]`
 - BeamNG-reference HC3 lead speed, lead acceleration, feedforward, and raw command reconstructed from the logged trace
 - planner `aTarget`
@@ -339,6 +341,8 @@ For parity analysis, compare these layers separately:
 
 - `hccc_input_v_ego[m/s]` and `hccc_input_lead_speed_est[m/s]`
   The actual ego and lead speed signals seen by openpilot HC3.
+- `hccc_input_lead_is_radar` and `hccc_input_lead_track_id`
+  Whether `radard` selected a track-backed lead or a vision-fallback lead, which is useful both in MetaDrive and on real route logs.
 - `hccc_accel[m/s2]`
   Raw HC3 output from openpilot before actuator mapping.
 - `hccc_reference_cmd[m/s2]`

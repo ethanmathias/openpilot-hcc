@@ -105,6 +105,8 @@ def test_open_output_csv_writes_beamng_parity_columns(tmp_path):
   assert "manual_accel[m/s2]" in header
   assert "final_accel_cmd[m/s2]" in header
   assert "hccc_input_v_ego[m/s]" in header
+  assert "hccc_input_lead_is_radar" in header
+  assert "hccc_input_lead_track_id" in header
   assert "hccc_input_lead_speed_est[m/s]" in header
   assert "hccc_reference_cmd[m/s2]" in header
   assert "hccc_reference_error[m/s2]" in header
