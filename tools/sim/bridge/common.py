@@ -45,6 +45,24 @@ def accel_to_pedal_commands(accel_cmd: float, beamng_hccc_mode: bool) -> tuple[f
   return float(throttle), float(brake)
 
 
+def _slew_limit(target: float, previous: float, rise_step: float, fall_step: float) -> float:
+  if target >= previous:
+    return float(min(target, previous + rise_step))
+  return float(max(target, previous - fall_step))
+
+
+def calibrated_hc3_pedal_commands(accel_cmd: float, prev_throttle: float, prev_brake: float) -> tuple[float, float]:
+  if abs(accel_cmd) < 0.05:
+    accel_cmd = 0.0
+
+  target_throttle = float(np.clip(accel_cmd / 1.6, 0.0, 1.0))
+  target_brake = float(np.clip(-accel_cmd / 4.0, 0.0, 1.0))
+
+  throttle = _slew_limit(target_throttle, prev_throttle, rise_step=0.04, fall_step=0.08)
+  brake = _slew_limit(target_brake, prev_brake, rise_step=0.05, fall_step=0.10)
+  return throttle, brake
+
+
 class SimulatorBridge(ABC):
   TICKS_PER_FRAME = 5
 
@@ -73,6 +91,8 @@ class SimulatorBridge(ABC):
 
     self.past_startup_engaged = False
     self.startup_button_prev = True
+    self._hccc_throttle_prev = 0.0
+    self._hccc_brake_prev = 0.0
 
     self.test_run = False
 
@@ -259,12 +279,21 @@ Ignition: {self.simulator_state.ignition} Engaged: {self.simulator_state.is_enga
       self.simulator_state.is_engaged = self.simulated_car.sm['selfdriveState'].active
 
       if self.simulator_state.is_engaged:
-        throttle_op, brake_op = accel_to_pedal_commands(self.simulated_car.sm['carControl'].actuators.accel, self.enable_hcc)
+        accel_cmd = self.simulated_car.sm['carControl'].actuators.accel
+        if self.enable_hcc:
+          throttle_op, brake_op = calibrated_hc3_pedal_commands(accel_cmd, self._hccc_throttle_prev, self._hccc_brake_prev)
+          self._hccc_throttle_prev = throttle_op
+          self._hccc_brake_prev = brake_op
+        else:
+          throttle_op, brake_op = accel_to_pedal_commands(accel_cmd, False)
 
         self.past_startup_engaged = True
       elif not self.past_startup_engaged and self.simulated_car.sm['selfdriveState'].engageable:
         self.simulator_state.cruise_button = CruiseButtons.DECEL_SET if self.startup_button_prev else CruiseButtons.MAIN # force engagement on startup
         self.startup_button_prev = not self.startup_button_prev
+      else:
+        self._hccc_throttle_prev = 0.0
+        self._hccc_brake_prev = 0.0
 
       if self.simulator_state.is_engaged:
         # Cooperative manual input is already blended into actuators.accel upstream.

@@ -114,7 +114,7 @@ The bridge supports the following mode presets:
 - `default`
   Standard simulator driving environment.
 - `hc3`
-  BeamNG-parity hC3 straight-road preset. This mode matches the legacy BeamNG HC3 controller on controller math, 10 Hz update cadence, and direct signed throttle/brake command mapping.
+  BeamNG-parity hC3 straight-road preset. This mode matches the legacy BeamNG HC3 controller on controller math and 10 Hz update cadence, while using a MetaDrive-calibrated throttle/brake adapter for smoother physical behavior in the simulator.
 
 Examples:
 
@@ -229,6 +229,7 @@ Default behavior:
 - replay graphs are written under `tools/sim/graphs/<control_method>/`
 - HC3 replay runs use BeamNG-style names such as `Test1.vehicle.honda_civic_2022_ICE.scn48.hccc.csv`
 - the output directories are created automatically when needed
+- replay roads are auto-sized from the loaded scenario distance plus a 1000 m buffer, with a 2000 m minimum
 
 Specify a custom CSV path:
 
@@ -253,6 +254,8 @@ The replay CSV includes BeamNG comparison signals such as:
 - manual contribution
 - final combined command
 - headway and delta-v
+- ego and lead lane diagnostics
+- lead pose replay status and fallback state
 - driver gas/brake and final throttle/brake sent to MetaDrive
 
 ## Additional Options
@@ -317,12 +320,14 @@ The runtime loop operates as follows:
 5. The bridge reads openpilot control outputs and applies them to the MetaDrive ego vehicle.
 6. The simulator advances, and the cycle repeats.
 
-In `hc3` mode, the bridge uses BeamNG-style longitudinal semantics:
+In `hc3` mode, the bridge keeps BeamNG-style HC3 command generation but calibrates the final MetaDrive pedal application:
 
 - the HC3 controller updates internally at `0.1 s`
 - manual cooperative input in simulation is raw `gas - brake`
-- positive combined command maps directly to throttle
-- negative combined command maps directly to brake
+- positive combined command maps to throttle using `/1.6` scaling
+- negative combined command maps to brake using `/4.0` scaling
+- a `0.05` command deadband suppresses tiny oscillatory pedal inputs
+- pedal outputs are slew-limited before they reach MetaDrive
 
 ## Camera Path
 

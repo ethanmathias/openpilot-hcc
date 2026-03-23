@@ -88,6 +88,9 @@ class LeadState:
   profile_lane: object | None = None
   profile_s_base: float | None = None
   pose_replay_failed: bool = False
+  pose_replay_applied: bool = False
+  pose_replay_fallback_active: bool = False
+  pose_replay_fallback_seen: bool = False
 
 
 # Geometry and profile utility helpers.
@@ -180,6 +183,10 @@ def _ego_debug_state(vehicle):
     pass
 
   return debug_state
+
+
+def _lead_debug_state(vehicle):
+  return _ego_debug_state(vehicle)
 
 
 def _format_debug_state(prefix: str, debug: dict, position_xy, heading_theta: float) -> str:
@@ -470,6 +477,8 @@ def _spawn_lead_vehicle(env: MetaDriveEnv, lead_cfg: LeadConfig, lead_state: Lea
   lead_state.profile_lane = None
   lead_state.profile_s_base = None
   lead_state.pose_replay_failed = False
+  lead_state.pose_replay_applied = False
+  lead_state.pose_replay_fallback_active = False
 
   if not lead_cfg.enabled:
     return
@@ -567,6 +576,8 @@ def _clear_lead_vehicle(env: MetaDriveEnv, lead_state: LeadState):
   lead_state.profile_lane = None
   lead_state.profile_s_base = None
   lead_state.pose_replay_failed = False
+  lead_state.pose_replay_applied = False
+  lead_state.pose_replay_fallback_active = False
 
 
 def _update_lead_vehicle(env: MetaDriveEnv, lead_cfg: LeadConfig, lead_state: LeadState):
@@ -575,6 +586,8 @@ def _update_lead_vehicle(env: MetaDriveEnv, lead_cfg: LeadConfig, lead_state: Le
     return
 
   try:
+    lead_state.pose_replay_applied = False
+    lead_state.pose_replay_fallback_active = False
     elapsed_s = 0.0 if lead_state.start_time is None else (time.monotonic() - lead_state.start_time)
     if lead_cfg.start_delay_s > 0.0 and elapsed_s < lead_cfg.start_delay_s:
       lead_action = np.array([0.0, 0.0], dtype=np.float64)
@@ -603,8 +616,12 @@ def _update_lead_vehicle(env: MetaDriveEnv, lead_cfg: LeadConfig, lead_state: Le
           if not lead_state.pose_replay_failed:
             print("[WARNING] Lead pose replay failed; falling back to controller tracking.")
             lead_state.pose_replay_failed = True
+            print("[WARNING] Replay integrity issue: lead pose replay fallback is active.")
+          lead_state.pose_replay_fallback_active = True
+          lead_state.pose_replay_fallback_seen = True
         else:
           lead_state.pose_replay_failed = False
+          lead_state.pose_replay_applied = True
           lead_action = np.array([0.0, 0.0], dtype=np.float64)
           lead_state.vehicle.before_step(lead_action.tolist())
           return
@@ -700,6 +717,16 @@ OUTPUT_CSV_COLUMNS = [
   "lead_a_rel[m/s2]",
   "headway[m]",
   "deltav[m/s]",
+  "ego_lane_id",
+  "ego_on_lane",
+  "ego_lane_s[m]",
+  "ego_lane_lateral[m]",
+  "ego_lane_heading_error_deg",
+  "lead_lane_id",
+  "lead_on_lane",
+  "lead_lane_lateral[m]",
+  "lead_pose_replay_applied",
+  "lead_pose_fallback_active",
   "planner_a_target[m/s2]",
   "hccc_accel[m/s2]",
   "manual_accel[m/s2]",
@@ -1019,6 +1046,11 @@ def metadrive_process(
         lead_a_rel = float(lead_measurement["a_rel"]) if lead_measurement["status"] else ""
         headway_m = (float(lead_measurement["d_rel"]) - 4.5) if lead_measurement["status"] else ""
         deltav_mps = float(ego_speed_mps - lead_speed_mps) if lead_state.vehicle is not None else ""
+        lead_debug_state = _lead_debug_state(lead_state.vehicle) if lead_state.vehicle is not None else {
+          "lane_id": "",
+          "on_lane": "",
+          "lane_lateral": "",
+        }
 
         ego_position = np.array(env.vehicle.position, dtype=np.float64)
         ego_position_xyz = [
@@ -1051,6 +1083,16 @@ def metadrive_process(
           lead_a_rel,
           headway_m,
           deltav_mps,
+          ego_debug_state["lane_id"],
+          bool(ego_debug_state["on_lane"]),
+          float(ego_debug_state["lane_s"]) if ego_debug_state["has_lane"] else "",
+          float(ego_debug_state["lane_lateral"]) if ego_debug_state["has_lane"] else "",
+          float(ego_debug_state["lane_heading_error_deg"]) if ego_debug_state["has_lane"] else "",
+          lead_debug_state["lane_id"],
+          lead_debug_state["on_lane"],
+          lead_debug_state["lane_lateral"],
+          bool(lead_state.pose_replay_applied),
+          bool(lead_state.pose_replay_fallback_active),
           float(latest_bridge_telemetry.get("planner_a_target", 0.0)),
           float(latest_bridge_telemetry.get("hccc_accel", 0.0)),
           float(latest_bridge_telemetry.get("manual_accel", 0.0)),
@@ -1073,6 +1115,7 @@ def metadrive_process(
               "profile_scn": lead_cfg.profile_scn,
               "output_csv": output_csv_path,
               "output_graph": output_graph_path,
+              "pose_replay_fallback_seen": bool(lead_state.pose_replay_fallback_seen),
             },
           )
           _send_done_state(simulation_state_send, done_result)
