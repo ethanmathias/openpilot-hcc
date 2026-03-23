@@ -56,6 +56,27 @@ def test_create_straight_map_covers_requested_length():
   assert sum(block["length"] for block in blocks) >= 2800.0
 
 
+def test_hccc_parity_logger_matches_beamng_reference_and_holds_between_updates():
+  logger = metadrive_process.HCCCParityLogger(dt=0.1, beta=0.65)
+
+  first = logger.update(ego_speed_mps=20.0, lead_speed_mps=21.0, active=True, actual_hccc_cmd=0.65)
+  assert first.lead_accel_mps2 == 0.0
+  assert first.raw_command_mps2 == pytest.approx(0.65)
+  assert first.command_error_mps2 == pytest.approx(0.0)
+
+  held = logger.update(ego_speed_mps=20.0, lead_speed_mps=22.0, active=True, actual_hccc_cmd=0.65)
+  assert held.raw_command_mps2 == pytest.approx(0.65)
+
+  for _ in range(3):
+    logger.update(ego_speed_mps=20.0, lead_speed_mps=22.0, active=True, actual_hccc_cmd=0.65)
+
+  refreshed = logger.update(ego_speed_mps=20.0, lead_speed_mps=22.0, active=True, actual_hccc_cmd=1.35)
+  assert refreshed.lead_accel_mps2 == pytest.approx(10.0)
+  assert refreshed.feedforward_mps2 == pytest.approx(0.35)
+  assert refreshed.raw_command_mps2 == pytest.approx(1.65)
+  assert refreshed.command_error_mps2 == pytest.approx(-0.30)
+
+
 def test_default_output_paths_use_repo_local_hccc_directories(monkeypatch, tmp_path):
   monkeypatch.setattr(metadrive_process, "_default_output_root", lambda: tmp_path)
   lead_cfg = SimpleNamespace(output_control_method="hccc", output_vehicle_name="honda_civic_2022", profile_scn=48)
@@ -83,6 +104,8 @@ def test_open_output_csv_writes_beamng_parity_columns(tmp_path):
   assert "hccc_accel[m/s2]" in header
   assert "manual_accel[m/s2]" in header
   assert "final_accel_cmd[m/s2]" in header
+  assert "hccc_reference_cmd[m/s2]" in header
+  assert "hccc_reference_error[m/s2]" in header
   assert "ego_lane_id" in header
   assert "lead_lane_id" in header
   assert "lead_pose_fallback_active" in header

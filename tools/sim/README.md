@@ -249,6 +249,7 @@ The replay CSV includes BeamNG comparison signals such as:
 - ego and lead speed
 - sim-derived ego acceleration
 - `carState.aEgo`
+- BeamNG-reference HC3 lead speed, lead acceleration, feedforward, and raw command reconstructed from the logged trace
 - planner `aTarget`
 - HC3 contribution
 - manual contribution
@@ -324,10 +325,22 @@ In `hc3` mode, the bridge keeps BeamNG-style HC3 command generation but calibrat
 
 - the HC3 controller updates internally at `0.1 s`
 - manual cooperative input in simulation is raw `gas - brake`
+- raw HC3 output is treated as the BeamNG-reference command to compare before any MetaDrive-only mapping
 - positive combined command maps to throttle using `/1.6` scaling
 - negative combined command maps to brake using `/4.0` scaling
 - a `0.05` command deadband suppresses tiny oscillatory pedal inputs
 - pedal outputs are slew-limited before they reach MetaDrive
+
+For parity analysis, compare these layers separately:
+
+- `hccc_accel[m/s2]`
+  Raw HC3 output from openpilot before actuator mapping.
+- `hccc_reference_cmd[m/s2]`
+  BeamNG-reference HC3 command reconstructed from the logged ego/lead speed trace using the same `10 Hz` controller cadence.
+- `controller_throttle` and `controller_brake`
+  Final MetaDrive pedal commands after the MetaDrive-only adapter.
+- `acceleration_ego_sim[m/s2]`
+  Realized plant response in MetaDrive.
 
 ## Camera Path
 

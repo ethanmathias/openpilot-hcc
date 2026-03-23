@@ -97,6 +97,9 @@ class LongControl:
     self.debug_manual_accel = 0.0
     self.debug_output_accel = 0.0
     self.debug_hccc_active = False
+    self.debug_hccc_lead_speed = 0.0
+    self.debug_hccc_lead_accel = 0.0
+    self.debug_hccc_feedforward = 0.0
     self._refresh_hccc(force_reset=True)
 
   def reset(self):
@@ -107,6 +110,9 @@ class LongControl:
     self.debug_manual_accel = 0.0
     self.debug_output_accel = 0.0
     self.debug_hccc_active = False
+    self.debug_hccc_lead_speed = 0.0
+    self.debug_hccc_lead_accel = 0.0
+    self.debug_hccc_feedforward = 0.0
 
   def _reset_hccc_state(self):
     self.hccc_output = None
@@ -160,6 +166,10 @@ class LongControl:
     self.debug_hccc_accel = float(controller_accel)
     self.debug_manual_accel = float(manual_accel)
     self.debug_hccc_active = bool(self.use_hccc and active and lead_valid and self.hccc_output is not None)
+    if self.hccc is not None:
+      self.debug_hccc_lead_speed = float(getattr(self.hccc, "debug_lead_speed", 0.0))
+      self.debug_hccc_lead_accel = float(getattr(self.hccc, "debug_lead_accel", 0.0))
+      self.debug_hccc_feedforward = float(getattr(self.hccc, "debug_feedforward", 0.0))
 
     if hccc_output is not None:
       should_stop = False

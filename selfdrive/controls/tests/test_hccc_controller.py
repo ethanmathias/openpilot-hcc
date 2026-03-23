@@ -27,7 +27,7 @@ class BeamNGReferenceHCCC:
     self.prev_lead_speed = lead_speed
 
     self.ff_y_prev = self.ff_y_prev + self.dt * ((1.0 - self.beta) * lead_accel - self.ff_y_prev)
-    return (self.beta * (lead_speed - ego_speed) + self.ff_y_prev) * 0.6
+    return self.beta * (lead_speed - ego_speed) + self.ff_y_prev
 
 
 def test_hccc_returns_none_without_valid_lead():
@@ -69,3 +69,15 @@ def test_hccc_ignores_radar_lead_accel_when_speed_history_is_available():
   accel = controller.run_step(_cs(20.0), _lead(True, 1.0, a_lead_k=-20.0))
   assert accel is not None
   assert accel > 0.0
+
+
+def test_hccc_exposes_beamng_parity_debug_scalars():
+  controller = hCCC(dt=0.1)
+  controller.run_step(_cs(20.0), _lead(True, -1.0))
+  accel = controller.run_step(_cs(20.0), _lead(True, 1.0))
+
+  assert accel is not None
+  assert controller.debug_lead_speed == 21.0
+  assert controller.debug_lead_accel == 20.0
+  assert controller.debug_feedforward > 0.0
+  assert controller.debug_output == accel
