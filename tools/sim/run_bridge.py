@@ -29,7 +29,8 @@ def _resolve_scn_csv_path(scn_csv: str | None) -> str | None:
   return None
 
 
-def create_bridge(dual_camera, high_quality, mode="default", scn=None, scn_csv=None, output_csv=None, output_graph=None):
+def create_bridge(dual_camera, high_quality, mode="default", scn=None, scn_csv=None, output_csv=None,
+                  output_graph=None, output_graph_mode="simple"):
   queue: Any = Queue()
 
   if scn is not None and scn < 1:
@@ -41,7 +42,8 @@ def create_bridge(dual_camera, high_quality, mode="default", scn=None, scn_csv=N
 
   simulator_bridge = MetaDriveBridge(dual_camera, high_quality,
                                      scenario=SIM_MODE_TO_SCENARIO[mode], enable_hcc=False,
-                                     scn=scn, scn_csv=scn_csv, output_csv=output_csv, output_graph=output_graph)
+                                     scn=scn, scn_csv=scn_csv, output_csv=output_csv, output_graph=output_graph,
+                                     output_graph_mode=output_graph_mode)
   simulator_process = simulator_bridge.run(queue)
 
   return queue, simulator_process, simulator_bridge
@@ -69,6 +71,8 @@ def parse_args(add_args=None):
                       help='Path to write bridge telemetry CSV output')
   parser.add_argument('--output_graph', default=None,
                       help='Path to write a PNG speed plot (defaults next to the CSV output)')
+  parser.add_argument('--graph_mode', default="simple", choices=["detailed", "simple"],
+                      help='Graph style: simple preceding-vs-ego speed plot or detailed diagnostics')
 
   return parser.parse_args(add_args)
 
@@ -77,7 +81,8 @@ if __name__ == "__main__":
 
   queue, simulator_process, simulator_bridge = create_bridge(args.dual_camera, args.high_quality,
                                                              mode=args.mode, scn=args.scn, scn_csv=args.scn_csv,
-                                                             output_csv=args.output_csv, output_graph=args.output_graph)
+                                                             output_csv=args.output_csv, output_graph=args.output_graph,
+                                                             output_graph_mode=args.graph_mode)
 
   use_logitech_wheel = not args.keyboard and not args.joystick
   if args.logitech_wheel:

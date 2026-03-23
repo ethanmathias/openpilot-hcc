@@ -237,10 +237,24 @@ Specify a custom CSV path:
 ./run_bridge.py --scn 48 --output_csv /path/to/output.csv
 ```
 
-Generate a PNG speed plot:
+Generate the default PNG speed plot:
 
 ```bash
 ./run_bridge.py --scn 48 --output_graph /path/to/output.png
+```
+
+By default, replay graphs are simple two-line plots with just the preceding and ego vehicles.
+
+Generate that same simple speed-only graph explicitly:
+
+```bash
+./run_bridge.py --scn 48 --graph_mode simple
+```
+
+Generate the detailed diagnostic multi-panel graph:
+
+```bash
+./run_bridge.py --scn 48 --graph_mode detailed
 ```
 
 The replay CSV includes BeamNG comparison signals such as:

@@ -72,6 +72,7 @@ class LeadConfig:
   profile_csv: str | None
   output_csv: str | None
   output_graph: str | None
+  output_graph_mode: str | None
   output_control_method: str | None
   output_vehicle_name: str | None
 
@@ -854,7 +855,7 @@ def _open_output_csv(path: str):
   return output_file, output_writer, str(output_path)
 
 
-def _write_output_graph(csv_path: str, graph_path: str):
+def _write_output_graph(csv_path: str, graph_path: str, graph_mode: str = "simple"):
   """Render multi-panel BeamNG-parity telemetry graphs from the bridge CSV."""
   try:
     import matplotlib.pyplot as plt
@@ -922,6 +923,24 @@ def _write_output_graph(csv_path: str, graph_path: str):
 
   graph_output_path = Path(graph_path).expanduser()
   graph_output_path.parent.mkdir(parents=True, exist_ok=True)
+
+  graph_mode_normalized = str(graph_mode or "detailed").strip().lower()
+  if graph_mode_normalized not in {"detailed", "simple"}:
+    raise RuntimeError(f"Unsupported graph mode: {graph_mode}")
+
+  if graph_mode_normalized == "simple":
+    _, ax = plt.subplots(1, 1, figsize=(12, 6))
+    ax.plot(times_s, speed_pre_mps, label="Preceding Vehicle")
+    ax.plot(times_s, speed_ego_mps, label="Ego Vehicle")
+    ax.set_xlabel("Time [s]")
+    ax.set_ylabel("Speed [m/s]")
+    ax.set_title("HC3 Replay: Preceding vs Ego Vehicle")
+    ax.legend()
+    ax.grid(True)
+    plt.tight_layout()
+    plt.savefig(graph_output_path)
+    plt.close()
+    return
 
   _, axes = plt.subplots(5, 1, figsize=(12, 19), sharex=True)
 
@@ -998,6 +1017,7 @@ def metadrive_process(
     profile_csv=config.pop("lead_profile_csv", None),
     output_csv=config.pop("lead_profile_output_csv", None),
     output_graph=config.pop("lead_profile_output_graph", None),
+    output_graph_mode=config.pop("lead_profile_output_graph_mode", None),
     output_control_method=config.pop("lead_profile_output_control_method", None),
     output_vehicle_name=config.pop("lead_profile_output_vehicle_name", None),
   )
@@ -1257,7 +1277,7 @@ def metadrive_process(
     output_file.flush()
     output_file.close()
     try:
-      _write_output_graph(output_csv_path, output_graph_path)
+      _write_output_graph(output_csv_path, output_graph_path, lead_cfg.output_graph_mode or "simple")
       print(f"[INFO] Saved bridge telemetry graph to {output_graph_path}")
     except Exception as exc:
       print(f"[WARNING] Failed to generate bridge telemetry graph: {exc}")

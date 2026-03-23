@@ -38,7 +38,7 @@ class hCCC:
         """
         Apply feedforward filter (Eq.7) without delay.
         """
-        th_bar = 1.0
+        th_bar = 1
 
         y = self.ff_y_prev + (self._dt / th_bar) * ((1 - th_bar * self._beta) * a_lead - self.ff_y_prev)
 
@@ -80,6 +80,13 @@ class hCCC:
         state = self.feedforward_no_delay(self._pre_accl[-1])
         self._feedforward.append(state)
 
-        accl_command = (self._beta * (pre_speed_current - current_speed) + self._feedforward[-1]) * 0.6
+        accl_command = (self._beta * (pre_speed_current - current_speed) + self._feedforward[-1]) 
 
-        return accl_command
+        if accl_command >= 0.0:
+            throttle_hccc = accl_command
+            brake_hccc = 0.0
+        else:
+            throttle_hccc = 0.0
+            brake_hccc = -accl_command
+
+        return throttle_hccc, brake_hccc

@@ -89,7 +89,7 @@ class MetaDriveBridge(SimulatorBridge):
   TICKS_PER_FRAME = 2
 
   def __init__(self, dual_camera, high_quality, test_duration=math.inf, test_run=False, scenario=SCENARIO_DEFAULT,
-               enable_hcc=False, scn=None, scn_csv=None, output_csv=None, output_graph=None):
+               enable_hcc=False, scn=None, scn_csv=None, output_csv=None, output_graph=None, output_graph_mode="simple"):
     """Configure bridge behavior and test/scenario options before spawning world."""
     should_enable_hcc = enable_hcc or scenario in STRAIGHT_ROAD_SCENARIOS or scn is not None
     super().__init__(dual_camera, high_quality, enable_hcc=should_enable_hcc)
@@ -102,6 +102,7 @@ class MetaDriveBridge(SimulatorBridge):
     self.scn_csv = scn_csv
     self.output_csv = output_csv
     self.output_graph = output_graph
+    self.output_graph_mode = output_graph_mode
     self.output_control_method = "hccc" if should_enable_hcc else "default"
     self.output_vehicle_name = "honda_civic_2022"
 
@@ -154,6 +155,7 @@ class MetaDriveBridge(SimulatorBridge):
       lead_profile_csv=self.scn_csv,
       lead_profile_output_csv=self.output_csv,
       lead_profile_output_graph=self.output_graph,
+      lead_profile_output_graph_mode=self.output_graph_mode,
       lead_profile_output_control_method=self.output_control_method,
       lead_profile_output_vehicle_name=self.output_vehicle_name,
       steer_cmd_ratio=1.2,
