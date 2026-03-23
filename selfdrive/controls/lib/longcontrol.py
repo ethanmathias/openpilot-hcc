@@ -48,6 +48,20 @@ def _manual_longitudinal_input(CS) -> float:
   return manual_cmd
 
 
+def _hccc_lead_is_usable(lead) -> bool:
+  if lead is None or not bool(getattr(lead, "status", False)):
+    return False
+
+  # In simulation, HC3 should only trust track-backed radarState leads. This
+  # prevents radard's vision fallback from injecting non-physical relative speed
+  # spikes into the BeamNG-parity controller while leaving on-road behavior
+  # unchanged for comma hardware.
+  if SIMULATION and not bool(getattr(lead, "radar", True)):
+    return False
+
+  return True
+
+
 def long_control_state_trans(CP, active, long_control_state, v_ego,
                              should_stop, brake_pressed, cruise_standstill):
   stopping_condition = should_stop
@@ -145,7 +159,7 @@ class LongControl:
     self.debug_planner_accel = float(a_target)
 
     controller_accel = 0.0
-    lead_valid = lead is not None and lead.status
+    lead_valid = _hccc_lead_is_usable(lead)
     hccc_output = None
     if self.use_hccc and self.hccc is not None and active and lead_valid:
       if self.hccc_output is None or self._hccc_update_counter <= 0:
