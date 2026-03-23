@@ -35,6 +35,16 @@ def rk_loop(function, hz, exit_event: threading.Event):
     rk.keep_time()
 
 
+def accel_to_pedal_commands(accel_cmd: float, beamng_hccc_mode: bool) -> tuple[float, float]:
+  if beamng_hccc_mode:
+    throttle = np.clip(accel_cmd, 0.0, 1.0)
+    brake = np.clip(-accel_cmd, 0.0, 1.0)
+  else:
+    throttle = np.clip(accel_cmd / 1.6, 0.0, 1.0)
+    brake = np.clip(-accel_cmd / 4.0, 0.0, 1.0)
+  return float(throttle), float(brake)
+
+
 class SimulatorBridge(ABC):
   TICKS_PER_FRAME = 5
 
@@ -42,11 +52,11 @@ class SimulatorBridge(ABC):
     set_params_enabled()
     self.params = Params()
     self.params.put_bool("AlphaLongitudinalEnabled", True)
-    if enable_hcc:
-      if self.params.check_key("EnableHCCC"):
-        self.params.put_bool("EnableHCCC", True)
-      else:
-        print("[WARNING] EnableHCCC param key is unavailable in this build; --enable_hcc ignored.")
+    self.enable_hcc = bool(enable_hcc)
+    if self.params.check_key("EnableHCCC"):
+      self.params.put_bool("EnableHCCC", self.enable_hcc)
+    elif enable_hcc:
+      print("[WARNING] EnableHCCC param key is unavailable in this build; --enable_hcc ignored.")
 
     self.rk = Ratekeeper(100, None)
 
@@ -249,8 +259,7 @@ Ignition: {self.simulator_state.ignition} Engaged: {self.simulator_state.is_enga
       self.simulator_state.is_engaged = self.simulated_car.sm['selfdriveState'].active
 
       if self.simulator_state.is_engaged:
-        throttle_op = np.clip(self.simulated_car.sm['carControl'].actuators.accel / 1.6, 0.0, 1.0)
-        brake_op = np.clip(-self.simulated_car.sm['carControl'].actuators.accel / 4.0, 0.0, 1.0)
+        throttle_op, brake_op = accel_to_pedal_commands(self.simulated_car.sm['carControl'].actuators.accel, self.enable_hcc)
 
         self.past_startup_engaged = True
       elif not self.past_startup_engaged and self.simulated_car.sm['selfdriveState'].engageable:
@@ -267,7 +276,30 @@ Ignition: {self.simulator_state.ignition} Engaged: {self.simulator_state.is_enga
         brake_out = brake_manual
         steer_out = steer_manual
 
-      self.world.apply_controls(steer_out, throttle_out, brake_out)
+      self.simulator_state.carstate_a_ego = float(self.simulated_car.sm['carState'].aEgo) if self.simulated_car.sm.valid.get('carState', False) else 0.0
+      self.simulator_state.planner_a_target = float(self.simulated_car.sm['longitudinalPlan'].aTarget) if self.simulated_car.sm.valid.get('longitudinalPlan', False) else 0.0
+      self.simulator_state.hccc_accel = float(self.simulated_car.sm['controlsState'].uiAccelCmd) if self.simulated_car.sm.valid.get('controlsState', False) else 0.0
+      self.simulator_state.manual_accel = float(self.simulated_car.sm['controlsState'].ufAccelCmd) if self.simulated_car.sm.valid.get('controlsState', False) else 0.0
+      self.simulator_state.final_accel = float(self.simulated_car.sm['carControl'].actuators.accel) if self.simulated_car.sm.valid.get('carControl', False) else 0.0
+      self.simulator_state.hccc_active = bool(
+        self.enable_hcc and
+        self.simulator_state.is_engaged and
+        self.simulated_car.sm.valid.get('radarState', False) and
+        self.simulated_car.sm['radarState'].leadOne.status
+      )
+
+      bridge_telemetry = {
+        "carstate_a_ego": self.simulator_state.carstate_a_ego,
+        "planner_a_target": self.simulator_state.planner_a_target,
+        "hccc_accel": self.simulator_state.hccc_accel,
+        "manual_accel": self.simulator_state.manual_accel,
+        "final_accel": self.simulator_state.final_accel,
+        "driver_gas": float(throttle_manual),
+        "driver_brake": float(brake_manual),
+        "hccc_active": self.simulator_state.hccc_active,
+      }
+
+      self.world.apply_controls(steer_out, throttle_out, brake_out, bridge_telemetry)
       self.world.read_state()
       self.world.read_sensors(self.simulator_state)
 

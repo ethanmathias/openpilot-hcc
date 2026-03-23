@@ -11,6 +11,8 @@ CONTROL_N_T_IDX = ModelConstants.T_IDXS[:CONTROL_N]
 
 LongCtrlState = car.CarControl.Actuators.LongControlState
 SIMULATION = os.environ.get("SIMULATION", "0") == "1"
+HCCC_UPDATE_DT = 0.1
+HCCC_UPDATE_STEPS = max(1, int(round(HCCC_UPDATE_DT / DT_CTRL)))
 
 # HCCC_CHANGE_NOTE: longcontrol uses BeamNG-style cooperative blending:
 # controller contribution + signed manual pedal input, blended once in the shared
@@ -24,6 +26,9 @@ def _normalize_pedal(value: float) -> float:
 
 
 def _manual_longitudinal_input(CS) -> float:
+  if not SIMULATION:
+    return 0.0
+
   gas_raw = getattr(CS, "gas", 0.0)
   brake_raw = getattr(CS, "brake", 0.0)
 
@@ -38,13 +43,9 @@ def _manual_longitudinal_input(CS) -> float:
 
   manual_cmd = float(np.clip(gas - brake, -1.0, 1.0))
 
-  # NOTE: This maps manual pedal input into the simulator's accel-command space
-  # so the existing bridge conversion reproduces BeamNG-like pedal authority.
-  # This should be revisited for the real-car version, where actuators.accel is
-  # not simply converted back into throttle/brake with the simulator scaling.
-  if manual_cmd >= 0.0:
-    return manual_cmd * 1.4
-  return manual_cmd * 4.0
+  # BeamNG parity: in simulation the cooperative manual command is the raw
+  # signed pedal delta before any additional scaling.
+  return manual_cmd
 
 
 def long_control_state_trans(CP, active, long_control_state, v_ego,
@@ -89,10 +90,29 @@ class LongControl:
     self.params = Params()
     self.use_hccc = False
     self.hccc = None
+    self.hccc_output = None
+    self._hccc_update_counter = 0
+    self.debug_planner_accel = 0.0
+    self.debug_hccc_accel = 0.0
+    self.debug_manual_accel = 0.0
+    self.debug_output_accel = 0.0
+    self.debug_hccc_active = False
     self._refresh_hccc(force_reset=True)
 
   def reset(self):
     self._refresh_hccc(force_reset=True)
+    self.hccc_output = None
+    self._hccc_update_counter = 0
+    self.debug_hccc_accel = 0.0
+    self.debug_manual_accel = 0.0
+    self.debug_output_accel = 0.0
+    self.debug_hccc_active = False
+
+  def _reset_hccc_state(self):
+    self.hccc_output = None
+    self._hccc_update_counter = 0
+    if self.hccc is not None:
+      self.hccc.reset()
 
   def _hccc_enabled(self):
     # HCCC_CHANGE_NOTE: enable from CarParams override or persistent EnableHCCC toggle.
@@ -108,25 +128,38 @@ class LongControl:
     if not enabled:
       self.hccc = None
     elif self.hccc is None or force_reset:
-      self.hccc = hCCC(dt=DT_CTRL, max_deceleration=self.CP.stopAccel, max_acceleration=max(self.CP.startAccel, 1.6))
+      self.hccc = hCCC(dt=HCCC_UPDATE_DT, max_deceleration=self.CP.stopAccel, max_acceleration=max(self.CP.startAccel, 1.6))
+      self._reset_hccc_state()
     self.use_hccc = enabled
 
   def update(self, active, CS, a_target, should_stop, accel_limits, lead=None):
     """Update longitudinal control. This updates the state machine and runs hCCC."""
     self._refresh_hccc()
     accel_min, accel_max = accel_limits
+    self.debug_planner_accel = float(a_target)
 
     controller_accel = 0.0
+    lead_valid = lead is not None and lead.status
     hccc_output = None
-    if self.use_hccc and self.hccc is not None:
-      self.hccc._max_decel = accel_min
-      self.hccc._max_accl = accel_max
-      hccc_output = self.hccc.run_step(CS, lead)
+    if self.use_hccc and self.hccc is not None and active and lead_valid:
+      if self.hccc_output is None or self._hccc_update_counter <= 0:
+        hccc_output = self.hccc.run_step(CS, lead)
+        self.hccc_output = hccc_output
+        self._hccc_update_counter = HCCC_UPDATE_STEPS - 1
+      else:
+        self._hccc_update_counter -= 1
+        hccc_output = self.hccc_output
+
       if hccc_output is not None:
         controller_accel = hccc_output
+    else:
+      self._reset_hccc_state()
 
     # HCCC_CHANGE_NOTE: BeamNG-style cooperative input is a single signed manual command.
     manual_accel = _manual_longitudinal_input(CS)
+    self.debug_hccc_accel = float(controller_accel)
+    self.debug_manual_accel = float(manual_accel)
+    self.debug_hccc_active = bool(self.use_hccc and active and lead_valid and self.hccc_output is not None)
 
     if hccc_output is not None:
       should_stop = False
@@ -155,4 +188,5 @@ class LongControl:
       output_accel = controller_accel + manual_accel
 
     self.last_output_accel = np.clip(output_accel, accel_min, accel_max)
+    self.debug_output_accel = float(self.last_output_accel)
     return self.last_output_accel

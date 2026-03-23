@@ -197,16 +197,9 @@ class Controls:
     cs.lateralPlanMonoTime = self.sm.logMonoTime['modelV2']
     cs.desiredCurvature = self.desired_curvature
     cs.longControlState = self.LoC.long_control_state
-    # HCCC_CHANGE_NOTE: LoC may not expose PID internals after hCCC refactor; guard telemetry fields.
-    pid = getattr(self.LoC, "pid", None)
-    if pid is not None:
-      cs.upAccelCmd = float(pid.p)
-      cs.uiAccelCmd = float(pid.i)
-      cs.ufAccelCmd = float(pid.f)
-    else:
-      cs.upAccelCmd = 0.0
-      cs.uiAccelCmd = 0.0
-      cs.ufAccelCmd = 0.0
+    cs.upAccelCmd = float(getattr(self.LoC, "debug_planner_accel", 0.0))
+    cs.uiAccelCmd = float(getattr(self.LoC, "debug_hccc_accel", 0.0))
+    cs.ufAccelCmd = float(getattr(self.LoC, "debug_manual_accel", 0.0))
     cs.forceDecel = bool((self.sm['driverMonitoringState'].awarenessStatus < 0.) or
                          (self.sm['selfdriveState'].state == State.softDisabling))
 

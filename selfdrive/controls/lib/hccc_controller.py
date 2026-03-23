@@ -18,6 +18,10 @@ class hCCC:
     self._prev_lead_speed = None
     self.ff_y_prev = 0.0
 
+  def reset(self):
+    self._prev_lead_speed = None
+    self.ff_y_prev = 0.0
+
   def feedforward_no_delay(self, a_lead):
     """Apply the same feedforward filter used in the BeamNG version."""
     th_bar = 1.0
@@ -25,20 +29,16 @@ class hCCC:
     self.ff_y_prev = y
     return y
 
-#may want to change time step
+  # BeamNG parity: derive lead acceleration from lead speed history instead of radar accel.
   def run_step(self, CS, lead):
     if lead is None or not lead.status:
-      self._prev_lead_speed = None
-      self.ff_y_prev = 0.0
+      self.reset()
       return None
 
     ego_speed = CS.vEgo
     lead_speed = ego_speed + lead.vRel
 
-    radar_lead_accel = getattr(lead, "aLeadK", None)
-    if radar_lead_accel is not None and np.isfinite(radar_lead_accel):
-      pre_accl_current = float(radar_lead_accel)
-    elif self._prev_lead_speed is not None:
+    if self._prev_lead_speed is not None and np.isfinite(self._prev_lead_speed):
       pre_accl_current = (lead_speed - self._prev_lead_speed) / self._dt
     else:
       pre_accl_current = 0.0
@@ -47,5 +47,4 @@ class hCCC:
     feedforward_state = self.feedforward_no_delay(pre_accl_current)
     accl_command = (self._beta * (lead_speed - ego_speed) + feedforward_state) * 0.6
 
-    accl_command = np.clip(accl_command, self._max_decel, self._max_accl)
     return float(accl_command)

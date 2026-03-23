@@ -114,7 +114,7 @@ The bridge supports the following mode presets:
 - `default`
   Standard simulator driving environment.
 - `hc3`
-  hC3 straight-road preset.
+  BeamNG-parity hC3 straight-road preset. This mode matches the legacy BeamNG HC3 controller on controller math, 10 Hz update cadence, and direct signed throttle/brake command mapping.
 
 Examples:
 
@@ -217,6 +217,7 @@ Notes:
 
 - `--scn` must be greater than or equal to `1`
 - replay requires a valid scenario CSV file
+- replay with `--mode hc3` or `--scn` is the primary BeamNG-parity verification path
 
 ## Output Files
 
@@ -224,10 +225,10 @@ Replay runs automatically generate telemetry output.
 
 Default behavior:
 
-- output files are written under `tools/sim/data/`
-- replay runs use names similar to `Scenarios.openpilot.scn48.<timestamp>.csv`
-- non-replay runs use names similar to `metadrive_bridge_log.<timestamp>.csv`
-- the output directory is created automatically when needed
+- replay outputs are written under `tools/sim/data/<control_method>/`
+- replay graphs are written under `tools/sim/graphs/<control_method>/`
+- HC3 replay runs use BeamNG-style names such as `Test1.vehicle.honda_civic_2022_ICE.scn48.hccc.csv`
+- the output directories are created automatically when needed
 
 Specify a custom CSV path:
 
@@ -240,6 +241,19 @@ Generate a PNG speed plot:
 ```bash
 ./run_bridge.py --scn 48 --output_graph /path/to/output.png
 ```
+
+The replay CSV includes BeamNG comparison signals such as:
+
+- target lead speed from `Scenarios.csv`
+- ego and lead speed
+- sim-derived ego acceleration
+- `carState.aEgo`
+- planner `aTarget`
+- HC3 contribution
+- manual contribution
+- final combined command
+- headway and delta-v
+- driver gas/brake and final throttle/brake sent to MetaDrive
 
 ## Additional Options
 
@@ -302,6 +316,13 @@ The runtime loop operates as follows:
 4. openpilot processes the simulated data using its standard pipeline.
 5. The bridge reads openpilot control outputs and applies them to the MetaDrive ego vehicle.
 6. The simulator advances, and the cycle repeats.
+
+In `hc3` mode, the bridge uses BeamNG-style longitudinal semantics:
+
+- the HC3 controller updates internally at `0.1 s`
+- manual cooperative input in simulation is raw `gas - brake`
+- positive combined command maps directly to throttle
+- negative combined command maps directly to brake
 
 ## Camera Path
 
