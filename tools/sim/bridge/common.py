@@ -56,10 +56,13 @@ def calibrated_hc3_pedal_commands(accel_cmd: float, prev_throttle: float, prev_b
     accel_cmd = 0.0
 
   target_throttle = float(np.clip(accel_cmd / 1.6, 0.0, 1.0))
-  target_brake = float(np.clip(-accel_cmd / 4.0, 0.0, 1.0))
+  # Keep the smoother throttle calibration for MetaDrive, but preserve stronger
+  # braking authority so HC3 can still protect the lead vehicle under manual
+  # accelerator input.
+  target_brake = float(np.clip(-accel_cmd, 0.0, 1.0))
 
   throttle = _slew_limit(target_throttle, prev_throttle, rise_step=0.04, fall_step=0.08)
-  brake = _slew_limit(target_brake, prev_brake, rise_step=0.05, fall_step=0.10)
+  brake = _slew_limit(target_brake, prev_brake, rise_step=0.08, fall_step=0.10)
   return throttle, brake
 
 

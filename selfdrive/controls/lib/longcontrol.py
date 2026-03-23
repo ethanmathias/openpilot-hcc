@@ -62,6 +62,18 @@ def _hccc_lead_is_usable(lead) -> bool:
   return True
 
 
+def _cooperative_longitudinal_blend(controller_accel: float, manual_accel: float, hccc_active: bool) -> tuple[float, float]:
+  effective_manual = float(manual_accel)
+
+  # Preserve HC3 braking authority in simulation. Positive manual accelerator
+  # input can still cooperate with acceleration, but it should not cancel a
+  # valid lead-follow braking request and turn it into a closing-speed crash.
+  if SIMULATION and hccc_active and controller_accel < 0.0 and effective_manual > 0.0:
+    effective_manual = 0.0
+
+  return float(controller_accel + effective_manual), effective_manual
+
+
 def long_control_state_trans(CP, active, long_control_state, v_ego,
                              should_stop, brake_pressed, cruise_standstill):
   stopping_condition = should_stop
@@ -177,9 +189,11 @@ class LongControl:
 
     # HCCC_CHANGE_NOTE: BeamNG-style cooperative input is a single signed manual command.
     manual_accel = _manual_longitudinal_input(CS)
+    hccc_active = bool(self.use_hccc and active and lead_valid and self.hccc_output is not None)
+    blended_output_accel, effective_manual_accel = _cooperative_longitudinal_blend(controller_accel, manual_accel, hccc_active)
     self.debug_hccc_accel = float(controller_accel)
-    self.debug_manual_accel = float(manual_accel)
-    self.debug_hccc_active = bool(self.use_hccc and active and lead_valid and self.hccc_output is not None)
+    self.debug_manual_accel = float(effective_manual_accel)
+    self.debug_hccc_active = hccc_active
     if self.hccc is not None:
       self.debug_hccc_lead_speed = float(getattr(self.hccc, "debug_lead_speed", 0.0))
       self.debug_hccc_lead_accel = float(getattr(self.hccc, "debug_lead_accel", 0.0))
@@ -209,7 +223,7 @@ class LongControl:
       self.reset()
 
     else:  # LongCtrlState.pid
-      output_accel = controller_accel + manual_accel
+      output_accel = blended_output_accel
 
     self.last_output_accel = np.clip(output_accel, accel_min, accel_max)
     self.debug_output_accel = float(self.last_output_accel)

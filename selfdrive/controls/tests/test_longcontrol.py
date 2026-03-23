@@ -163,6 +163,19 @@ def test_invalid_lead_resets_hccc_hold_state():
   assert call_count["count"] == 2
 
 
+def test_simulation_hccc_braking_is_not_canceled_by_positive_manual_accel():
+  longcontrol_mod.SIMULATION = True
+  controller = LongControl(_test_cp(enable_hccc=True))
+  controller.hccc.run_step = lambda CS, lead: -0.8
+
+  output = controller.update(True, _test_cs(gas=1.0), a_target=0.0, should_stop=False,
+                             accel_limits=(-3.0, 2.0), lead=_test_lead(True, -2.0))
+
+  assert abs(output - (-0.8)) < 1e-6
+  assert abs(controller.debug_hccc_accel - (-0.8)) < 1e-6
+  assert abs(controller.debug_manual_accel - 0.0) < 1e-6
+
+
 def test_simulation_hccc_ignores_vision_fallback_leads():
   longcontrol_mod.SIMULATION = True
   controller = LongControl(_test_cp(enable_hccc=True))

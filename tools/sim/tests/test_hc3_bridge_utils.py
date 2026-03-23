@@ -33,11 +33,19 @@ def test_calibrated_hc3_pedal_commands_applies_deadband_and_scaling():
   assert throttle == 0.0
   assert brake == 1.0
 
+  throttle, brake = calibrated_hc3_pedal_commands(-1.0, 0.0, 1.0)
+  assert throttle == 0.0
+  assert brake == 1.0
+
 
 def test_calibrated_hc3_pedal_commands_slew_limits_changes():
   throttle, brake = calibrated_hc3_pedal_commands(1.6, 0.0, 0.0)
   assert throttle == pytest.approx(0.04)
   assert brake == 0.0
+
+  throttle, brake = calibrated_hc3_pedal_commands(-1.0, 0.0, 0.0)
+  assert throttle == 0.0
+  assert brake == pytest.approx(0.08)
 
   throttle, brake = calibrated_hc3_pedal_commands(0.0, 0.4, 0.2)
   assert throttle == pytest.approx(0.32)
