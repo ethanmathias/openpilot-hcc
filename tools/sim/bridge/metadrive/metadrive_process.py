@@ -770,6 +770,10 @@ OUTPUT_CSV_COLUMNS = [
   "lead_a_rel[m/s2]",
   "headway[m]",
   "deltav[m/s]",
+  "hccc_input_v_ego[m/s]",
+  "hccc_input_radar_v_rel[m/s]",
+  "hccc_input_radar_d_rel[m]",
+  "hccc_input_lead_speed_est[m/s]",
   "hccc_reference_lead_speed[m/s]",
   "hccc_reference_lead_accel[m/s2]",
   "hccc_reference_feedforward[m/s2]",
@@ -875,6 +879,8 @@ def _write_output_graph(csv_path: str, graph_path: str):
   accel_carstate_mps2: list[float] = []
   planner_a_target_mps2: list[float] = []
   hccc_accel_mps2: list[float] = []
+  hccc_input_v_ego_mps: list[float] = []
+  hccc_input_lead_speed_est_mps: list[float] = []
   hccc_reference_cmd_mps2: list[float] = []
   hccc_reference_error_mps2: list[float] = []
   manual_accel_mps2: list[float] = []
@@ -898,6 +904,8 @@ def _write_output_graph(csv_path: str, graph_path: str):
       accel_carstate_mps2.append(_read_float(row, "acceleration_ego_carstate[m/s2]"))
       planner_a_target_mps2.append(_read_float(row, "planner_a_target[m/s2]"))
       hccc_accel_mps2.append(_read_float(row, "hccc_accel[m/s2]"))
+      hccc_input_v_ego_mps.append(_read_float(row, "hccc_input_v_ego[m/s]"))
+      hccc_input_lead_speed_est_mps.append(_read_float(row, "hccc_input_lead_speed_est[m/s]"))
       hccc_reference_cmd_mps2.append(_read_float(row, "hccc_reference_cmd[m/s2]"))
       hccc_reference_error_mps2.append(_read_float(row, "hccc_reference_error[m/s2]"))
       manual_accel_mps2.append(_read_float(row, "manual_accel[m/s2]"))
@@ -918,6 +926,8 @@ def _write_output_graph(csv_path: str, graph_path: str):
   axes[0].plot(times_s, speed_pre_mps, label="Preceding Vehicle")
   axes[0].plot(times_s, speed_ego_mps, label="Ego Vehicle")
   axes[0].plot(times_s, speed_pre_target_mps, label="Target Lead Speed", linestyle="--")
+  axes[0].plot(times_s, hccc_input_lead_speed_est_mps, label="HC3 Input Lead Speed", linestyle=":")
+  axes[0].plot(times_s, hccc_input_v_ego_mps, label="HC3 Input Ego Speed", linestyle=":")
   axes[0].set_ylabel("Speed [m/s]")
   axes[0].set_title("BeamNG-Parity HC3 Replay")
   axes[0].legend()
@@ -1165,6 +1175,10 @@ def metadrive_process(
           lead_a_rel,
           headway_m,
           deltav_mps,
+          float(latest_bridge_telemetry.get("carstate_v_ego", 0.0)),
+          float(latest_bridge_telemetry.get("radar_lead_v_rel", 0.0)),
+          float(latest_bridge_telemetry.get("radar_lead_d_rel", 0.0)),
+          float(latest_bridge_telemetry.get("radar_lead_speed_est", 0.0)),
           float(hccc_parity_trace.lead_speed_mps),
           float(hccc_parity_trace.lead_accel_mps2),
           float(hccc_parity_trace.feedforward_mps2),

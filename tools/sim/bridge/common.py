@@ -306,10 +306,20 @@ Ignition: {self.simulator_state.ignition} Engaged: {self.simulator_state.is_enga
         steer_out = steer_manual
 
       self.simulator_state.carstate_a_ego = float(self.simulated_car.sm['carState'].aEgo) if self.simulated_car.sm.valid.get('carState', False) else 0.0
+      carstate_v_ego = float(self.simulated_car.sm['carState'].vEgo) if self.simulated_car.sm.valid.get('carState', False) else 0.0
       self.simulator_state.planner_a_target = float(self.simulated_car.sm['longitudinalPlan'].aTarget) if self.simulated_car.sm.valid.get('longitudinalPlan', False) else 0.0
       self.simulator_state.hccc_accel = float(self.simulated_car.sm['controlsState'].uiAccelCmd) if self.simulated_car.sm.valid.get('controlsState', False) else 0.0
       self.simulator_state.manual_accel = float(self.simulated_car.sm['controlsState'].ufAccelCmd) if self.simulated_car.sm.valid.get('controlsState', False) else 0.0
       self.simulator_state.final_accel = float(self.simulated_car.sm['carControl'].actuators.accel) if self.simulated_car.sm.valid.get('carControl', False) else 0.0
+      radar_lead_v_rel = 0.0
+      radar_lead_d_rel = 0.0
+      radar_lead_status = False
+      if self.simulated_car.sm.valid.get('radarState', False):
+        radar_lead = self.simulated_car.sm['radarState'].leadOne
+        radar_lead_status = bool(radar_lead.status)
+        if radar_lead_status:
+          radar_lead_v_rel = float(radar_lead.vRel)
+          radar_lead_d_rel = float(radar_lead.dRel)
       self.simulator_state.hccc_active = bool(
         self.enable_hcc and
         self.simulator_state.is_engaged and
@@ -319,6 +329,11 @@ Ignition: {self.simulator_state.ignition} Engaged: {self.simulator_state.is_enga
 
       bridge_telemetry = {
         "carstate_a_ego": self.simulator_state.carstate_a_ego,
+        "carstate_v_ego": carstate_v_ego,
+        "radar_lead_status": radar_lead_status,
+        "radar_lead_v_rel": radar_lead_v_rel,
+        "radar_lead_d_rel": radar_lead_d_rel,
+        "radar_lead_speed_est": (carstate_v_ego + radar_lead_v_rel) if radar_lead_status else 0.0,
         "planner_a_target": self.simulator_state.planner_a_target,
         "hccc_accel": self.simulator_state.hccc_accel,
         "manual_accel": self.simulator_state.manual_accel,
