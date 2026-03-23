@@ -77,8 +77,6 @@ class MetaDriveWorld(World):
     self.status_q.put(QueueMessage(QueueMessageType.START_STATUS, "started"))
 
     self.ego_control_command = [0.0, 0.0]
-    # Backward-compatible alias used in older local patches.
-    self.vc = self.ego_control_command
     self.should_reset = False
 
   def apply_controls(self, steer_angle, throttle_out, brake_out):

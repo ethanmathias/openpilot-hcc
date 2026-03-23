@@ -3,7 +3,6 @@ import cereal.messaging as messaging
 
 from cereal import car
 from opendbc.can.packer import CANPacker
-from opendbc.can.parser import CANParser
 from opendbc.car.honda.values import HondaSafetyFlags
 from openpilot.common.params import Params
 from openpilot.selfdrive.pandad.pandad_api_impl import can_list_to_can_capnp
@@ -17,16 +16,9 @@ class SimulatedCar:
   def __init__(self):
     self.pm = messaging.PubMaster(['can', 'pandaStates', 'liveTracks'])
     self.sm = messaging.SubMaster(['carControl', 'controlsState', 'carParams', 'selfdriveState', 'carState', 'radarState'])
-    self.cp = self.get_car_can_parser()
     self.idx = 0
     self.params = Params()
     self.obd_multiplexing = False
-
-  @staticmethod
-  def get_car_can_parser():
-    dbc_f = 'honda_bosch_radarless_generated'
-    checks = []
-    return CANParser(dbc_f, checks, 0)
 
   def send_can_messages(self, simulator_state: SimulatorState):
     if not simulator_state.valid:

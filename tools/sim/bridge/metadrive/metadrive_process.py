@@ -25,14 +25,6 @@ from openpilot.tools.sim.lib.common import vec3
 C3_POSITION = Vec3(0.0, 0, 1.22)
 C3_HPR = Vec3(0, 0, 0)
 
-LEGACY_LEAD_KEYS = (
-  "lead_speed_profile",
-  "lead_speed_start_mph",
-  "lead_speed_end_mph",
-  "lead_speed_ramp_sec",
-  "lead_vehicle_speed",
-)
-
 LEAD_STEER_BLEND_IDM = 0.2
 LEAD_STEER_BLEND_LANE = 0.8
 EGO_LANE_LOOKAHEAD_M = 6.0
@@ -825,8 +817,6 @@ def metadrive_process(
     output_control_method=config.pop("lead_profile_output_control_method", None),
     output_vehicle_name=config.pop("lead_profile_output_vehicle_name", None),
   )
-  for legacy_key in LEGACY_LEAD_KEYS:
-    config.pop(legacy_key, None)
 
   steer_command_ratio = float(config.pop("steer_cmd_ratio", 1.2))
   sim_step_interval_frames = max(1, int(config.pop("sim_step_frames", 5)))

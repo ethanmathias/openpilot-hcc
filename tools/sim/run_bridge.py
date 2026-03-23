@@ -46,10 +46,6 @@ def create_bridge(dual_camera, high_quality, mode="default", scn=None, scn_csv=N
 
   return queue, simulator_process, simulator_bridge
 
-def main():
-  _, simulator_process, _ = create_bridge(True, False)
-  simulator_process.join()
-
 def parse_args(add_args=None):
   parser = argparse.ArgumentParser(description='Bridge between the simulator and openpilot.')
   parser.add_argument('--keyboard', action='store_true',

@@ -54,7 +54,6 @@ class SimulatorBridge(ABC):
     self.high_quality = high_quality
 
     self._exit_event: threading.Event | None = None
-    self._threads = []
     self._keep_alive = True
     self.started = Value('i', False)
     signal.signal(signal.SIGTERM, self._on_shutdown)
@@ -179,7 +178,7 @@ Ignition: {self.simulator_state.ignition} Engaged: {self.simulator_state.is_enga
 
     while self._keep_alive:
       throttle_out = steer_out = brake_out = 0.0
-      throttle_op = steer_op = brake_op = 0.0
+      throttle_op = brake_op = 0.0
 
       self.simulator_state.cruise_button = 0
       self.simulator_state.left_blinker = False
