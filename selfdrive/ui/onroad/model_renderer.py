@@ -6,7 +6,6 @@ from dataclasses import dataclass, field
 from openpilot.common.filter_simple import FirstOrderFilter
 from openpilot.common.params import Params
 from openpilot.selfdrive.locationd.calibrationd import HEIGHT_INIT
-from openpilot.selfdrive.ui.lib.wheel_path import build_wheel_path_points
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.system.ui.lib.application import gui_app
 from openpilot.system.ui.lib.shader_polygon import draw_polygon, Gradient
@@ -110,10 +109,9 @@ class ModelRenderer(Widget):
 
     # Update model data when needed
     model_updated = sm.updated['modelV2']
-    if model_updated or sm.updated['controlsState'] or sm.updated['radarState'] or self._transform_dirty:
+    if model_updated or sm.updated['radarState'] or self._transform_dirty:
       if model_updated:
-        self._update_model_geometry(model)
-      self._update_wheel_path(sm)
+        self._update_raw_points(model)
 
       path_x_array = self._path.raw_points[:, 0]
       if path_x_array.size == 0:
@@ -131,8 +129,10 @@ class ModelRenderer(Widget):
     if render_lead_indicator and radar_state:
       self._draw_lead_indicator()
 
-  def _update_model_geometry(self, model):
-    """Update lane-line and road-edge geometry from the driving model."""
+  def _update_raw_points(self, model):
+    """Update raw 3D points from model data"""
+    self._path.raw_points = np.array([model.position.x, model.position.y, model.position.z], dtype=np.float32).T
+
     for i, lane_line in enumerate(model.laneLines):
       self._lane_lines[i].raw_points = np.array([lane_line.x, lane_line.y, lane_line.z], dtype=np.float32).T
 
@@ -142,11 +142,6 @@ class ModelRenderer(Widget):
     self._lane_line_probs = np.array(model.laneLineProbs, dtype=np.float32)
     self._road_edge_stds = np.array(model.roadEdgeStds, dtype=np.float32)
     self._acceleration_x = np.array(model.acceleration.x, dtype=np.float32)
-
-  def _update_wheel_path(self, sm):
-    """Build the displayed path from the current wheel-derived curvature."""
-    curvature = float(sm['controlsState'].curvature) if sm.valid['controlsState'] else 0.0
-    self._path.raw_points = build_wheel_path_points(curvature, MAX_DRAW_DISTANCE)
 
   def _update_leads(self, radar_state, path_x_array):
     """Update positions of lead vehicles"""

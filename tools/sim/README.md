@@ -484,8 +484,7 @@ The simulator is strongest as a software-in-the-loop integration environment.
 Representative components:
 
 - openpilot process pipeline
-- camera-to-model pipeline
-- wheel/curvature-based onroad path overlay
+- camera-to-model path
 - lead-follow and planner behavior
 - scenario replay workflow
 
@@ -499,8 +498,6 @@ Simplified components:
 - radar sensing physics
 
 This simulator should therefore be viewed as a practical integration and behavior-testing tool, not a full sensor-accurate vehicle dynamics and perception simulator.
-
-Note: in this branch, the shaded openpilot onroad path overlay is not the model-predicted `modelV2.position` path. It is rendered from the current wheel-derived curvature (`controlsState.curvature`). Lane lines and road edges are still sourced from `modelV2`.
 
 ## Troubleshooting
 
