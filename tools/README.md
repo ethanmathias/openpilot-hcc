@@ -2,7 +2,7 @@
 
 This directory contains local development utilities, setup scripts, simulator entry points, and supporting tooling for working with the repository on a development machine.
 
-For device installation instructions, see [README.md](/Users/ethanmathias/Desktop/UVA/LinkLab/openpilot-hcc/README.md). For simulator-specific documentation, see [tools/sim/README.md](/Users/ethanmathias/Desktop/UVA/LinkLab/openpilot-hcc/tools/sim/README.md).
+For device installation instructions, see [README.md](../README.md). For simulator-specific documentation, see [tools/sim/README.md](sim/README.md).
 
 ## Supported Development Environments
 
@@ -97,11 +97,11 @@ Common variants:
 ./run_bridge.py --mode hc3 --logitech_wheel --wheel_device /dev/input/by-id/<wheel>-event-joystick
 ```
 
-For architecture, controls, replay workflow, and limitations, see [tools/sim/README.md](/Users/ethanmathias/Desktop/UVA/LinkLab/openpilot-hcc/tools/sim/README.md).
+For architecture, controls, replay workflow, and limitations, see [tools/sim/README.md](sim/README.md).
 
 ## CTF
 
-To explore the openpilot ecosystem and tooling through guided exercises, see [tools/CTF.md](/Users/ethanmathias/Desktop/UVA/LinkLab/openpilot-hcc/tools/CTF.md).
+To explore the openpilot ecosystem and tooling through guided exercises, see [tools/CTF.md](CTF.md).
 
 ## Directory Overview
 

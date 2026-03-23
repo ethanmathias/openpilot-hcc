@@ -5,8 +5,8 @@ This repository contains the `openpilot-hcc` codebase.
 
 This top-level README focuses on installing the repository onto a comma device. For local development and simulator setup, see:
 
-- [tools/README.md](/Users/ethanmathias/Desktop/UVA/LinkLab/openpilot-hcc/tools/README.md)
-- [tools/sim/README.md](/Users/ethanmathias/Desktop/UVA/LinkLab/openpilot-hcc/tools/sim/README.md)
+- [tools/README.md](tools/README.md)
+- [tools/sim/README.md](tools/sim/README.md)
 
 ## Purpose
 
