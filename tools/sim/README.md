@@ -1,94 +1,99 @@
 openpilot Simulator (MetaDrive)
 ===============================
 
-This folder contains the simulator setup for running openpilot with [MetaDrive](https://github.com/metadriverse/metadrive).
+This directory contains the MetaDrive-based simulator used to run openpilot in a software-in-the-loop configuration.
 
-The goal of this simulator is simple:
+In this setup:
 
-- `openpilot` runs like it would in a car.
-- `MetaDrive` creates the virtual road and vehicles.
-- The simulator bridge connects the two so openpilot can "drive" inside the virtual world.
+- MetaDrive provides the virtual environment, ego vehicle, cameras, and optional lead vehicle.
+- The simulator bridge converts simulator state into the message interfaces expected by openpilot.
+- openpilot runs its normal process pipeline and returns control commands to the simulator.
 
-If you are new to this folder, the most important thing to know is that you usually run **two programs at the same time**:
+At a high level, the runtime loop is:
 
-1. `openpilot`
-2. the simulator bridge
+```text
+MetaDrive -> simulated sensors / simulated vehicle interfaces -> openpilot -> control commands -> MetaDrive
+```
 
-## What Each Script Does
+## Scope
 
-These are the files you will use most often:
+This simulator is primarily intended for:
+
+- longitudinal and lead-follow testing
+- scenario replay using `Scenarios.csv`
+- hCCC-related experimentation
+- software integration and regression testing
+
+This branch is not configured as a full hands-off lateral simulation environment. Longitudinal behavior is the primary focus.
+
+## Primary Entry Points
+
+The most commonly used scripts are:
 
 - `./tools/sim/launch_openpilot.sh`
   Starts openpilot in simulation mode.
 - `./tools/sim/run_bridge.py`
-  Starts the MetaDrive simulator and sends control/state data between MetaDrive and openpilot.
+  Starts the MetaDrive bridge process and input handling.
 - `./tools/sim/open_sim_terminals.sh`
-  Convenience script that opens two terminals for you.
+  Opens two prepared terminals for the standard workflow.
 
-## Before You Start
+## Prerequisites
 
-Start from the repository root:
+Run all commands from the repository root unless noted otherwise:
 
 ```bash
 cd /path/to/openpilot-hcc
 ```
 
-Make sure the Python virtual environment already exists:
+Ensure the Python virtual environment is present:
 
 ```bash
 ls .venv/bin/activate
 ```
 
-If that file is missing, the simulator is not set up yet. This repo includes a hint in `open_sim_terminals.sh` that setup may be done with:
+If the virtual environment is missing, initialize the repository first. A setup path referenced by this repo is:
 
 ```bash
 tools/op.sh setup
 ```
 
-## Easiest Way
+## Quick Start
 
-If you want the easiest workflow, run:
+For the standard workflow, use:
 
 ```bash
 ./tools/sim/open_sim_terminals.sh
 ```
 
-What this does:
+This opens:
 
-- opens one terminal that starts openpilot
-- opens a second terminal in `tools/sim`
-- activates the repo virtual environment for both terminals
+- one terminal running openpilot in simulation mode
+- one terminal prepared to launch the simulator bridge
 
-After that, use the second terminal to start the simulator bridge with the command you want, for example:
+From the second terminal, start the bridge:
 
 ```bash
 ./run_bridge.py --mode default
 ```
 
-## Manual Start
+## Manual Startup
 
-If you prefer to start everything yourself, use two terminals.
+If you prefer to launch each process directly, use two terminals.
 
-### Terminal 1: Start openpilot
-
-From the repo root:
+### Terminal 1: openpilot
 
 ```bash
 source .venv/bin/activate
 ./tools/sim/launch_openpilot.sh
 ```
 
-What this does:
+This script:
 
-- activates the repo Python environment
-- turns on simulation-related environment variables
+- activates the repository virtual environment
+- enables simulation-related environment variables
 - starts the openpilot manager process
 
-Leave this terminal running.
-
-### Terminal 2: Start the simulator bridge
-
-From the repo root:
+### Terminal 2: simulator bridge
 
 ```bash
 source .venv/bin/activate
@@ -96,22 +101,20 @@ cd tools/sim
 ./run_bridge.py --mode default
 ```
 
-What this does:
+This process:
 
-- starts MetaDrive
-- creates the bridge between openpilot and the simulator
-- listens for keyboard, wheel, or joystick input
+- starts the MetaDrive simulator
+- starts the bridge between MetaDrive and openpilot
+- handles keyboard, wheel, or joystick input
 
-Leave this terminal running too.
+## Modes
 
-## Picking a Driving Mode
-
-The bridge supports two mode presets:
+The bridge supports the following mode presets:
 
 - `default`
-  Regular simulator driving.
+  Standard simulator driving environment.
 - `hc3`
-  Uses the hC3 straight-road scenario preset.
+  hC3 straight-road preset.
 
 Examples:
 
@@ -120,61 +123,56 @@ Examples:
 ./run_bridge.py --mode hc3
 ```
 
-## Choosing How You Control the Car
+## Control Input
 
-The simulator can take input from a Logitech wheel, a keyboard, or a joystick.
+The simulator supports Logitech wheel input, keyboard input, and generic joystick input.
 
-### Default behavior
+Default behavior:
 
-If you do not pass any input flags, the bridge tries to use a Logitech wheel first.
+- the bridge attempts to use a Logitech wheel first
+- if no supported wheel is available, it falls back to the keyboard
 
-If a supported wheel is not found, it falls back to the keyboard.
-
-### Force keyboard input
-
-Use this if you want keyboard control even when a wheel is plugged in:
+Force keyboard input:
 
 ```bash
 ./run_bridge.py --mode default --keyboard
 ```
 
-### Force Logitech wheel input
-
-Use this if you want the bridge to require a Logitech wheel:
+Require Logitech wheel input:
 
 ```bash
 ./run_bridge.py --mode default --logitech_wheel
 ```
 
-If you know the exact Linux input device:
+Specify a Linux input device explicitly:
 
 ```bash
 ./run_bridge.py --mode default --logitech_wheel --wheel_device /dev/input/event5
 ```
 
-To see available input devices:
-
-```bash
-ls -l /dev/input/by-id
-```
-
-If Linux says you do not have permission to use the wheel:
-
-```bash
-sudo usermod -aG input $USER
-```
-
-Then log out and log back in before trying again.
-
-### Use a generic joystick
+Use a generic joystick:
 
 ```bash
 ./run_bridge.py --mode default --joystick
 ```
 
+List available input devices:
+
+```bash
+ls -l /dev/input/by-id
+```
+
+If Linux denies wheel access:
+
+```bash
+sudo usermod -aG input $USER
+```
+
+Log out and back in after updating group membership.
+
 ## Keyboard Controls
 
-If you are using the keyboard, these keys are available:
+Keyboard input supports the following commands:
 
 ```text
 | key  | action                 |
@@ -190,77 +188,73 @@ If you are using the keyboard, these keys are available:
 | x    | Right blinker          |
 | i    | Toggle ignition        |
 | r    | Reset simulation       |
-| q    | Quit everything        |
+| q    | Quit                   |
 ```
 
 ## Scenario Replay
 
-The bridge can replay a scenario from a `Scenarios.csv` file.
+Scenario replay uses a speed profile from `Scenarios.csv`.
 
-Use `--scn` to choose the scenario column number:
+Run a replay scenario:
 
 ```bash
 ./run_bridge.py --scn 48
 ```
 
-By default, the bridge looks for the CSV file in:
+Default CSV lookup path:
 
 ```text
 tools/sim/lib/Scenarios.csv
 ```
 
-If your CSV is somewhere else, pass it directly:
+Specify an alternate CSV path:
 
 ```bash
 ./run_bridge.py --scn 48 --scn_csv /path/to/Scenarios.csv
 ```
 
-Important notes:
+Notes:
 
-- `--scn` must be `1` or greater
-- if the CSV file cannot be found, the bridge will stop with an error
+- `--scn` must be greater than or equal to `1`
+- replay requires a valid scenario CSV file
 
 ## Output Files
 
-When you replay a scenario with `--scn`, the bridge automatically saves telemetry output.
+Replay runs automatically generate telemetry output.
 
 Default behavior:
 
-- output files are written to `tools/sim/data/`
-- replay runs use names like `Scenarios.openpilot.scn48.<timestamp>.csv`
-- normal runs use names like `metadrive_bridge_log.<timestamp>.csv`
-- the `tools/sim/data/` folder is created automatically if needed
+- output files are written under `tools/sim/data/`
+- replay runs use names similar to `Scenarios.openpilot.scn48.<timestamp>.csv`
+- non-replay runs use names similar to `metadrive_bridge_log.<timestamp>.csv`
+- the output directory is created automatically when needed
 
-If you want a custom CSV path:
+Specify a custom CSV path:
 
 ```bash
 ./run_bridge.py --scn 48 --output_csv /path/to/output.csv
 ```
 
-You can also save a speed graph as a PNG:
+Generate a PNG speed plot:
 
 ```bash
 ./run_bridge.py --scn 48 --output_graph /path/to/output.png
 ```
 
-## Optional Visual Settings
+## Additional Options
 
-### Bigger openpilot UI
-
-If you want the openpilot UI to appear larger:
+Launch the openpilot UI in a larger layout:
 
 ```bash
 BIG=1 ./tools/sim/launch_openpilot.sh
 ```
 
-### Extra bridge options
-
-You can also enable:
+Enable additional bridge options:
 
 - `--dual_camera`
-  Publishes both wide and road camera streams.
+  Publishes both road and wide-road camera streams.
 - `--high_quality`
-  Uses higher visual quality settings in the simulator.
+  Uses higher visual quality settings in MetaDrive.
 
 Example:
 
@@ -268,236 +262,69 @@ Example:
 ./run_bridge.py --mode default --dual_camera --high_quality
 ```
 
-## Helpful Commands
-
 Show all bridge options:
 
 ```bash
 ./run_bridge.py -h
 ```
 
-Start the standard simulator flow:
+## Architecture Overview
 
-```bash
-./run_bridge.py --mode default
-```
+The simulator consists of two cooperating systems:
 
-Start the hC3 preset:
+### openpilot runtime
 
-```bash
-./run_bridge.py --mode hc3
-```
+`launch_openpilot.sh` starts openpilot with simulation-specific environment variables. This includes:
 
-Run a replay scenario and save output automatically:
+- `SIMULATION=1`
+- `NOBOARD=1`
+- `SKIP_FW_QUERY=1`
+- `FINGERPRINT=HONDA_CIVIC_2022`
 
-```bash
-./run_bridge.py --scn 48
-```
+The script also blocks hardware-oriented processes such as the normal `camerad`, allowing the simulator to provide those interfaces instead.
 
-## Troubleshooting
+### MetaDrive bridge runtime
 
-### Nothing starts
+`run_bridge.py` creates the simulator bridge and launches the MetaDrive-backed world. The bridge is responsible for:
 
-Make sure both terminals have activated the virtual environment:
+- reading simulator state
+- publishing simulated vehicle and sensor messages
+- receiving openpilot outputs
+- applying the resulting commands back to MetaDrive
 
-```bash
-source .venv/bin/activate
-```
+## End-to-End Data Flow
 
-### openpilot starts, but there is no simulator
+The runtime loop operates as follows:
 
-Make sure you also ran `./run_bridge.py` in a second terminal.
+1. MetaDrive creates the map, ego vehicle, camera sensors, and optional lead vehicle.
+2. The bridge reads ego state, lead state, lane/debug state, and rendered camera frames.
+3. The bridge publishes simulated interfaces into openpilot.
+4. openpilot processes the simulated data using its standard pipeline.
+5. The bridge reads openpilot control outputs and applies them to the MetaDrive ego vehicle.
+6. The simulator advances, and the cycle repeats.
 
-### Wheel does not work
+## Camera Path
 
-Try one of these:
+The camera path is one of the most representative parts of the simulation.
 
-- run with `--keyboard` to confirm the bridge itself is working
-- run with `--logitech_wheel` if you want wheel-only behavior
-- check `/dev/input/by-id`
-- add your user to the `input` group if Linux blocks device access
+Flow:
 
-### Scenario replay fails
+1. MetaDrive renders RGB images from the ego-vehicle camera pose.
+2. Frames are written into shared memory.
+3. The simulator converts RGB frames to the NV12/YUV format expected by openpilot.
+4. Frames are published through VisionIPC as simulated `camerad` output.
+5. openpilot processes such as `modeld` consume the frames normally.
 
-Make sure:
-
-- you passed a valid `--scn` number
-- the CSV file exists
-- the CSV path is either `tools/sim/lib/Scenarios.csv` or provided with `--scn_csv`
-
-## How the Simulator Works
-
-This section explains the simulator from the beginning.
-
-The short version is:
-
-1. MetaDrive creates the virtual world.
-2. The simulator bridge turns that world into fake car data and fake sensor data.
-3. openpilot reads that data as if it came from a real vehicle.
-4. openpilot sends driving commands back.
-5. The simulator applies those commands to the virtual car.
-
-So the full loop is:
-
-```text
-MetaDrive world -> simulated sensors / simulated CAN -> openpilot -> control commands -> MetaDrive world
-```
-
-## The Two Sides of the Simulator
-
-When you run the simulator, you are really starting two systems:
-
-### 1. openpilot
-
-This is started by:
-
-```bash
-./tools/sim/launch_openpilot.sh
-```
-
-That script starts openpilot in simulation mode.
-
-Important things it does:
-
-- sets `SIMULATION=1`
-- skips real hardware board requirements
-- uses a fake Honda Civic 2022 fingerprint
-- blocks real hardware daemons like the normal `camerad`
-
-This lets the simulator provide fake hardware data instead.
-
-### 2. The simulator bridge
-
-This is started by:
-
-```bash
-cd tools/sim
-./run_bridge.py --mode default
-```
-
-The bridge is the glue between MetaDrive and openpilot.
-
-Its job is to:
-
-- start the MetaDrive world
-- read the virtual car state
-- send fake sensor data into openpilot
-- read openpilot outputs
-- apply those outputs back to the simulator
-
-## Step-by-Step Data Flow
-
-Here is the simulator flow in plain language.
-
-### Step 1: MetaDrive creates the world
-
-MetaDrive creates:
-
-- the road map
-- the ego car
-- camera views attached to the ego car
-- an optional lead vehicle
-
-Depending on the mode, the road is either:
-
-- a looped driving map
-- a long straight road for lead-follow and replay scenarios
-
-### Step 2: The bridge reads the world state
-
-The bridge continuously reads:
-
-- ego vehicle speed
-- ego vehicle position
-- ego heading
-- steering angle
-- lead vehicle position and speed
-- lane-related debug information
-- rendered camera images
-
-This information becomes the raw source for the fake sensor system.
-
-### Step 3: The bridge publishes fake car and sensor data
-
-The bridge sends several kinds of messages into openpilot.
-
-These include:
-
-- fake CAN messages
-- fake panda state
-- fake GPS
-- fake accelerometer and gyroscope messages
-- fake driver monitoring state
-- camera frames
-- synthetic radar-like lead tracks
-
-From openpilot's point of view, these look like normal incoming vehicle and sensor messages.
-
-### Step 4: openpilot runs normally
-
-Once openpilot receives those messages, its normal processes run.
-
-That includes things like:
-
-- `card`
-- `modeld`
-- `radard`
-- `plannerd`
-- `controlsd`
-
-These processes do the usual openpilot work:
-
-- parse car state
-- understand the road from camera images
-- estimate lead vehicles
-- plan speed
-- generate control commands
-
-### Step 5: The bridge reads openpilot outputs
-
-The bridge reads messages such as:
-
-- `carControl`
-- `selfdriveState`
-- `carState`
-- `radarState`
-
-It then converts the control outputs into simulator commands.
-
-### Step 6: The simulator updates the virtual car
-
-The final throttle, brake, and steering commands are applied to the MetaDrive ego car.
-
-That changes the virtual world state.
-
-Then the whole loop repeats.
-
-## How the Camera Path Works
-
-The camera path is one of the most important parts of the simulator.
-
-Here is what happens:
-
-1. MetaDrive renders an RGB image from the ego vehicle's camera position.
-2. That image is copied into shared memory.
-3. The simulator converts the RGB image into the NV12/YUV format openpilot expects.
-4. The image is published through VisionIPC as if it came from `camerad`.
-5. openpilot processes like `modeld` consume it normally.
-
-That means the vision stack is still doing real work on simulated camera frames.
-
-If `--dual_camera` is enabled, the simulator publishes both:
+With `--dual_camera`, the bridge publishes both:
 
 - road camera
-- wide road camera
+- wide-road camera
 
-## How CAN and Vehicle State Work
+## Vehicle Interface and CAN Path
 
-openpilot normally learns about the car through CAN messages.
+There is no physical CAN bus in the simulator. Instead, the bridge synthesizes the subset of vehicle messages needed by openpilot.
 
-In this simulator, there is no real CAN bus, so the bridge creates fake CAN traffic instead.
-
-The fake CAN includes things like:
+Simulated CAN content includes:
 
 - wheel speeds
 - transmission speed
@@ -507,19 +334,11 @@ The fake CAN includes things like:
 - blinker state
 - brake pressed state
 
-Those messages are enough for openpilot's car interface to build a normal `carState`.
+These messages allow openpilot's standard car interface to construct `carState` as if it were connected to a Honda Civic 2022.
 
-In other words:
+## GPS, IMU, and Auxiliary Sensor Path
 
-- MetaDrive provides the raw virtual motion
-- the simulator converts that into fake CAN
-- openpilot reads the CAN and believes it is talking to a Honda Civic 2022
-
-## How GPS, IMU, and Other Sensors Work
-
-The simulator also sends fake non-CAN sensor messages.
-
-These include:
+The simulator also publishes simplified non-CAN sensor streams, including:
 
 - `gpsLocationExternal`
 - `accelerometer`
@@ -528,150 +347,122 @@ These include:
 - `driverStateV2`
 - `driverMonitoringState`
 
-These are useful for keeping openpilot happy and allowing the rest of the software stack to run.
+These streams are sufficient to keep the broader software stack operational, but they are simplified relative to real hardware.
 
-Important note:
+In particular:
 
-- the GPS is generated from simple XY world coordinates
-- the IMU path is much simpler than real hardware
-- driver monitoring is intentionally faked as valid / attentive
+- GPS is derived from planar simulator coordinates
+- IMU behavior is simplified
+- driver monitoring is intentionally synthesized as valid / attentive
 
-So these parts are functional, but not as physically realistic as the vision or lead-vehicle parts.
+## Radar and Lead-Tracking Model
 
-## How Radar Works in This Simulator
+This simulator does not implement a physics-based radar sensor model.
 
-This is the part many people expect to be more "physical" than it actually is.
+Instead:
 
-There is **no real radar sensor simulation** here.
+1. MetaDrive maintains the lead vehicle directly.
+2. The bridge computes relative lead measurements from world state.
+3. Those measurements are published as `liveTracks`.
+4. openpilot's normal `radard` process consumes `liveTracks` together with camera-model output.
+5. `radard` produces `radarState` in the usual pipeline.
 
-Instead, the simulator does this:
+Accordingly, the radar path should be understood as a synthetic lead-object feed injected into openpilot's radar fusion pipeline, not a raw radar reflection simulation.
 
-1. MetaDrive keeps track of the lead vehicle directly.
-2. The simulator computes the lead vehicle's relative position and velocity from the world state.
-3. The bridge publishes that information as `liveTracks`.
-4. openpilot's normal `radard` process consumes those tracks.
-5. `radard` combines the synthetic tracks with camera model output and produces `radarState`.
+## Lead Vehicle Behavior
 
-So radar in this simulator is better thought of as:
+The lead vehicle supports two primary operating modes.
 
-- a synthetic lead-object feed
-- inserted into openpilot's radar pipeline
+### Standard lead-follow mode
 
-This is still useful, because openpilot's normal radar fusion and lead-selection logic still runs.
+In standard operation:
 
-But it is not simulating real radar reflections, noise, or detection physics.
-
-## How the Lead Vehicle Works
-
-The lead vehicle can run in two main ways.
-
-### Normal lead mode
-
-In normal lead-follow mode:
-
-- the simulator spawns a lead vehicle ahead of the ego car
-- the lead vehicle follows lane-aware behavior
-- the lead vehicle's motion is used to compute relative lead measurements
+- a lead vehicle is spawned ahead of the ego vehicle
+- the lead vehicle is kept lane-aware
+- the bridge computes relative distance and velocity from the simulated world state
 
 ### Replay mode
 
 In replay mode:
 
-- the simulator loads a speed profile from `Scenarios.csv`
-- it converts that profile into position over time
-- it moves the lead vehicle according to that profile
-- the ego car can then follow the replayed lead
+- a speed profile is loaded from `Scenarios.csv`
+- the profile is converted into longitudinal position over time
+- the lead vehicle follows the replayed scenario trajectory
 
-This is useful for repeatable longitudinal testing.
+This mode is useful for repeatable longitudinal evaluation.
 
-## How openpilot Uses the Simulated Inputs
+## openpilot Processing Path
 
-Once the simulator publishes all of its fake inputs, openpilot behaves mostly like normal.
+Once simulated inputs are published, openpilot runs through its normal process graph.
 
-### Vision
+- `card` parses simulated CAN and publishes `carState`
+- `modeld` consumes simulated camera streams
+- `radard` fuses `liveTracks`, `modelV2`, and `carState`
+- the planner computes longitudinal targets
+- `controlsd` publishes `carControl`
 
-`modeld` reads the simulated road camera frames and estimates:
+The bridge then reads `carControl` and converts it into MetaDrive steering and longitudinal commands.
 
-- lane geometry
-- road shape
-- lead vehicle hypotheses
-- future motion predictions
+## Current Branch Behavior
 
-### Radar / lead fusion
+This branch is configured primarily for longitudinal experimentation.
 
-`radard` reads:
+Practical implications:
 
-- `liveTracks`
-- `modelV2`
-- `carState`
+- longitudinal control is active
+- lead-follow behavior is central to the simulation workflow
+- steering is not configured here as a full openpilot lateral-control demonstration path
+- manual steering input remains relevant
 
-It then creates `radarState`, including lead objects like `leadOne`.
+## Fidelity and Limitations
 
-### Longitudinal planning
+The simulator is strongest as a software-in-the-loop integration environment.
 
-The planner uses:
+Representative components:
 
-- lead information
-- model predictions
-- cruise targets
+- openpilot process pipeline
+- camera-to-model path
+- lead-follow and planner behavior
+- scenario replay workflow
 
-to decide the desired acceleration and whether the car should stop.
+Simplified components:
 
-### Control output
-
-`controlsd` turns planning outputs into:
-
-- acceleration commands
-- steering-related commands
-
-Those are published in `carControl`.
-
-The bridge then reads `carControl` and sends the final commands back into MetaDrive.
-
-## Important Behavior in This Branch
-
-This branch is set up mainly for longitudinal / lead-follow work.
-
-That means:
-
-- openpilot longitudinal control is active
-- steering is not being fully controlled by openpilot in the normal lane-centering way
-- manual steering input is still important
-
-So if you are expecting full hands-off lateral driving in this branch, that is not the main design here.
-
-This simulator is especially useful for:
-
-- hCCC testing
-- lead-follow experiments
-- replaying traffic scenarios
-- comparing speed and spacing behavior
-
-## What Is Realistic vs Simplified
-
-### More realistic parts
-
-- the openpilot process pipeline
-- the camera-to-model path
-- the planner and control logic
-- the lead-follow loop
-
-### More simplified parts
-
-- CAN generation
+- CAN synthesis
 - panda state
 - GPS conversion
 - IMU behavior
 - driver monitoring
 - radar sensing physics
 
-So this simulator is best understood as:
+This simulator should therefore be viewed as a practical integration and behavior-testing tool, not a full sensor-accurate vehicle dynamics and perception simulator.
 
-- **strong for software-in-the-loop testing**
-- **not a full physical sensor-accurate vehicle simulator**
+## Troubleshooting
 
-## A Simple Mental Model
+### openpilot starts but the simulator does not
 
-If you want one sentence to remember:
+Ensure `./run_bridge.py` is running in a second terminal.
 
-> MetaDrive provides the world, the bridge pretends that world is real car hardware, and openpilot drives inside it.
+### Nothing starts
+
+Ensure the virtual environment is activated in both terminals:
+
+```bash
+source .venv/bin/activate
+```
+
+### Wheel input does not work
+
+Check the following:
+
+- run with `--keyboard` to confirm the bridge is functioning
+- run with `--logitech_wheel` to require wheel-only behavior
+- inspect `/dev/input/by-id`
+- add your user to the `input` group if Linux blocks device access
+
+### Scenario replay fails
+
+Confirm that:
+
+- the `--scn` index is valid
+- the scenario CSV file exists
+- the CSV file is located at `tools/sim/lib/Scenarios.csv` or passed through `--scn_csv`
