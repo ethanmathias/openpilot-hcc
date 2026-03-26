@@ -831,9 +831,11 @@ def _default_output_paths(lead_cfg: LeadConfig) -> tuple[str, str]:
   control_method = (lead_cfg.output_control_method or "default").lower()
   vehicle_name = lead_cfg.output_vehicle_name or "vehicle"
 
-  output_root = Path("/home/linklab/ethanmathias/dataoutput")
-  data_dir = output_root / "csv" / control_method
-  graph_dir = output_root / "images" / control_method
+  # Keep replay artifacts inside the repo by default so each run is easy to
+  # inspect, diff, and commit alongside the code that produced it.
+  sim_root = Path(__file__).resolve().parents[2]
+  data_dir = sim_root / "data" / control_method
+  graph_dir = sim_root / "graphs" / control_method
   data_dir.mkdir(parents=True, exist_ok=True)
   graph_dir.mkdir(parents=True, exist_ok=True)
 
