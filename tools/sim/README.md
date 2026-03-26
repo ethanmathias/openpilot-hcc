@@ -114,7 +114,7 @@ The bridge supports the following mode presets:
 - `default`
   Standard simulator driving environment.
 - `hc3`
-  BeamNG-parity hC3 straight-road preset. This mode matches the legacy BeamNG HC3 controller on controller math and 10 Hz update cadence, while using a MetaDrive-calibrated throttle/brake adapter for smoother physical behavior in the simulator.
+  hC3 straight-road preset.
 
 Examples:
 
@@ -217,7 +217,6 @@ Notes:
 
 - `--scn` must be greater than or equal to `1`
 - replay requires a valid scenario CSV file
-- replay with `--mode hc3` or `--scn` is the primary BeamNG-parity verification path
 
 ## Output Files
 
@@ -225,11 +224,10 @@ Replay runs automatically generate telemetry output.
 
 Default behavior:
 
-- replay outputs are written under `tools/sim/data/<control_method>/`
-- replay graphs are written under `tools/sim/graphs/<control_method>/`
-- HC3 replay runs use BeamNG-style names such as `Test1.vehicle.honda_civic_2022_ICE.scn48.hccc.csv`
-- the output directories are created automatically when needed
-- replay roads are auto-sized from the loaded scenario distance plus a 1000 m buffer, with a 2000 m minimum
+- output files are written under `tools/sim/data/`
+- replay runs use names similar to `Scenarios.openpilot.scn48.<timestamp>.csv`
+- non-replay runs use names similar to `metadrive_bridge_log.<timestamp>.csv`
+- the output directory is created automatically when needed
 
 Specify a custom CSV path:
 
@@ -237,47 +235,11 @@ Specify a custom CSV path:
 ./run_bridge.py --scn 48 --output_csv /path/to/output.csv
 ```
 
-Generate the default PNG speed plot:
+Generate a PNG speed plot:
 
 ```bash
 ./run_bridge.py --scn 48 --output_graph /path/to/output.png
 ```
-
-By default, replay graphs are simple two-line plots with just the preceding and ego vehicles.
-
-Generate that same simple speed-only graph explicitly:
-
-```bash
-./run_bridge.py --scn 48 --graph_mode simple
-```
-
-Generate the detailed diagnostic multi-panel graph:
-
-```bash
-./run_bridge.py --scn 48 --graph_mode detailed
-```
-
-The replay CSV includes BeamNG comparison signals such as:
-
-- target lead speed from `Scenarios.csv`
-- ego and lead speed
-- sim-derived ego acceleration
-- `carState.aEgo`
-- the exact openpilot HC3 input speeds:
-  - `hccc_input_v_ego[m/s]`
-  - `hccc_input_radar_v_rel[m/s]`
-  - `hccc_input_lead_is_radar`
-  - `hccc_input_lead_track_id`
-  - `hccc_input_lead_speed_est[m/s]`
-- BeamNG-reference HC3 lead speed, lead acceleration, feedforward, and raw command reconstructed from the logged trace
-- planner `aTarget`
-- HC3 contribution
-- manual contribution
-- final combined command
-- headway and delta-v
-- ego and lead lane diagnostics
-- lead pose replay status and fallback state
-- driver gas/brake and final throttle/brake sent to MetaDrive
 
 ## Additional Options
 
@@ -340,31 +302,6 @@ The runtime loop operates as follows:
 4. openpilot processes the simulated data using its standard pipeline.
 5. The bridge reads openpilot control outputs and applies them to the MetaDrive ego vehicle.
 6. The simulator advances, and the cycle repeats.
-
-In `hc3` mode, the bridge keeps BeamNG-style HC3 command generation but calibrates the final MetaDrive pedal application:
-
-- the HC3 controller updates internally at `0.1 s`
-- manual cooperative input in simulation is raw `gas - brake`
-- raw HC3 output is treated as the BeamNG-reference command to compare before any MetaDrive-only mapping
-- positive combined command maps to throttle using `/1.6` scaling
-- negative combined command maps to brake using `/4.0` scaling
-- a `0.05` command deadband suppresses tiny oscillatory pedal inputs
-- pedal outputs are slew-limited before they reach MetaDrive
-
-For parity analysis, compare these layers separately:
-
-- `hccc_input_v_ego[m/s]` and `hccc_input_lead_speed_est[m/s]`
-  The actual ego and lead speed signals seen by openpilot HC3.
-- `hccc_input_lead_is_radar` and `hccc_input_lead_track_id`
-  Whether `radard` selected a track-backed lead or a vision-fallback lead, which is useful both in MetaDrive and on real route logs.
-- `hccc_accel[m/s2]`
-  Raw HC3 output from openpilot before actuator mapping.
-- `hccc_reference_cmd[m/s2]`
-  BeamNG-reference HC3 command reconstructed from the logged ego/lead speed trace using the same `10 Hz` controller cadence.
-- `controller_throttle` and `controller_brake`
-  Final MetaDrive pedal commands after the MetaDrive-only adapter.
-- `acceleration_ego_sim[m/s2]`
-  Realized plant response in MetaDrive.
 
 ## Camera Path
 

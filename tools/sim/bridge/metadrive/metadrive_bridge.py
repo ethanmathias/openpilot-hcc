@@ -6,7 +6,6 @@ from metadrive.component.map.pg_map import MapGenerateMethod
 
 from openpilot.tools.sim.bridge.common import SimulatorBridge
 from openpilot.tools.sim.bridge.metadrive.metadrive_common import RGBCameraRoad, RGBCameraWide
-from openpilot.tools.sim.bridge.metadrive.metadrive_process import _load_lead_speed_profile
 from openpilot.tools.sim.bridge.metadrive.metadrive_world import MetaDriveWorld
 from openpilot.tools.sim.lib.camerad import W, H
 
@@ -15,9 +14,6 @@ SCENARIO_HCCC_STEP = "hccc_step"
 SCENARIO_LEAD_LOOP = "lead_loop"
 STRAIGHT_ROAD_SCENARIOS = {SCENARIO_LEAD_LOOP, SCENARIO_HCCC_STEP}
 LEAD_SCENARIOS = {SCENARIO_LEAD_LOOP, SCENARIO_HCCC_STEP}
-STRAIGHT_BLOCK_LENGTH_M = 1000.0
-REPLAY_ROAD_MIN_LENGTH_M = 2000.0
-REPLAY_ROAD_BUFFER_M = 1000.0
 
 
 
@@ -68,19 +64,19 @@ def create_map(track_size=60):
     ]
   )
 
-def replay_profile_road_length(profile_s) -> float:
-  profile_distance_m = float(profile_s[-1] - profile_s[0]) if len(profile_s) else 0.0
-  return max(REPLAY_ROAD_MIN_LENGTH_M, profile_distance_m + REPLAY_ROAD_BUFFER_M)
-
-
-def create_straight_map(total_length=4000.0, block_length=STRAIGHT_BLOCK_LENGTH_M):
+def create_straight_map(length=1000):
   """Build a long straight map used by replay/lead-follow scenarios."""
-  num_blocks = max(1, int(math.ceil(float(total_length) / float(block_length))))
   return dict(
     type=MapGenerateMethod.PG_MAP_FILE,
     lane_num=2,
     lane_width=4.5,
-    config=[None, *[straight_block(block_length) for _ in range(num_blocks)]],
+    config=[
+      None,
+      straight_block(length),
+      straight_block(length),
+      straight_block(length),
+      straight_block(length),
+    ],
   )
 
 
@@ -89,7 +85,7 @@ class MetaDriveBridge(SimulatorBridge):
   TICKS_PER_FRAME = 2
 
   def __init__(self, dual_camera, high_quality, test_duration=math.inf, test_run=False, scenario=SCENARIO_DEFAULT,
-               enable_hcc=False, scn=None, scn_csv=None, output_csv=None, output_graph=None, output_graph_mode="simple"):
+               enable_hcc=False, scn=None, scn_csv=None, output_csv=None, output_graph=None):
     """Configure bridge behavior and test/scenario options before spawning world."""
     should_enable_hcc = enable_hcc or scenario in STRAIGHT_ROAD_SCENARIOS or scn is not None
     super().__init__(dual_camera, high_quality, enable_hcc=should_enable_hcc)
@@ -102,7 +98,6 @@ class MetaDriveBridge(SimulatorBridge):
     self.scn_csv = scn_csv
     self.output_csv = output_csv
     self.output_graph = output_graph
-    self.output_graph_mode = output_graph_mode
     self.output_control_method = "hccc" if should_enable_hcc else "default"
     self.output_vehicle_name = "honda_civic_2022"
 
@@ -119,13 +114,7 @@ class MetaDriveBridge(SimulatorBridge):
     is_replay_profile = self.scn is not None
     uses_straight_map = is_replay_profile or self.scenario in STRAIGHT_ROAD_SCENARIOS
     enable_lead_vehicle = is_replay_profile or self.scenario in LEAD_SCENARIOS
-    straight_road_length_m = 4.0 * STRAIGHT_BLOCK_LENGTH_M
-    if is_replay_profile:
-      if self.scn_csv is None:
-        raise RuntimeError("Replay scenario requires a scenario CSV path")
-      _, profile_s, _ = _load_lead_speed_profile(self.scn_csv, int(self.scn))
-      straight_road_length_m = replay_profile_road_length(profile_s)
-    map_config = create_straight_map(straight_road_length_m) if uses_straight_map else create_map()
+    map_config = create_straight_map() if uses_straight_map else create_map()
     lead_start_delay_s = 0.0 if is_replay_profile else 5.0
 
     world_config = dict(
@@ -155,7 +144,6 @@ class MetaDriveBridge(SimulatorBridge):
       lead_profile_csv=self.scn_csv,
       lead_profile_output_csv=self.output_csv,
       lead_profile_output_graph=self.output_graph,
-      lead_profile_output_graph_mode=self.output_graph_mode,
       lead_profile_output_control_method=self.output_control_method,
       lead_profile_output_vehicle_name=self.output_vehicle_name,
       steer_cmd_ratio=1.2,

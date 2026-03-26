@@ -11,8 +11,8 @@ CONTROL_N_T_IDX = ModelConstants.T_IDXS[:CONTROL_N]
 
 LongCtrlState = car.CarControl.Actuators.LongControlState
 SIMULATION = os.environ.get("SIMULATION", "0") == "1"
-HCCC_UPDATE_DT = 0.1
-HCCC_UPDATE_STEPS = max(1, int(round(HCCC_UPDATE_DT / DT_CTRL)))
+HCCC_VISION_FALLBACK_GRACE_S = 0.3
+HCCC_VISION_FALLBACK_GRACE_STEPS = max(1, int(round(HCCC_VISION_FALLBACK_GRACE_S / DT_CTRL)))
 
 # HCCC_CHANGE_NOTE: longcontrol uses BeamNG-style cooperative blending:
 # controller contribution + signed manual pedal input, blended once in the shared
@@ -26,9 +26,6 @@ def _normalize_pedal(value: float) -> float:
 
 
 def _manual_longitudinal_input(CS) -> float:
-  if not SIMULATION:
-    return 0.0
-
   gas_raw = getattr(CS, "gas", 0.0)
   brake_raw = getattr(CS, "brake", 0.0)
 
@@ -43,35 +40,19 @@ def _manual_longitudinal_input(CS) -> float:
 
   manual_cmd = float(np.clip(gas - brake, -1.0, 1.0))
 
-  # BeamNG parity: in simulation the cooperative manual command is the raw
-  # signed pedal delta before any additional scaling.
-  return manual_cmd
+  # NOTE: This maps manual pedal input into the simulator's accel-command space
+  # so the existing bridge conversion reproduces BeamNG-like pedal authority.
+  # This should be revisited for the real-car version, where actuators.accel is
+  # not simply converted back into throttle/brake with the simulator scaling.
+  if manual_cmd >= 0.0:
+    return manual_cmd * 1.4
+  return manual_cmd * 4.0
 
 
-def _hccc_lead_is_usable(lead) -> bool:
+def _lead_is_track_backed(lead) -> bool:
   if lead is None or not bool(getattr(lead, "status", False)):
     return False
-
-  # In simulation, HC3 should only trust track-backed radarState leads. This
-  # prevents radard's vision fallback from injecting non-physical relative speed
-  # spikes into the BeamNG-parity controller while leaving on-road behavior
-  # unchanged for comma hardware.
-  if SIMULATION and not bool(getattr(lead, "radar", True)):
-    return False
-
-  return True
-
-
-def _cooperative_longitudinal_blend(controller_accel: float, manual_accel: float, hccc_active: bool) -> tuple[float, float]:
-  effective_manual = float(manual_accel)
-
-  # Preserve HC3 braking authority in simulation. Positive manual accelerator
-  # input can still cooperate with acceleration, but it should not cancel a
-  # valid lead-follow braking request and turn it into a closing-speed crash.
-  if SIMULATION and hccc_active and controller_accel < 0.0 and effective_manual > 0.0:
-    effective_manual = 0.0
-
-  return float(controller_accel + effective_manual), effective_manual
+  return bool(getattr(lead, "radar", True))
 
 
 def long_control_state_trans(CP, active, long_control_state, v_ego,
@@ -116,35 +97,14 @@ class LongControl:
     self.params = Params()
     self.use_hccc = False
     self.hccc = None
-    self.hccc_output = None
-    self._hccc_update_counter = 0
-    self.debug_planner_accel = 0.0
-    self.debug_hccc_accel = 0.0
-    self.debug_manual_accel = 0.0
-    self.debug_output_accel = 0.0
-    self.debug_hccc_active = False
-    self.debug_hccc_lead_speed = 0.0
-    self.debug_hccc_lead_accel = 0.0
-    self.debug_hccc_feedforward = 0.0
+    self._hccc_held_output = None
+    self._vision_fallback_grace_steps = 0
     self._refresh_hccc(force_reset=True)
 
   def reset(self):
+    self._hccc_held_output = None
+    self._vision_fallback_grace_steps = 0
     self._refresh_hccc(force_reset=True)
-    self.hccc_output = None
-    self._hccc_update_counter = 0
-    self.debug_hccc_accel = 0.0
-    self.debug_manual_accel = 0.0
-    self.debug_output_accel = 0.0
-    self.debug_hccc_active = False
-    self.debug_hccc_lead_speed = 0.0
-    self.debug_hccc_lead_accel = 0.0
-    self.debug_hccc_feedforward = 0.0
-
-  def _reset_hccc_state(self):
-    self.hccc_output = None
-    self._hccc_update_counter = 0
-    if self.hccc is not None:
-      self.hccc.reset()
 
   def _hccc_enabled(self):
     # HCCC_CHANGE_NOTE: enable from CarParams override or persistent EnableHCCC toggle.
@@ -160,44 +120,44 @@ class LongControl:
     if not enabled:
       self.hccc = None
     elif self.hccc is None or force_reset:
-      self.hccc = hCCC(dt=HCCC_UPDATE_DT, max_deceleration=self.CP.stopAccel, max_acceleration=max(self.CP.startAccel, 1.6))
-      self._reset_hccc_state()
+      self.hccc = hCCC(dt=DT_CTRL, max_deceleration=self.CP.stopAccel, max_acceleration=max(self.CP.startAccel, 1.6))
     self.use_hccc = enabled
 
   def update(self, active, CS, a_target, should_stop, accel_limits, lead=None):
     """Update longitudinal control. This updates the state machine and runs hCCC."""
     self._refresh_hccc()
     accel_min, accel_max = accel_limits
-    self.debug_planner_accel = float(a_target)
 
     controller_accel = 0.0
-    lead_valid = _hccc_lead_is_usable(lead)
     hccc_output = None
-    if self.use_hccc and self.hccc is not None and active and lead_valid:
-      if self.hccc_output is None or self._hccc_update_counter <= 0:
-        hccc_output = self.hccc.run_step(CS, lead)
-        self.hccc_output = hccc_output
-        self._hccc_update_counter = HCCC_UPDATE_STEPS - 1
-      else:
-        self._hccc_update_counter -= 1
-        hccc_output = self.hccc_output
+    if self.use_hccc and self.hccc is not None:
+      self.hccc._max_decel = accel_min
+      self.hccc._max_accl = accel_max
+      lead_status = lead is not None and bool(getattr(lead, "status", False))
+      track_backed_lead = lead_status and _lead_is_track_backed(lead)
+      vision_fallback_lead = lead_status and SIMULATION and not track_backed_lead
 
-      if hccc_output is not None:
+      if track_backed_lead or (lead_status and not SIMULATION):
+        hccc_output = self.hccc.run_step(CS, lead)
+        if hccc_output is not None:
+          controller_accel = hccc_output
+          self._hccc_held_output = hccc_output
+          # Hold the last track-backed HC3 command through brief radar/vision
+          # handoffs so a single fusion mismatch does not zero the ego command.
+          self._vision_fallback_grace_steps = HCCC_VISION_FALLBACK_GRACE_STEPS
+      elif vision_fallback_lead and self._hccc_held_output is not None and self._vision_fallback_grace_steps > 0:
+        hccc_output = self._hccc_held_output
         controller_accel = hccc_output
-    else:
-      self._reset_hccc_state()
+        self._vision_fallback_grace_steps -= 1
+      else:
+        # Once the lead is gone, or the fallback lasts too long, reset HC3 so
+        # the next valid track-backed lead starts from fresh controller state.
+        self.hccc.run_step(CS, None)
+        self._hccc_held_output = None
+        self._vision_fallback_grace_steps = 0
 
     # HCCC_CHANGE_NOTE: BeamNG-style cooperative input is a single signed manual command.
     manual_accel = _manual_longitudinal_input(CS)
-    hccc_active = bool(self.use_hccc and active and lead_valid and self.hccc_output is not None)
-    blended_output_accel, effective_manual_accel = _cooperative_longitudinal_blend(controller_accel, manual_accel, hccc_active)
-    self.debug_hccc_accel = float(controller_accel)
-    self.debug_manual_accel = float(effective_manual_accel)
-    self.debug_hccc_active = hccc_active
-    if self.hccc is not None:
-      self.debug_hccc_lead_speed = float(getattr(self.hccc, "debug_lead_speed", 0.0))
-      self.debug_hccc_lead_accel = float(getattr(self.hccc, "debug_lead_accel", 0.0))
-      self.debug_hccc_feedforward = float(getattr(self.hccc, "debug_feedforward", 0.0))
 
     if hccc_output is not None:
       should_stop = False
@@ -223,8 +183,7 @@ class LongControl:
       self.reset()
 
     else:  # LongCtrlState.pid
-      output_accel = blended_output_accel
+      output_accel = controller_accel + manual_accel
 
     self.last_output_accel = np.clip(output_accel, accel_min, accel_max)
-    self.debug_output_accel = float(self.last_output_accel)
     return self.last_output_accel

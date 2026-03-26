@@ -28,8 +28,6 @@ C3_HPR = Vec3(0, 0, 0)
 LEAD_STEER_BLEND_IDM = 0.2
 LEAD_STEER_BLEND_LANE = 0.8
 EGO_LANE_LOOKAHEAD_M = 6.0
-HCCC_PARITY_DT_S = 0.1
-HCCC_PARITY_BETA = 0.65
 
 # IPC message payloads shared with MetaDriveWorld.
 metadrive_simulation_state = namedtuple("metadrive_simulation_state", ["running", "done", "done_info"])
@@ -72,7 +70,6 @@ class LeadConfig:
   profile_csv: str | None
   output_csv: str | None
   output_graph: str | None
-  output_graph_mode: str | None
   output_control_method: str | None
   output_vehicle_name: str | None
 
@@ -91,9 +88,6 @@ class LeadState:
   profile_lane: object | None = None
   profile_s_base: float | None = None
   pose_replay_failed: bool = False
-  pose_replay_applied: bool = False
-  pose_replay_fallback_active: bool = False
-  pose_replay_fallback_seen: bool = False
 
 
 # Geometry and profile utility helpers.
@@ -186,10 +180,6 @@ def _ego_debug_state(vehicle):
     pass
 
   return debug_state
-
-
-def _lead_debug_state(vehicle):
-  return _ego_debug_state(vehicle)
 
 
 def _format_debug_state(prefix: str, debug: dict, position_xy, heading_theta: float) -> str:
@@ -480,8 +470,6 @@ def _spawn_lead_vehicle(env: MetaDriveEnv, lead_cfg: LeadConfig, lead_state: Lea
   lead_state.profile_lane = None
   lead_state.profile_s_base = None
   lead_state.pose_replay_failed = False
-  lead_state.pose_replay_applied = False
-  lead_state.pose_replay_fallback_active = False
 
   if not lead_cfg.enabled:
     return
@@ -579,8 +567,6 @@ def _clear_lead_vehicle(env: MetaDriveEnv, lead_state: LeadState):
   lead_state.profile_lane = None
   lead_state.profile_s_base = None
   lead_state.pose_replay_failed = False
-  lead_state.pose_replay_applied = False
-  lead_state.pose_replay_fallback_active = False
 
 
 def _update_lead_vehicle(env: MetaDriveEnv, lead_cfg: LeadConfig, lead_state: LeadState):
@@ -589,8 +575,6 @@ def _update_lead_vehicle(env: MetaDriveEnv, lead_cfg: LeadConfig, lead_state: Le
     return
 
   try:
-    lead_state.pose_replay_applied = False
-    lead_state.pose_replay_fallback_active = False
     elapsed_s = 0.0 if lead_state.start_time is None else (time.monotonic() - lead_state.start_time)
     if lead_cfg.start_delay_s > 0.0 and elapsed_s < lead_cfg.start_delay_s:
       lead_action = np.array([0.0, 0.0], dtype=np.float64)
@@ -619,12 +603,8 @@ def _update_lead_vehicle(env: MetaDriveEnv, lead_cfg: LeadConfig, lead_state: Le
           if not lead_state.pose_replay_failed:
             print("[WARNING] Lead pose replay failed; falling back to controller tracking.")
             lead_state.pose_replay_failed = True
-            print("[WARNING] Replay integrity issue: lead pose replay fallback is active.")
-          lead_state.pose_replay_fallback_active = True
-          lead_state.pose_replay_fallback_seen = True
         else:
           lead_state.pose_replay_failed = False
-          lead_state.pose_replay_applied = True
           lead_action = np.array([0.0, 0.0], dtype=np.float64)
           lead_state.vehicle.before_step(lead_action.tolist())
           return
@@ -706,110 +686,6 @@ def _profile_is_complete(lead_cfg: LeadConfig, lead_state: LeadState, now_monoto
   return replay_elapsed_s >= float(lead_state.profile_t[-1])
 
 
-@dataclass
-class HCCCParityTrace:
-  lead_speed_mps: float = 0.0
-  lead_accel_mps2: float = 0.0
-  feedforward_mps2: float = 0.0
-  raw_command_mps2: float = 0.0
-  command_error_mps2: float = 0.0
-
-
-class HCCCParityLogger:
-  def __init__(self, dt: float = HCCC_PARITY_DT_S, beta: float = HCCC_PARITY_BETA):
-    self.dt = dt
-    self.beta = beta
-    self.reset()
-
-  def reset(self):
-    self._prev_lead_speed = None
-    self._feedforward = 0.0
-    self._held_command = 0.0
-    self._steps_until_update = 0
-    self.trace = HCCCParityTrace()
-
-  def update(self, ego_speed_mps: float, lead_speed_mps: float, active: bool, actual_hccc_cmd: float) -> HCCCParityTrace:
-    if not active:
-      self.reset()
-      return self.trace
-
-    if self._steps_until_update <= 0:
-      if self._prev_lead_speed is not None:
-        lead_accel_mps2 = (lead_speed_mps - self._prev_lead_speed) / self.dt
-      else:
-        lead_accel_mps2 = 0.0
-      self._prev_lead_speed = lead_speed_mps
-
-      self._feedforward = self._feedforward + self.dt * ((1.0 - self.beta) * lead_accel_mps2 - self._feedforward)
-      self._held_command = self.beta * (lead_speed_mps - ego_speed_mps) + self._feedforward
-      self._steps_until_update = max(1, int(round(self.dt / 0.02))) - 1
-    else:
-      self._steps_until_update -= 1
-      lead_accel_mps2 = self.trace.lead_accel_mps2
-
-    self.trace = HCCCParityTrace(
-      lead_speed_mps=float(lead_speed_mps),
-      lead_accel_mps2=float(lead_accel_mps2),
-      feedforward_mps2=float(self._feedforward),
-      raw_command_mps2=float(self._held_command),
-      command_error_mps2=float(actual_hccc_cmd - self._held_command),
-    )
-    return self.trace
-
-
-OUTPUT_CSV_COLUMNS = [
-  "time[s]",
-  "position_ego[m]",
-  "position_pre[m]",
-  "speed_ego[m/s]",
-  "speed_pre[m/s]",
-  "target_speed_pre[m/s]",
-  "acceleration_ego_sim[m/s2]",
-  "acceleration_ego_carstate[m/s2]",
-  "lead_d_rel[m]",
-  "lead_v_rel[m/s]",
-  "lead_a_rel[m/s2]",
-  "headway[m]",
-  "deltav[m/s]",
-  "hccc_input_v_ego[m/s]",
-  "hccc_input_radar_v_rel[m/s]",
-  "hccc_input_radar_d_rel[m]",
-  "hccc_input_lead_is_radar",
-  "hccc_input_lead_track_id",
-  "hccc_input_lead_speed_est[m/s]",
-  "hccc_reference_lead_speed[m/s]",
-  "hccc_reference_lead_accel[m/s2]",
-  "hccc_reference_feedforward[m/s2]",
-  "hccc_reference_cmd[m/s2]",
-  "hccc_reference_error[m/s2]",
-  "ego_lane_id",
-  "ego_on_lane",
-  "ego_lane_s[m]",
-  "ego_lane_lateral[m]",
-  "ego_lane_heading_error_deg",
-  "lead_lane_id",
-  "lead_on_lane",
-  "lead_lane_lateral[m]",
-  "lead_pose_replay_applied",
-  "lead_pose_fallback_active",
-  "planner_a_target[m/s2]",
-  "hccc_accel[m/s2]",
-  "manual_accel[m/s2]",
-  "final_accel_cmd[m/s2]",
-  "hccc_active",
-  "driver_gas",
-  "driver_brake",
-  "engine_throttle",
-  "engine_brake",
-  "controller_throttle",
-  "controller_brake",
-]
-
-
-def _default_output_root() -> Path:
-  return Path(__file__).resolve().parents[2]
-
-
 def _get_next_test_number(directory: Path) -> int:
   """Find the next TestN index for BeamNG-style output naming."""
   test_numbers: list[int] = []
@@ -833,9 +709,9 @@ def _default_output_paths(lead_cfg: LeadConfig) -> tuple[str, str]:
   control_method = (lead_cfg.output_control_method or "default").lower()
   vehicle_name = lead_cfg.output_vehicle_name or "vehicle"
 
-  sim_root = _default_output_root()
-  data_dir = sim_root / "data" / control_method
-  graph_dir = sim_root / "graphs" / control_method
+  output_root = Path("/home/linklab/ethanmathias/dataoutput")
+  data_dir = output_root / "csv" / control_method
+  graph_dir = output_root / "images" / control_method
   data_dir.mkdir(parents=True, exist_ok=True)
   graph_dir.mkdir(parents=True, exist_ok=True)
 
@@ -851,72 +727,43 @@ def _open_output_csv(path: str):
   output_path.parent.mkdir(parents=True, exist_ok=True)
   output_file = output_path.open("w", newline="")
   output_writer = csv.writer(output_file)
-  output_writer.writerow(OUTPUT_CSV_COLUMNS)
+  output_writer.writerow([
+    "time[s]",
+    "position_ego[m]",
+    "position_pre[m]",
+    "speed_ego[m/s]",
+    "speed_pre[m/s]",
+    "acceleration_ego[m/s2]",
+    "headway[m]",
+    "deltav[m/s]",
+    "engine_throttle",
+    "engine_brake",
+    "Controller_throttle",
+    "Controller_brake",
+  ])
   return output_file, output_writer, str(output_path)
 
 
-def _write_output_graph(csv_path: str, graph_path: str, graph_mode: str = "simple"):
-  """Render multi-panel BeamNG-parity telemetry graphs from the bridge CSV."""
+def _write_output_graph(csv_path: str, graph_path: str):
+  """Render a speed-vs-time graph from the bridge telemetry CSV."""
   try:
     import matplotlib.pyplot as plt
   except ImportError as exc:
     raise RuntimeError("matplotlib is required to generate graph output") from exc
 
-  def _read_float(row: dict[str, str], key: str) -> float:
-    try:
-      value = row[key]
-    except KeyError:
-      return float("nan")
-    if value in ("", None):
-      return float("nan")
-    try:
-      return float(value)
-    except (TypeError, ValueError):
-      return float("nan")
-
   times_s: list[float] = []
   speed_ego_mps: list[float] = []
   speed_pre_mps: list[float] = []
-  speed_pre_target_mps: list[float] = []
-  accel_sim_mps2: list[float] = []
-  accel_carstate_mps2: list[float] = []
-  planner_a_target_mps2: list[float] = []
-  hccc_accel_mps2: list[float] = []
-  hccc_input_v_ego_mps: list[float] = []
-  hccc_input_lead_speed_est_mps: list[float] = []
-  hccc_reference_cmd_mps2: list[float] = []
-  hccc_reference_error_mps2: list[float] = []
-  manual_accel_mps2: list[float] = []
-  final_accel_cmd_mps2: list[float] = []
-  headway_m: list[float] = []
-  deltav_mps: list[float] = []
-  controller_throttle: list[float] = []
-  controller_brake: list[float] = []
 
   with Path(csv_path).expanduser().open("r", newline="") as csv_file:
     reader = csv.DictReader(csv_file)
     for row in reader:
       try:
         times_s.append(float(row["time[s]"]))
+        speed_ego_mps.append(float(row["speed_ego[m/s]"]))
+        speed_pre_mps.append(float(row["speed_pre[m/s]"]))
       except (KeyError, TypeError, ValueError):
         continue
-      speed_ego_mps.append(_read_float(row, "speed_ego[m/s]"))
-      speed_pre_mps.append(_read_float(row, "speed_pre[m/s]"))
-      speed_pre_target_mps.append(_read_float(row, "target_speed_pre[m/s]"))
-      accel_sim_mps2.append(_read_float(row, "acceleration_ego_sim[m/s2]"))
-      accel_carstate_mps2.append(_read_float(row, "acceleration_ego_carstate[m/s2]"))
-      planner_a_target_mps2.append(_read_float(row, "planner_a_target[m/s2]"))
-      hccc_accel_mps2.append(_read_float(row, "hccc_accel[m/s2]"))
-      hccc_input_v_ego_mps.append(_read_float(row, "hccc_input_v_ego[m/s]"))
-      hccc_input_lead_speed_est_mps.append(_read_float(row, "hccc_input_lead_speed_est[m/s]"))
-      hccc_reference_cmd_mps2.append(_read_float(row, "hccc_reference_cmd[m/s2]"))
-      hccc_reference_error_mps2.append(_read_float(row, "hccc_reference_error[m/s2]"))
-      manual_accel_mps2.append(_read_float(row, "manual_accel[m/s2]"))
-      final_accel_cmd_mps2.append(_read_float(row, "final_accel_cmd[m/s2]"))
-      headway_m.append(_read_float(row, "headway[m]"))
-      deltav_mps.append(_read_float(row, "deltav[m/s]"))
-      controller_throttle.append(_read_float(row, "controller_throttle"))
-      controller_brake.append(_read_float(row, "controller_brake"))
 
   if not times_s:
     raise RuntimeError(f"No plottable telemetry rows found in {csv_path}")
@@ -924,67 +771,17 @@ def _write_output_graph(csv_path: str, graph_path: str, graph_mode: str = "simpl
   graph_output_path = Path(graph_path).expanduser()
   graph_output_path.parent.mkdir(parents=True, exist_ok=True)
 
-  graph_mode_normalized = str(graph_mode or "detailed").strip().lower()
-  if graph_mode_normalized not in {"detailed", "simple"}:
-    raise RuntimeError(f"Unsupported graph mode: {graph_mode}")
-
-  if graph_mode_normalized == "simple":
-    _, ax = plt.subplots(1, 1, figsize=(12, 6))
-    ax.plot(times_s, speed_pre_mps, label="Preceding Vehicle")
-    ax.plot(times_s, speed_ego_mps, label="Ego Vehicle")
-    ax.set_xlabel("Time [s]")
-    ax.set_ylabel("Speed [m/s]")
-    ax.set_title("HC3 Replay: Preceding vs Ego Vehicle")
-    ax.legend()
-    ax.grid(True)
-    plt.tight_layout()
-    plt.savefig(graph_output_path)
-    plt.close()
-    return
-
-  _, axes = plt.subplots(5, 1, figsize=(12, 19), sharex=True)
-
-  axes[0].plot(times_s, speed_pre_mps, label="Preceding Vehicle")
-  axes[0].plot(times_s, speed_ego_mps, label="Ego Vehicle")
-  axes[0].plot(times_s, speed_pre_target_mps, label="Target Lead Speed", linestyle="--")
-  axes[0].plot(times_s, hccc_input_lead_speed_est_mps, label="HC3 Input Lead Speed", linestyle=":")
-  axes[0].plot(times_s, hccc_input_v_ego_mps, label="HC3 Input Ego Speed", linestyle=":")
-  axes[0].set_ylabel("Speed [m/s]")
-  axes[0].set_title("BeamNG-Parity HC3 Replay")
-  axes[0].legend()
-  axes[0].grid(True)
-
-  axes[1].plot(times_s, accel_sim_mps2, label="Sim Accel")
-  axes[1].plot(times_s, accel_carstate_mps2, label="carState.aEgo")
-  axes[1].plot(times_s, planner_a_target_mps2, label="Planner aTarget")
-  axes[1].plot(times_s, final_accel_cmd_mps2, label="Final HC3 Command")
-  axes[1].set_ylabel("Accel [m/s^2]")
-  axes[1].legend()
-  axes[1].grid(True)
-
-  axes[2].plot(times_s, headway_m, label="Headway")
-  axes[2].plot(times_s, deltav_mps, label="Delta-v")
-  axes[2].set_ylabel("Spacing / Speed")
-  axes[2].legend()
-  axes[2].grid(True)
-
-  axes[3].plot(times_s, hccc_accel_mps2, label="HC3 Raw Output")
-  axes[3].plot(times_s, hccc_reference_cmd_mps2, label="BeamNG Reference HC3", linestyle="--")
-  axes[3].plot(times_s, final_accel_cmd_mps2, label="Final Combined Command")
-  axes[3].set_ylabel("Command [m/s^2]")
-  axes[3].legend()
-  axes[3].grid(True)
-
-  axes[4].plot(times_s, controller_throttle, label="Mapped Throttle")
-  axes[4].plot(times_s, controller_brake, label="Mapped Brake")
-  axes[4].plot(times_s, hccc_reference_error_mps2, label="HC3 Ref Error", linestyle="--")
-  axes[4].set_xlabel("Time [s]")
-  axes[4].set_ylabel("Actuator / Error")
-  axes[4].legend()
-  axes[4].grid(True)
-
+  plt.figure(figsize=(12, 6))
+  plt.plot(times_s, speed_pre_mps, label="Preceding Vehicle")
+  plt.plot(times_s, speed_ego_mps, label="Ego Vehicle")
+  plt.xlabel("Time [s]")
+  plt.ylabel("Speed [m/s]")
+  plt.title("Speed vs Time")
+  plt.legend()
+  plt.grid(True)
   plt.tight_layout()
   plt.savefig(graph_output_path)
+  plt.show()
   plt.close()
 
 
@@ -1017,7 +814,6 @@ def metadrive_process(
     profile_csv=config.pop("lead_profile_csv", None),
     output_csv=config.pop("lead_profile_output_csv", None),
     output_graph=config.pop("lead_profile_output_graph", None),
-    output_graph_mode=config.pop("lead_profile_output_graph_mode", None),
     output_control_method=config.pop("lead_profile_output_control_method", None),
     output_vehicle_name=config.pop("lead_profile_output_vehicle_name", None),
   )
@@ -1065,8 +861,6 @@ def metadrive_process(
   engage_start_time = None
   bridge_start_time_s = time.monotonic()
   prev_ego_speed_mps = _planar_speed(env.vehicle.velocity)
-  latest_bridge_telemetry: dict[str, float | bool] = {}
-  hccc_parity_logger = HCCCParityLogger()
 
   if lead_cfg.output_csv is None:
     output_csv_path, default_graph_path = _default_output_paths(lead_cfg)
@@ -1108,11 +902,7 @@ def metadrive_process(
       should_reset = False
       if controls_recv.poll(0):
         while controls_recv.poll(0):
-          payload = controls_recv.recv()
-          if len(payload) == 4:
-            steer_angle, gas, should_reset, latest_bridge_telemetry = payload
-          else:
-            steer_angle, gas, should_reset = payload
+          steer_angle, gas, should_reset = controls_recv.recv()
 
         steer_limit = float(env.vehicle.MAX_STEERING) * max(steer_command_ratio, 1e-3)
         steer_cmd = float(np.interp(steer_angle, [-steer_limit, steer_limit], [-1.0, 1.0]))
@@ -1121,7 +911,6 @@ def metadrive_process(
       if should_reset:
         reset_world()
         engage_start_time = None
-        hccc_parity_logger.reset()
 
       if op_engaged.is_set() and engage_start_time is None:
         engage_start_time = time.monotonic()
@@ -1138,33 +927,12 @@ def metadrive_process(
         ego_accel_mps2 = (ego_speed_mps - prev_ego_speed_mps) / max(sim_step_dt_s, 1e-3)
         prev_ego_speed_mps = ego_speed_mps
         lead_speed_mps = _planar_speed(lead_state.vehicle.velocity) if lead_state.vehicle is not None else 0.0
-        target_speed_pre_mps = ""
-        if lead_state.profile_t is not None and lead_state.start_time is not None:
-          profile_elapsed_s = time.monotonic() - lead_state.start_time - lead_cfg.start_delay_s
-          target_speed_pre_mps = float(_profile_interp_speed(lead_state, profile_elapsed_s))
 
         engine_long_cmd = float(getattr(env.vehicle, "throttle_brake", ego_control[1]))
         engine_throttle = max(engine_long_cmd, 0.0)
         engine_brake = max(-engine_long_cmd, 0.0)
         controller_throttle = max(float(ego_control[1]), 0.0)
         controller_brake = max(-float(ego_control[1]), 0.0)
-        lead_d_rel = float(lead_measurement["d_rel"]) if lead_measurement["status"] else ""
-        lead_v_rel = float(lead_measurement["v_rel"]) if lead_measurement["status"] else ""
-        lead_a_rel = float(lead_measurement["a_rel"]) if lead_measurement["status"] else ""
-        headway_m = (float(lead_measurement["d_rel"]) - 4.5) if lead_measurement["status"] else ""
-        deltav_mps = float(ego_speed_mps - lead_speed_mps) if lead_state.vehicle is not None else ""
-        hccc_actual_cmd = float(latest_bridge_telemetry.get("hccc_accel", 0.0))
-        hccc_parity_trace = hccc_parity_logger.update(
-          ego_speed_mps,
-          lead_speed_mps,
-          bool(latest_bridge_telemetry.get("hccc_active", False)),
-          hccc_actual_cmd,
-        )
-        lead_debug_state = _lead_debug_state(lead_state.vehicle) if lead_state.vehicle is not None else {
-          "lane_id": "",
-          "on_lane": "",
-          "lane_lateral": "",
-        }
 
         ego_position = np.array(env.vehicle.position, dtype=np.float64)
         ego_position_xyz = [
@@ -1189,42 +957,9 @@ def metadrive_process(
           lead_position_xyz,
           float(ego_speed_mps),
           float(lead_speed_mps),
-          target_speed_pre_mps,
           float(ego_accel_mps2),
-          float(latest_bridge_telemetry.get("carstate_a_ego", 0.0)),
-          lead_d_rel,
-          lead_v_rel,
-          lead_a_rel,
-          headway_m,
-          deltav_mps,
-          float(latest_bridge_telemetry.get("carstate_v_ego", 0.0)),
-          float(latest_bridge_telemetry.get("radar_lead_v_rel", 0.0)),
-          float(latest_bridge_telemetry.get("radar_lead_d_rel", 0.0)),
-          bool(latest_bridge_telemetry.get("radar_lead_is_radar", False)),
-          int(latest_bridge_telemetry.get("radar_lead_track_id", -1)),
-          float(latest_bridge_telemetry.get("radar_lead_speed_est", 0.0)),
-          float(hccc_parity_trace.lead_speed_mps),
-          float(hccc_parity_trace.lead_accel_mps2),
-          float(hccc_parity_trace.feedforward_mps2),
-          float(hccc_parity_trace.raw_command_mps2),
-          float(hccc_parity_trace.command_error_mps2),
-          ego_debug_state["lane_id"],
-          bool(ego_debug_state["on_lane"]),
-          float(ego_debug_state["lane_s"]) if ego_debug_state["has_lane"] else "",
-          float(ego_debug_state["lane_lateral"]) if ego_debug_state["has_lane"] else "",
-          float(ego_debug_state["lane_heading_error_deg"]) if ego_debug_state["has_lane"] else "",
-          lead_debug_state["lane_id"],
-          lead_debug_state["on_lane"],
-          lead_debug_state["lane_lateral"],
-          bool(lead_state.pose_replay_applied),
-          bool(lead_state.pose_replay_fallback_active),
-          float(latest_bridge_telemetry.get("planner_a_target", 0.0)),
-          float(latest_bridge_telemetry.get("hccc_accel", 0.0)),
-          float(latest_bridge_telemetry.get("manual_accel", 0.0)),
-          float(latest_bridge_telemetry.get("final_accel", 0.0)),
-          bool(latest_bridge_telemetry.get("hccc_active", False)),
-          float(latest_bridge_telemetry.get("driver_gas", 0.0)),
-          float(latest_bridge_telemetry.get("driver_brake", 0.0)),
+          float(lead_measurement["d_rel"]) if lead_measurement["status"] else "",
+          float(lead_measurement["v_rel"]) if lead_measurement["status"] else "",
           float(engine_throttle),
           float(engine_brake),
           float(controller_throttle),
@@ -1240,7 +975,6 @@ def metadrive_process(
               "profile_scn": lead_cfg.profile_scn,
               "output_csv": output_csv_path,
               "output_graph": output_graph_path,
-              "pose_replay_fallback_seen": bool(lead_state.pose_replay_fallback_seen),
             },
           )
           _send_done_state(simulation_state_send, done_result)
@@ -1277,7 +1011,7 @@ def metadrive_process(
     output_file.flush()
     output_file.close()
     try:
-      _write_output_graph(output_csv_path, output_graph_path, lead_cfg.output_graph_mode or "simple")
+      _write_output_graph(output_csv_path, output_graph_path)
       print(f"[INFO] Saved bridge telemetry graph to {output_graph_path}")
     except Exception as exc:
       print(f"[WARNING] Failed to generate bridge telemetry graph: {exc}")

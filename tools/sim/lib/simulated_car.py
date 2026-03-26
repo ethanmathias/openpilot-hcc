@@ -15,7 +15,7 @@ class SimulatedCar:
 
   def __init__(self):
     self.pm = messaging.PubMaster(['can', 'pandaStates', 'liveTracks'])
-    self.sm = messaging.SubMaster(['carControl', 'controlsState', 'carParams', 'selfdriveState', 'carState', 'radarState', 'longitudinalPlan'])
+    self.sm = messaging.SubMaster(['carControl', 'controlsState', 'carParams', 'selfdriveState', 'carState', 'radarState'])
     self.idx = 0
     self.params = Params()
     self.obd_multiplexing = False

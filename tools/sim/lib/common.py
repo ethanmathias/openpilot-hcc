@@ -66,13 +66,6 @@ class SimulatorState:
     self.left_blinker = False
     self.right_blinker = False
 
-    self.carstate_a_ego: float = 0.0
-    self.planner_a_target: float = 0.0
-    self.hccc_accel: float = 0.0
-    self.manual_accel: float = 0.0
-    self.final_accel: float = 0.0
-    self.hccc_active: bool = False
-
     # Optional virtual lead state for simulator-generated liveTracks.
     self.lead_status: bool = False
     self.lead_d_rel: float = 0.0
@@ -96,7 +89,7 @@ class World(ABC):
     self.exit_event = multiprocessing.Event()
 
   @abstractmethod
-  def apply_controls(self, steer_sim, throttle_out, brake_out, bridge_telemetry=None):
+  def apply_controls(self, steer_sim, throttle_out, brake_out):
     pass
 
   @abstractmethod
