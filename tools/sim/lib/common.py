@@ -89,7 +89,7 @@ class World(ABC):
     self.exit_event = multiprocessing.Event()
 
   @abstractmethod
-  def apply_controls(self, steer_sim, throttle_out, brake_out):
+  def apply_controls(self, steer_sim, throttle_out, brake_out, bridge_telemetry=None):
     pass
 
   @abstractmethod

@@ -17,6 +17,20 @@ class hCCC:
     # Keep only scalar state needed for the controller update. So that infinite memory is not needed for the feedforward filter.
     self._prev_lead_speed = None
     self.ff_y_prev = 0.0
+    # These debug fields are exported through the simulator logging path so we
+    # can compare the live controller inputs and outputs against replay traces.
+    self.debug_lead_speed = 0.0
+    self.debug_lead_accel = 0.0
+    self.debug_feedforward = 0.0
+    self.debug_output = 0.0
+
+  def reset(self):
+    self._prev_lead_speed = None
+    self.ff_y_prev = 0.0
+    self.debug_lead_speed = 0.0
+    self.debug_lead_accel = 0.0
+    self.debug_feedforward = 0.0
+    self.debug_output = 0.0
 
   def feedforward_no_delay(self, a_lead):
     """Apply the same feedforward filter used in the BeamNG version."""
@@ -25,11 +39,11 @@ class hCCC:
     self.ff_y_prev = y
     return y
 
-#may want to change time step
+  # Keep a small amount of internal state so replay logging can reconstruct the
+  # lead-speed and feedforward terms that drive the HC3 command.
   def run_step(self, CS, lead):
     if lead is None or not lead.status:
-      self._prev_lead_speed = None
-      self.ff_y_prev = 0.0
+      self.reset()
       return None
 
     ego_speed = CS.vEgo
@@ -46,6 +60,10 @@ class hCCC:
 
     feedforward_state = self.feedforward_no_delay(pre_accl_current)
     accl_command = (self._beta * (lead_speed - ego_speed) + feedforward_state) * 0.6
+    self.debug_lead_speed = float(lead_speed)
+    self.debug_lead_accel = float(pre_accl_current)
+    self.debug_feedforward = float(feedforward_state)
+    self.debug_output = float(accl_command)
 
     accl_command = np.clip(accl_command, self._max_decel, self._max_accl)
     return float(accl_command)

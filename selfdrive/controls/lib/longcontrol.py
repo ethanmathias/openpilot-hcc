@@ -99,11 +99,28 @@ class LongControl:
     self.hccc = None
     self._hccc_held_output = None
     self._vision_fallback_grace_steps = 0
+    # Replay/debug telemetry for simulator analysis. These stay on LongControl
+    # so the bridge can log the exact planner/HC3/manual contributions.
+    self.debug_planner_accel = 0.0
+    self.debug_hccc_accel = 0.0
+    self.debug_manual_accel = 0.0
+    self.debug_output_accel = 0.0
+    self.debug_hccc_active = False
+    self.debug_hccc_lead_speed = 0.0
+    self.debug_hccc_lead_accel = 0.0
+    self.debug_hccc_feedforward = 0.0
     self._refresh_hccc(force_reset=True)
 
   def reset(self):
     self._hccc_held_output = None
     self._vision_fallback_grace_steps = 0
+    self.debug_hccc_accel = 0.0
+    self.debug_manual_accel = 0.0
+    self.debug_output_accel = 0.0
+    self.debug_hccc_active = False
+    self.debug_hccc_lead_speed = 0.0
+    self.debug_hccc_lead_accel = 0.0
+    self.debug_hccc_feedforward = 0.0
     self._refresh_hccc(force_reset=True)
 
   def _hccc_enabled(self):
@@ -127,6 +144,7 @@ class LongControl:
     """Update longitudinal control. This updates the state machine and runs hCCC."""
     self._refresh_hccc()
     accel_min, accel_max = accel_limits
+    self.debug_planner_accel = float(a_target)
 
     controller_accel = 0.0
     hccc_output = None
@@ -158,6 +176,13 @@ class LongControl:
 
     # HCCC_CHANGE_NOTE: BeamNG-style cooperative input is a single signed manual command.
     manual_accel = _manual_longitudinal_input(CS)
+    self.debug_hccc_accel = float(controller_accel)
+    self.debug_manual_accel = float(manual_accel)
+    self.debug_hccc_active = bool(active and hccc_output is not None)
+    if self.hccc is not None:
+      self.debug_hccc_lead_speed = float(getattr(self.hccc, "debug_lead_speed", 0.0))
+      self.debug_hccc_lead_accel = float(getattr(self.hccc, "debug_lead_accel", 0.0))
+      self.debug_hccc_feedforward = float(getattr(self.hccc, "debug_feedforward", 0.0))
 
     if hccc_output is not None:
       should_stop = False
@@ -186,4 +211,5 @@ class LongControl:
       output_accel = controller_accel + manual_accel
 
     self.last_output_accel = np.clip(output_accel, accel_min, accel_max)
+    self.debug_output_accel = float(self.last_output_accel)
     return self.last_output_accel

@@ -267,7 +267,47 @@ Ignition: {self.simulator_state.ignition} Engaged: {self.simulator_state.is_enga
         brake_out = brake_manual
         steer_out = steer_manual
 
-      self.world.apply_controls(steer_out, throttle_out, brake_out)
+      carstate_a_ego = float(self.simulated_car.sm['carState'].aEgo) if self.simulated_car.sm.valid.get('carState', False) else 0.0
+      carstate_v_ego = float(self.simulated_car.sm['carState'].vEgo) if self.simulated_car.sm.valid.get('carState', False) else 0.0
+      planner_a_target = float(self.simulated_car.sm['controlsState'].upAccelCmd) if self.simulated_car.sm.valid.get('controlsState', False) else 0.0
+      hccc_accel = float(self.simulated_car.sm['controlsState'].uiAccelCmd) if self.simulated_car.sm.valid.get('controlsState', False) else 0.0
+      manual_accel = float(self.simulated_car.sm['controlsState'].ufAccelCmd) if self.simulated_car.sm.valid.get('controlsState', False) else 0.0
+      final_accel = float(self.simulated_car.sm['carControl'].actuators.accel) if self.simulated_car.sm.valid.get('carControl', False) else 0.0
+
+      radar_lead_v_rel = 0.0
+      radar_lead_d_rel = 0.0
+      radar_lead_is_radar = False
+      radar_lead_track_id = -1
+      hccc_active = False
+      if self.simulated_car.sm.valid.get('radarState', False):
+        radar_lead = self.simulated_car.sm['radarState'].leadOne
+        if radar_lead.status:
+          radar_lead_v_rel = float(radar_lead.vRel)
+          radar_lead_d_rel = float(radar_lead.dRel)
+          radar_lead_is_radar = bool(getattr(radar_lead, "radar", False))
+          radar_lead_track_id = int(getattr(radar_lead, "radarTrackId", -1))
+          hccc_active = bool(self.simulator_state.is_engaged)
+
+      # Carry these debug values over to the simulator worker so replay CSVs can
+      # include both the plant response and the openpilot-side HC3 diagnostics.
+      bridge_telemetry = {
+        "carstate_a_ego": carstate_a_ego,
+        "carstate_v_ego": carstate_v_ego,
+        "planner_a_target": planner_a_target,
+        "hccc_accel": hccc_accel,
+        "manual_accel": manual_accel,
+        "final_accel": final_accel,
+        "radar_lead_v_rel": radar_lead_v_rel,
+        "radar_lead_d_rel": radar_lead_d_rel,
+        "radar_lead_is_radar": radar_lead_is_radar,
+        "radar_lead_track_id": radar_lead_track_id,
+        "radar_lead_speed_est": carstate_v_ego + radar_lead_v_rel if hccc_active else 0.0,
+        "hccc_active": hccc_active,
+        "driver_gas": float(throttle_manual),
+        "driver_brake": float(brake_manual),
+      }
+
+      self.world.apply_controls(steer_out, throttle_out, brake_out, bridge_telemetry)
       self.world.read_state()
       self.world.read_sensors(self.simulator_state)
 

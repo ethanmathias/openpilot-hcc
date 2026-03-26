@@ -79,12 +79,12 @@ class MetaDriveWorld(World):
     self.ego_control_command = [0.0, 0.0]
     self.should_reset = False
 
-  def apply_controls(self, steer_angle, throttle_out, brake_out):
-    """Send latest steering/throttle/brake command to the worker process."""
+  def apply_controls(self, steer_angle, throttle_out, brake_out, bridge_telemetry=None):
+    """Send latest actuation plus optional replay telemetry to the worker process."""
     self.ego_control_command[0] = steer_angle
     self.ego_control_command[1] = throttle_out if throttle_out else -brake_out
 
-    self.controls_send.send([*self.ego_control_command, self.should_reset])
+    self.controls_send.send([*self.ego_control_command, self.should_reset, bridge_telemetry or {}])
     self.should_reset = False
 
   def read_state(self):
