@@ -11,8 +11,6 @@ CONTROL_N_T_IDX = ModelConstants.T_IDXS[:CONTROL_N]
 
 LongCtrlState = car.CarControl.Actuators.LongControlState
 SIMULATION = os.environ.get("SIMULATION", "0") == "1"
-HCCC_VISION_FALLBACK_GRACE_S = 0.3
-HCCC_VISION_FALLBACK_GRACE_STEPS = max(1, int(round(HCCC_VISION_FALLBACK_GRACE_S / DT_CTRL)))
 
 # HCCC_CHANGE_NOTE: longcontrol uses BeamNG-style cooperative blending:
 # controller contribution + signed manual pedal input, blended once in the shared
@@ -97,8 +95,6 @@ class LongControl:
     self.params = Params()
     self.use_hccc = False
     self.hccc = None
-    self._hccc_held_output = None
-    self._vision_fallback_grace_steps = 0
     # Replay/debug telemetry for simulator analysis. These stay on LongControl
     # so the bridge can log the exact planner/HC3/manual contributions.
     self.debug_planner_accel = 0.0
@@ -112,8 +108,6 @@ class LongControl:
     self._refresh_hccc(force_reset=True)
 
   def reset(self):
-    self._hccc_held_output = None
-    self._vision_fallback_grace_steps = 0
     self.debug_hccc_accel = 0.0
     self.debug_manual_accel = 0.0
     self.debug_output_accel = 0.0
@@ -153,26 +147,16 @@ class LongControl:
       self.hccc._max_accl = accel_max
       lead_status = lead is not None and bool(getattr(lead, "status", False))
       track_backed_lead = lead_status and _lead_is_track_backed(lead)
-      vision_fallback_lead = lead_status and SIMULATION and not track_backed_lead
 
       if track_backed_lead or (lead_status and not SIMULATION):
         hccc_output = self.hccc.run_step(CS, lead)
         if hccc_output is not None:
           controller_accel = hccc_output
-          self._hccc_held_output = hccc_output
-          # Hold the last track-backed HC3 command through brief radar/vision
-          # handoffs so a single fusion mismatch does not zero the ego command.
-          self._vision_fallback_grace_steps = HCCC_VISION_FALLBACK_GRACE_STEPS
-      elif vision_fallback_lead and self._hccc_held_output is not None and self._vision_fallback_grace_steps > 0:
-        hccc_output = self._hccc_held_output
-        controller_accel = hccc_output
-        self._vision_fallback_grace_steps -= 1
       else:
-        # Once the lead is gone, or the fallback lasts too long, reset HC3 so
-        # the next valid track-backed lead starts from fresh controller state.
+        # In simulation, ignore radard's vision-fallback leads entirely. HC3
+        # should only react to track-backed radarState leads so brief fusion
+        # mismatches do not feed non-physical inputs into the controller.
         self.hccc.run_step(CS, None)
-        self._hccc_held_output = None
-        self._vision_fallback_grace_steps = 0
 
     # HCCC_CHANGE_NOTE: BeamNG-style cooperative input is a single signed manual command.
     manual_accel = _manual_longitudinal_input(CS)

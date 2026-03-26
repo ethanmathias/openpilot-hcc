@@ -100,7 +100,7 @@ def test_update_prefers_hccc_with_valid_lead_and_blends_manual_input():
   assert output <= 2.0
 
 
-def test_update_holds_hccc_briefly_through_vision_fallback_in_simulation():
+def test_update_ignores_vision_fallback_leads_in_simulation():
   original_simulation = longcontrol_mod.SIMULATION
   longcontrol_mod.SIMULATION = True
   try:
@@ -116,15 +116,15 @@ def test_update_holds_hccc_briefly_through_vision_fallback_in_simulation():
 
     first = controller.update(True, _test_cs(gas=0.0), a_target=0.8, should_stop=False,
                               accel_limits=(-3.0, 2.0), lead=_test_lead(True, 5.0, radar=True))
-    # A brief vision-fallback handoff should preserve the last valid track-backed
-    # HC3 output instead of dropping the command to zero for one frame.
-    held = controller.update(True, _test_cs(gas=0.0), a_target=0.8, should_stop=False,
-                             accel_limits=(-3.0, 2.0), lead=_test_lead(True, 5.0, radar=False))
+    # Simulation HC3 should ignore a radar=False lead rather than treating the
+    # vision fallback as a valid controller input.
+    ignored = controller.update(True, _test_cs(gas=0.0), a_target=0.8, should_stop=False,
+                                accel_limits=(-3.0, 2.0), lead=_test_lead(True, 5.0, radar=False))
     refreshed = controller.update(True, _test_cs(gas=0.0), a_target=0.8, should_stop=False,
                                   accel_limits=(-3.0, 2.0), lead=_test_lead(True, 5.0, radar=True))
 
     assert abs(first - 1.2) < 1e-6
-    assert abs(held - 1.2) < 1e-6
+    assert abs(ignored - 0.0) < 1e-6
     assert abs(refreshed - 0.7) < 1e-6
   finally:
     longcontrol_mod.SIMULATION = original_simulation
