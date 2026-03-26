@@ -267,11 +267,16 @@ Ignition: {self.simulator_state.ignition} Engaged: {self.simulator_state.is_enga
         brake_out = brake_manual
         steer_out = steer_manual
 
-      carstate_a_ego = float(self.simulated_car.sm['carState'].aEgo) if self.simulated_car.sm.valid.get('carState', False) else 0.0
-      carstate_v_ego = float(self.simulated_car.sm['carState'].vEgo) if self.simulated_car.sm.valid.get('carState', False) else 0.0
-      planner_a_target = float(self.simulated_car.sm['controlsState'].upAccelCmd) if self.simulated_car.sm.valid.get('controlsState', False) else 0.0
-      hccc_accel = float(self.simulated_car.sm['controlsState'].uiAccelCmd) if self.simulated_car.sm.valid.get('controlsState', False) else 0.0
-      manual_accel = float(self.simulated_car.sm['controlsState'].ufAccelCmd) if self.simulated_car.sm.valid.get('controlsState', False) else 0.0
+      carstate = self.simulated_car.sm['carState']
+      controls_state = self.simulated_car.sm['controlsState']
+      carstate_a_ego = float(getattr(carstate, 'aEgo', 0.0))
+      carstate_v_ego = float(getattr(carstate, 'vEgo', 0.0))
+      # Do not zero these debug fields just because controlsState.valid lags for
+      # a frame. For replay analysis we care about the last published values the
+      # bridge observed, especially when carControl is already nonzero.
+      planner_a_target = float(getattr(controls_state, 'upAccelCmd', 0.0))
+      hccc_accel = float(getattr(controls_state, 'uiAccelCmd', 0.0))
+      manual_accel = float(getattr(controls_state, 'ufAccelCmd', 0.0))
       final_accel = float(self.simulated_car.sm['carControl'].actuators.accel) if self.simulated_car.sm.valid.get('carControl', False) else 0.0
 
       radar_lead_v_rel = 0.0
