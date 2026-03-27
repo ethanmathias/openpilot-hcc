@@ -278,6 +278,9 @@ Ignition: {self.simulator_state.ignition} Engaged: {self.simulator_state.is_enga
       hccc_accel = float(getattr(controls_state, 'uiAccelCmd', 0.0))
       manual_accel = float(getattr(controls_state, 'ufAccelCmd', 0.0))
       final_accel = float(self.simulated_car.sm['carControl'].actuators.accel) if self.simulated_car.sm.valid.get('carControl', False) else 0.0
+      sim_track_status = bool(self.simulator_state.lead_status)
+      sim_track_d_rel = float(self.simulator_state.lead_d_rel) if sim_track_status else 0.0
+      sim_track_v_rel = float(self.simulator_state.lead_v_rel) if sim_track_status else 0.0
 
       radar_lead_v_rel = 0.0
       radar_lead_d_rel = 0.0
@@ -302,6 +305,9 @@ Ignition: {self.simulator_state.ignition} Engaged: {self.simulator_state.is_enga
         "hccc_accel": hccc_accel,
         "manual_accel": manual_accel,
         "final_accel": final_accel,
+        "sim_track_status": sim_track_status,
+        "sim_track_d_rel": sim_track_d_rel,
+        "sim_track_v_rel": sim_track_v_rel,
         "radar_lead_v_rel": radar_lead_v_rel,
         "radar_lead_d_rel": radar_lead_d_rel,
         "radar_lead_is_radar": radar_lead_is_radar,
