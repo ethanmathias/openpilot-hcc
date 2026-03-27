@@ -1,7 +1,6 @@
 from types import SimpleNamespace
 
 from cereal import car
-import openpilot.selfdrive.controls.lib.longcontrol as longcontrol_mod
 from openpilot.selfdrive.controls.lib.longcontrol import LongControl, LongCtrlState, long_control_state_trans
 
 
@@ -100,7 +99,7 @@ def test_update_prefers_hccc_with_valid_lead_and_blends_manual_input():
   assert output <= 2.0
 
 
-def test_update_holds_hccc_output_between_10hz_updates():
+def test_update_recomputes_hccc_each_control_tick():
   controller = LongControl(_test_cp(enable_hccc=True))
   outputs = iter([1.2, 0.7])
   run_step_calls = 0
@@ -116,50 +115,20 @@ def test_update_holds_hccc_output_between_10hz_updates():
 
   first = controller.update(True, _test_cs(gas=0.0), a_target=0.8, should_stop=False,
                             accel_limits=(-3.0, 2.0), lead=_test_lead(True, 5.0, radar=True))
-  held = first
-  for _ in range(longcontrol_mod.HCCC_UPDATE_FRAMES - 1):
-    held = controller.update(True, _test_cs(gas=0.0), a_target=0.8, should_stop=False,
-                             accel_limits=(-3.0, 2.0), lead=_test_lead(True, 5.0, radar=True))
-
   refreshed = controller.update(True, _test_cs(gas=0.0), a_target=0.8, should_stop=False,
                                 accel_limits=(-3.0, 2.0), lead=_test_lead(True, 5.0, radar=True))
 
   assert abs(first - 1.2) < 1e-6
-  assert abs(held - 1.2) < 1e-6
   assert abs(refreshed - 0.7) < 1e-6
   assert run_step_calls == 2
 
 
-def test_update_holds_brief_radar_fallbacks_in_simulation():
-  original_simulation = longcontrol_mod.SIMULATION
-  longcontrol_mod.SIMULATION = True
-  try:
-    controller = LongControl(_test_cp(enable_hccc=True))
-    outputs = iter([1.2, 0.7])
+def test_update_treats_non_radar_lead_like_any_other_valid_lead():
+  controller = LongControl(_test_cp(enable_hccc=True))
+  controller.hccc.run_step = lambda CS, lead: 0.9 if lead is not None and lead.status else None
 
-    def fake_run_step(CS, lead):
-      if lead is None or not lead.status:
-        return None
-      return next(outputs)
-
-    controller.hccc.run_step = fake_run_step
-
-    first = controller.update(True, _test_cs(gas=0.0), a_target=0.8, should_stop=False,
-                              accel_limits=(-3.0, 2.0), lead=_test_lead(True, 5.0, radar=True))
-    held = controller.update(True, _test_cs(gas=0.0), a_target=0.8, should_stop=False,
+  output = controller.update(True, _test_cs(gas=0.0), a_target=0.8, should_stop=False,
                              accel_limits=(-3.0, 2.0), lead=_test_lead(True, 5.0, radar=False))
-    for _ in range(longcontrol_mod.HCCC_TRACK_LOSS_HOLD_FRAMES - 1):
-      held = controller.update(True, _test_cs(gas=0.0), a_target=0.8, should_stop=False,
-                               accel_limits=(-3.0, 2.0), lead=_test_lead(True, 5.0, radar=False))
 
-    expired = controller.update(True, _test_cs(gas=0.0), a_target=0.8, should_stop=False,
-                                accel_limits=(-3.0, 2.0), lead=_test_lead(True, 5.0, radar=False))
-    refreshed = controller.update(True, _test_cs(gas=0.0), a_target=0.8, should_stop=False,
-                                  accel_limits=(-3.0, 2.0), lead=_test_lead(True, 5.0, radar=True))
-
-    assert abs(first - 1.2) < 1e-6
-    assert abs(held - 1.2) < 1e-6
-    assert abs(expired - 0.0) < 1e-6
-    assert abs(refreshed - 0.7) < 1e-6
-  finally:
-    longcontrol_mod.SIMULATION = original_simulation
+  assert abs(output - 0.9) < 1e-6
+  assert controller.debug_hccc_active is True

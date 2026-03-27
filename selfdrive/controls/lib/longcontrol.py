@@ -11,10 +11,6 @@ CONTROL_N_T_IDX = ModelConstants.T_IDXS[:CONTROL_N]
 
 LongCtrlState = car.CarControl.Actuators.LongControlState
 SIMULATION = os.environ.get("SIMULATION", "0") == "1"
-HCCC_UPDATE_DT = 0.1
-HCCC_UPDATE_FRAMES = max(1, int(round(HCCC_UPDATE_DT / DT_CTRL)))
-HCCC_TRACK_LOSS_HOLD_S = 0.3
-HCCC_TRACK_LOSS_HOLD_FRAMES = max(1, int(round(HCCC_TRACK_LOSS_HOLD_S / DT_CTRL)))
 
 # HCCC_CHANGE_NOTE: longcontrol uses BeamNG-style cooperative blending:
 # controller contribution + signed manual pedal input, blended once in the shared
@@ -49,13 +45,6 @@ def _manual_longitudinal_input(CS) -> float:
   if manual_cmd >= 0.0:
     return manual_cmd * 1.4
   return manual_cmd * 4.0
-
-
-def _lead_is_track_backed(lead) -> bool:
-  if lead is None or not bool(getattr(lead, "status", False)):
-    return False
-  return bool(getattr(lead, "radar", True))
-
 
 def long_control_state_trans(CP, active, long_control_state, v_ego,
                              should_stop, brake_pressed, cruise_standstill):
@@ -109,7 +98,6 @@ class LongControl:
     self.debug_hccc_lead_speed = 0.0
     self.debug_hccc_lead_accel = 0.0
     self.debug_hccc_feedforward = 0.0
-    self._reset_hccc_runtime_state()
     self._refresh_hccc(force_reset=True)
 
   def reset(self):
@@ -120,7 +108,6 @@ class LongControl:
     self.debug_hccc_lead_speed = 0.0
     self.debug_hccc_lead_accel = 0.0
     self.debug_hccc_feedforward = 0.0
-    self._reset_hccc_runtime_state()
     self._refresh_hccc(force_reset=True)
 
   def _hccc_enabled(self):
@@ -132,26 +119,12 @@ class LongControl:
       return SIMULATION
     return self.params.get_bool("EnableHCCC")
 
-  def _reset_hccc_runtime_state(self):
-    # Hold the last HC3 command between 10 Hz updates so the control output
-    # does not chatter at controlsd's 100 Hz loop rate.
-    self._held_hccc_accel = 0.0
-    self._has_held_hccc_output = False
-    self._hccc_frames_since_update = HCCC_UPDATE_FRAMES
-    # Keep the last valid HC3 command briefly across radar/vision handoffs so
-    # short fusion mismatches do not create hard 0 -> X -> 0 accel cliffs.
-    self._hccc_track_loss_frames = 0
-
   def _refresh_hccc(self, force_reset=False):
     enabled = self._hccc_enabled()
     if not enabled:
       self.hccc = None
-      self._reset_hccc_runtime_state()
     elif self.hccc is None or force_reset:
-      # BeamNG HC3 logic is a 10 Hz controller. We run it at that cadence and
-      # hold the latest output between updates in the 100 Hz longitudinal loop.
-      self.hccc = hCCC(dt=HCCC_UPDATE_DT, max_deceleration=self.CP.stopAccel, max_acceleration=max(self.CP.startAccel, 1.6))
-      self._reset_hccc_runtime_state()
+      self.hccc = hCCC(dt=DT_CTRL, max_deceleration=self.CP.stopAccel, max_acceleration=max(self.CP.startAccel, 1.6))
     self.use_hccc = enabled
 
   def update(self, active, CS, a_target, should_stop, accel_limits, lead=None):
@@ -165,35 +138,9 @@ class LongControl:
     if self.use_hccc and self.hccc is not None:
       self.hccc._max_decel = accel_min
       self.hccc._max_accl = accel_max
-      lead_status = lead is not None and bool(getattr(lead, "status", False))
-      track_backed_lead = lead_status and _lead_is_track_backed(lead)
-
-      if track_backed_lead or (lead_status and not SIMULATION):
-        self._hccc_track_loss_frames = 0
-        if (not self._has_held_hccc_output) or (self._hccc_frames_since_update >= HCCC_UPDATE_FRAMES):
-          hccc_output = self.hccc.run_step(CS, lead)
-          if hccc_output is not None:
-            self._held_hccc_accel = float(hccc_output)
-            self._has_held_hccc_output = True
-            self._hccc_frames_since_update = 1
-        elif self._has_held_hccc_output:
-          hccc_output = self._held_hccc_accel
-          self._hccc_frames_since_update += 1
-
-        if hccc_output is not None:
-          controller_accel = float(hccc_output)
-      elif SIMULATION and lead_status and self._has_held_hccc_output and self._hccc_track_loss_frames < HCCC_TRACK_LOSS_HOLD_FRAMES:
-        # Preserve the last command for a short grace window when radard
-        # momentarily falls back from a track-backed lead to vision only.
-        self._hccc_track_loss_frames += 1
-        self._hccc_frames_since_update = min(self._hccc_frames_since_update + 1, HCCC_UPDATE_FRAMES)
-        hccc_output = self._held_hccc_accel
+      hccc_output = self.hccc.run_step(CS, lead)
+      if hccc_output is not None:
         controller_accel = float(hccc_output)
-      else:
-        # Fully reset once the lead is gone or has stayed non-track-backed
-        # longer than the grace window.
-        self.hccc.run_step(CS, None)
-        self._reset_hccc_runtime_state()
 
     # HCCC_CHANGE_NOTE: BeamNG-style cooperative input is a single signed manual command.
     manual_accel = _manual_longitudinal_input(CS)
