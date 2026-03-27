@@ -161,6 +161,16 @@ def get_RadarState_from_vision(lead_msg: capnp._DynamicStructReader, v_ego: floa
 
 def get_lead(v_ego: float, ready: bool, tracks: dict[int, Track], lead_msg: capnp._DynamicStructReader,
              model_v_ego: float, low_speed_override: bool = True) -> dict[str, Any]:
+  if SIMULATION and len(tracks) > 0:
+    # In simulation the liveTracks feed is already synthesized directly from the
+    # simulator's world state, so prefer the nearest forward track instead of
+    # dropping back to a vision-only lead when model/radar association jitters.
+    sim_tracks = [c for c in tracks.values() if c.dRel > 0.5]
+    if len(sim_tracks) > 0:
+      closest_track = min(sim_tracks, key=lambda c: c.dRel)
+      model_prob = float(getattr(lead_msg, "prob", 0.0)) if ready else 0.0
+      return closest_track.get_RadarState(model_prob)
+
   # Determine leads, this is where the essential logic happens
   if len(tracks) > 0 and ready and lead_msg.prob > .5:
     track = match_vision_to_track(v_ego, lead_msg, tracks)
