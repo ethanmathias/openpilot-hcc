@@ -19,6 +19,12 @@ class SimulatedCar:
     self.idx = 0
     self.params = Params()
     self.obd_multiplexing = False
+    # Best-effort debug telemetry for the bridge CSV. These are updated by the
+    # liveTracks publisher thread and sampled asynchronously by the bridge.
+    self.debug_live_tracks_seq = 0
+    self.debug_live_tracks_point_count = 0
+    self.debug_live_tracks_d_rel = 0.0
+    self.debug_live_tracks_v_rel = 0.0
 
   def send_can_messages(self, simulator_state: SimulatorState):
     if not simulator_state.valid:
@@ -105,6 +111,11 @@ class SimulatedCar:
       pt.aRel = simulator_state.lead_a_rel
       pt.measured = True
       points.append(pt)
+
+    self.debug_live_tracks_seq += 1
+    self.debug_live_tracks_point_count = len(points)
+    self.debug_live_tracks_d_rel = float(points[0].dRel) if points else 0.0
+    self.debug_live_tracks_v_rel = float(points[0].vRel) if points else 0.0
 
     tracks_msg.liveTracks.points = points
     self.pm.send('liveTracks', tracks_msg)

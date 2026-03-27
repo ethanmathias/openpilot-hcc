@@ -281,6 +281,10 @@ Ignition: {self.simulator_state.ignition} Engaged: {self.simulator_state.is_enga
       sim_track_status = bool(self.simulator_state.lead_status)
       sim_track_d_rel = float(self.simulator_state.lead_d_rel) if sim_track_status else 0.0
       sim_track_v_rel = float(self.simulator_state.lead_v_rel) if sim_track_status else 0.0
+      live_tracks_seq = int(getattr(self.simulated_car, 'debug_live_tracks_seq', 0))
+      live_tracks_point_count = int(getattr(self.simulated_car, 'debug_live_tracks_point_count', 0))
+      live_tracks_d_rel = float(getattr(self.simulated_car, 'debug_live_tracks_d_rel', 0.0))
+      live_tracks_v_rel = float(getattr(self.simulated_car, 'debug_live_tracks_v_rel', 0.0))
 
       radar_lead_v_rel = 0.0
       radar_lead_d_rel = 0.0
@@ -308,6 +312,10 @@ Ignition: {self.simulator_state.ignition} Engaged: {self.simulator_state.is_enga
         "sim_track_status": sim_track_status,
         "sim_track_d_rel": sim_track_d_rel,
         "sim_track_v_rel": sim_track_v_rel,
+        "live_tracks_seq": live_tracks_seq,
+        "live_tracks_point_count": live_tracks_point_count,
+        "live_tracks_d_rel": live_tracks_d_rel,
+        "live_tracks_v_rel": live_tracks_v_rel,
         "radar_lead_v_rel": radar_lead_v_rel,
         "radar_lead_d_rel": radar_lead_d_rel,
         "radar_lead_is_radar": radar_lead_is_radar,
