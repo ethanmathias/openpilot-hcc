@@ -243,10 +243,18 @@ Generate a PNG speed plot:
 
 ## Additional Options
 
-Launch the openpilot UI in a larger layout:
+For simulator work, the default launch path uses the standard smaller UI window:
+
+```bash
+./tools/sim/launch_openpilot.sh
+./tools/sim/open_sim_terminals.sh
+```
+
+If you want the larger openpilot UI layout instead:
 
 ```bash
 BIG=1 ./tools/sim/launch_openpilot.sh
+SIM_BIG=1 ./tools/sim/open_sim_terminals.sh
 ```
 
 Enable additional bridge options:
@@ -368,6 +376,8 @@ Instead:
 5. `radard` produces `radarState` in the usual pipeline.
 
 Accordingly, the radar path should be understood as a synthetic lead-object feed injected into openpilot's radar fusion pipeline, not a raw radar reflection simulation.
+
+For hCCC debugging, one practical lesson from this branch is that the root issue was in the simulated radar trust path, not in the ego longitudinal controller itself. The synthetic `liveTracks` lead remained present in simulation, but it was not always being treated consistently as the authoritative lead by the `liveTracks` -> `radarState` path. That led to unstable `radar=True` / `radar=False` handoffs, and later `longcontrol` changes were largely reacting to that unstable input rather than causing the original issue.
 
 ## Lead Vehicle Behavior
 
