@@ -1,5 +1,6 @@
 from types import SimpleNamespace
 
+from openpilot.selfdrive.controls.lib.hcc_v2v import V2VLeadSignal
 from openpilot.selfdrive.controls.lib.hccc_controller import hCCC
 
 # HCCC_CHANGE_NOTE: regression coverage for core hCCC lead/no-lead accel behavior.
@@ -37,3 +38,24 @@ def test_hccc_uses_filtered_lead_acceleration_when_available():
   accel = controller.run_step(_cs(20.0), _lead(True, 0.0, a_lead_k=2.0))
   assert accel is not None
   assert accel > 0.0
+
+
+def test_hccc_uses_v2v_speed_and_accel_when_present():
+  controller = hCCC(dt=0.1)
+  accel = controller.run_step(
+    _cs(20.0),
+    None,
+    v2v_lead=V2VLeadSignal(status=True, lead_speed_mps=24.0, lead_accel_mps2=1.5, seq=1, local_receive_valid=True, sender_timestamp_valid=True),
+  )
+  assert accel is not None
+  assert accel > 0.0
+
+
+def test_hccc_does_not_fallback_to_radar_when_v2v_signal_is_invalid():
+  controller = hCCC(dt=0.1)
+  accel = controller.run_step(
+    _cs(20.0),
+    _lead(True, 5.0, a_lead_k=2.0),
+    v2v_lead=V2VLeadSignal(status=False),
+  )
+  assert accel is None

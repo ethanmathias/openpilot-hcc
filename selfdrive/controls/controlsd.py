@@ -102,8 +102,10 @@ class Controls:
     # HCCC_CHANGE_NOTE: on-road longActive can be enabled via the EnableHCCC toggle.
     cp_hccc_flag = getattr(self.CP, "enableHCCC", None)
     hccc_enabled = cp_hccc_flag if cp_hccc_flag is not None else self.params.get_bool("EnableHCCC")
+    v2v_lead = self.LoC.v2v_snapshot() if self.LoC.v2v_enabled() else None
+    v2v_longitudinal_ok = self.LoC.v2v_longitudinal_ok(v2v_lead)
     CC.longActive = CC.enabled and not any(e.overrideLongitudinal for e in self.sm['onroadEvents']) and \
-                    (self.CP.openpilotLongitudinalControl or hccc_enabled)
+                    (self.CP.openpilotLongitudinalControl or hccc_enabled) and v2v_longitudinal_ok
 
     actuators = CC.actuators
     actuators.longControlState = self.LoC.long_control_state
@@ -122,7 +124,7 @@ class Controls:
     pid_accel_limits = self.CI.get_pid_accel_limits(self.CP, CS.vEgo, CS.vCruise * CV.KPH_TO_MS)
     # HCCC_CHANGE_NOTE: pass radar lead directly into longcontrol update.
     actuators.accel = float(self.LoC.update(CC.longActive, CS, long_plan.aTarget, long_plan.shouldStop,
-                                            pid_accel_limits, radar_state.leadOne))
+                                            pid_accel_limits, radar_state.leadOne, v2v_lead=v2v_lead))
 
     # Steering PID loop and lateral MPC
     # Reset desired curvature to current to avoid violating the limits on engage

@@ -1,5 +1,7 @@
 import numpy as np
 
+from openpilot.selfdrive.controls.lib.hcc_v2v import V2VLeadSignal
+
 # HCCC_CHANGE_NOTE: standalone hCCC implementation used by longcontrol and dedicated tests.
 
 class hCCC:
@@ -41,21 +43,30 @@ class hCCC:
 
   # Keep a small amount of internal state so replay logging can reconstruct the
   # lead-speed and feedforward terms that drive the HC3 command.
-  def run_step(self, CS, lead):
-    if lead is None or not lead.status:
-      self.reset()
-      return None
-
+  def run_step(self, CS, lead, v2v_lead: V2VLeadSignal | None = None):
     ego_speed = CS.vEgo
-    lead_speed = ego_speed + lead.vRel
 
-    radar_lead_accel = getattr(lead, "aLeadK", None)
-    if radar_lead_accel is not None and np.isfinite(radar_lead_accel):
-      pre_accl_current = float(radar_lead_accel)
-    elif self._prev_lead_speed is not None:
-      pre_accl_current = (lead_speed - self._prev_lead_speed) / self._dt
+    if v2v_lead is not None:
+      if not v2v_lead.status:
+        self.reset()
+        return None
+      lead_speed = float(v2v_lead.lead_speed_mps)
+      pre_accl_current = float(v2v_lead.lead_accel_mps2)
     else:
-      pre_accl_current = 0.0
+      if lead is None or not lead.status:
+        self.reset()
+        return None
+
+      lead_speed = ego_speed + lead.vRel
+
+      radar_lead_accel = getattr(lead, "aLeadK", None)
+      if radar_lead_accel is not None and np.isfinite(radar_lead_accel):
+        pre_accl_current = float(radar_lead_accel)
+      elif self._prev_lead_speed is not None:
+        pre_accl_current = (lead_speed - self._prev_lead_speed) / self._dt
+      else:
+        pre_accl_current = 0.0
+
     self._prev_lead_speed = lead_speed
 
     feedforward_state = self.feedforward_no_delay(pre_accl_current)

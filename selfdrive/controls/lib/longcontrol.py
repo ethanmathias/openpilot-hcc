@@ -5,6 +5,7 @@ from openpilot.common.realtime import DT_CTRL
 from openpilot.selfdrive.controls.lib.drive_helpers import CONTROL_N
 from openpilot.common.params import Params
 from openpilot.selfdrive.controls.lib.hccc_controller import hCCC
+from openpilot.selfdrive.controls.lib.hcc_v2v import ROLE_EGO, V2VLeadSignal, V2VLeadSubscriber, load_v2v_config
 from openpilot.selfdrive.modeld.constants import ModelConstants
 
 CONTROL_N_T_IDX = ModelConstants.T_IDXS[:CONTROL_N]
@@ -88,6 +89,11 @@ class LongControl:
     self.params = Params()
     self.use_hccc = False
     self.hccc = None
+    self.v2v_config = load_v2v_config(ROLE_EGO, default_enabled=False, default_device_id="hcc-ego")
+    self.v2v_subscriber = V2VLeadSubscriber(self.v2v_config) if self.v2v_config.enabled else None
+    if self.v2v_subscriber is not None:
+      self.v2v_subscriber.start()
+    self.latest_v2v_signal = V2VLeadSignal(status=False)
     # Replay/debug telemetry for simulator analysis. These stay on LongControl
     # so the bridge can log the exact planner/HC3/manual contributions.
     self.debug_planner_accel = 0.0
@@ -127,18 +133,39 @@ class LongControl:
       self.hccc = hCCC(dt=DT_CTRL, max_deceleration=self.CP.stopAccel, max_acceleration=max(self.CP.startAccel, 1.6))
     self.use_hccc = enabled
 
-  def update(self, active, CS, a_target, should_stop, accel_limits, lead=None):
+  def v2v_enabled(self) -> bool:
+    return self.v2v_subscriber is not None and self.v2v_config.enabled
+
+  def v2v_snapshot(self) -> V2VLeadSignal:
+    if not self.v2v_enabled():
+      self.latest_v2v_signal = V2VLeadSignal(status=False)
+    else:
+      self.latest_v2v_signal = self.v2v_subscriber.snapshot()
+    return self.latest_v2v_signal
+
+  def v2v_longitudinal_ok(self, v2v_lead: V2VLeadSignal | None = None) -> bool:
+    if not self.v2v_enabled():
+      return True
+    signal = self.v2v_snapshot() if v2v_lead is None else v2v_lead
+    self.latest_v2v_signal = signal
+    return bool(signal.status)
+
+  def update(self, active, CS, a_target, should_stop, accel_limits, lead=None, v2v_lead: V2VLeadSignal | None = None):
     """Update longitudinal control. This updates the state machine and runs hCCC."""
     self._refresh_hccc()
     accel_min, accel_max = accel_limits
     self.debug_planner_accel = float(a_target)
+    active_v2v_lead = self.latest_v2v_signal if v2v_lead is None else v2v_lead
+    if self.v2v_enabled():
+      active_v2v_lead = self.v2v_snapshot() if v2v_lead is None else v2v_lead
+      self.latest_v2v_signal = active_v2v_lead
 
     controller_accel = 0.0
     hccc_output = None
     if self.use_hccc and self.hccc is not None:
       self.hccc._max_decel = accel_min
       self.hccc._max_accl = accel_max
-      hccc_output = self.hccc.run_step(CS, lead)
+      hccc_output = self.hccc.run_step(CS, lead, v2v_lead=active_v2v_lead if self.v2v_enabled() else None)
       if hccc_output is not None:
         controller_accel = float(hccc_output)
 
