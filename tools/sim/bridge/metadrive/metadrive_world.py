@@ -140,6 +140,10 @@ class MetaDriveWorld(World):
       state.lead_y_rel = md_vehicle.lead_y_rel
       state.lead_v_rel = md_vehicle.lead_v_rel
       state.lead_a_rel = md_vehicle.lead_a_rel
+      state.lead_vehicle_valid = md_vehicle.lead_vehicle_valid
+      state.lead_vehicle_velocity = md_vehicle.lead_vehicle_velocity
+      state.lead_vehicle_bearing = md_vehicle.lead_vehicle_bearing
+      state.lead_vehicle_steering_angle = md_vehicle.lead_vehicle_steering_angle
       state.debug_has_lane = md_vehicle.debug_has_lane
       state.debug_on_lane = md_vehicle.debug_on_lane
       state.debug_lane_s = md_vehicle.debug_lane_s

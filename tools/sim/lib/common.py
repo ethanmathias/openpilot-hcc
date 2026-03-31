@@ -72,6 +72,10 @@ class SimulatorState:
     self.lead_y_rel: float = 0.0
     self.lead_v_rel: float = 0.0
     self.lead_a_rel: float = 0.0
+    self.lead_vehicle_valid: bool = False
+    self.lead_vehicle_velocity: vec3 | None = None
+    self.lead_vehicle_bearing: float = 0.0
+    self.lead_vehicle_steering_angle: float = 0.0
 
   @property
   def speed(self):

@@ -9,6 +9,7 @@ from enum import Enum
 from multiprocessing import Process, Queue, Value
 from abc import ABC, abstractmethod
 
+import cereal.messaging as messaging
 from opendbc.car.honda.values import CruiseButtons
 from openpilot.common.params import Params
 from openpilot.common.realtime import Ratekeeper
@@ -38,7 +39,7 @@ def rk_loop(function, hz, exit_event: threading.Event):
 class SimulatorBridge(ABC):
   TICKS_PER_FRAME = 5
 
-  def __init__(self, dual_camera, high_quality, enable_hcc=False):
+  def __init__(self, dual_camera, high_quality, enable_hcc=False, lead_sim_prefix=None):
     set_params_enabled()
     self.params = Params()
     self.params.put_bool("AlphaLongitudinalEnabled", True)
@@ -52,12 +53,14 @@ class SimulatorBridge(ABC):
 
     self.dual_camera = dual_camera
     self.high_quality = high_quality
+    self.lead_sim_prefix = lead_sim_prefix
 
     self._exit_event: threading.Event | None = None
     self._keep_alive = True
     self.started = Value('i', False)
     signal.signal(signal.SIGTERM, self._on_shutdown)
     self.simulator_state = SimulatorState()
+    self.lead_simulator_state = SimulatorState()
 
     self.world: World | None = None
 
@@ -156,6 +159,13 @@ Ignition: {self.simulator_state.ignition} Engaged: {self.simulator_state.is_enga
     self.world = self.spawn_world(q)
 
     self.simulated_car = SimulatedCar()
+    self.lead_simulated_car = None
+    if self.lead_sim_prefix:
+      messaging.set_fake_prefix(self.lead_sim_prefix)
+      try:
+        self.lead_simulated_car = SimulatedCar()
+      finally:
+        messaging.delete_fake_prefix()
     self.simulated_sensors = SimulatedSensors(self.dual_camera)
 
     self._exit_event = threading.Event()
@@ -163,6 +173,13 @@ Ignition: {self.simulator_state.ignition} Engaged: {self.simulator_state.is_enga
     self.simulated_car_thread = threading.Thread(target=rk_loop, args=(functools.partial(self.simulated_car.update, self.simulator_state),
                                                                         100, self._exit_event))
     self.simulated_car_thread.start()
+    self.lead_simulated_car_thread = None
+    if self.lead_simulated_car is not None:
+      self.lead_simulated_car_thread = threading.Thread(
+        target=rk_loop,
+        args=(functools.partial(self.lead_simulated_car.update, self.lead_simulator_state), 100, self._exit_event),
+      )
+      self.lead_simulated_car_thread.start()
 
     self.simulated_camera_thread = threading.Thread(target=rk_loop, args=(functools.partial(self.simulated_sensors.send_camera_images, self.world),
                                                                         20, self._exit_event))
@@ -329,6 +346,7 @@ Ignition: {self.simulator_state.ignition} Engaged: {self.simulator_state.is_enga
       self.world.apply_controls(steer_out, throttle_out, brake_out, bridge_telemetry)
       self.world.read_state()
       self.world.read_sensors(self.simulator_state)
+      self._update_lead_simulator_state()
 
       if self.world.exit_event.is_set():
         self.shutdown()
@@ -344,3 +362,32 @@ Ignition: {self.simulator_state.ignition} Engaged: {self.simulator_state.is_enga
       self.started.value = True
 
       self.rk.keep_time()
+
+  def _update_lead_simulator_state(self):
+    if self.lead_simulated_car is None:
+      return
+
+    lead_velocity = self.simulator_state.lead_vehicle_velocity
+    lead_valid = bool(self.simulator_state.lead_vehicle_valid and lead_velocity is not None)
+    self.lead_simulator_state.valid = lead_valid
+    self.lead_simulator_state.ignition = True
+    self.lead_simulator_state.is_engaged = False
+    self.lead_simulator_state.user_gas = 0.0
+    self.lead_simulator_state.user_brake = 0.0
+    self.lead_simulator_state.user_torque = 0.0
+    self.lead_simulator_state.cruise_button = 0
+    self.lead_simulator_state.left_blinker = False
+    self.lead_simulator_state.right_blinker = False
+    self.lead_simulator_state.lead_status = False
+    self.lead_simulator_state.lead_d_rel = 0.0
+    self.lead_simulator_state.lead_y_rel = 0.0
+    self.lead_simulator_state.lead_v_rel = 0.0
+    self.lead_simulator_state.lead_a_rel = 0.0
+
+    if not lead_valid:
+      return
+
+    self.lead_simulator_state.velocity = lead_velocity
+    self.lead_simulator_state.bearing = float(self.simulator_state.lead_vehicle_bearing)
+    self.lead_simulator_state.imu.bearing = float(self.simulator_state.lead_vehicle_bearing)
+    self.lead_simulator_state.steering_angle = float(self.simulator_state.lead_vehicle_steering_angle)
