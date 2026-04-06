@@ -76,7 +76,9 @@ def build_ego_command(config: LauncherConfig) -> str:
     "HCC_V2V_RELAY_HOST": config.relay_host,
     "HCC_V2V_RELAY_PORT": config.relay_port,
   })
-  return f"{_activate_prefix(config.ego_repo)}; {env_exports}; ./tools/sim/launch_openpilot_ego.sh"
+  ego_launcher = Path(config.ego_repo).expanduser() / "tools" / "sim" / "launch_openpilot_ego.sh"
+  launcher = "./tools/sim/launch_openpilot_ego.sh" if ego_launcher.is_file() else "./tools/sim/launch_openpilot.sh"
+  return f"{_activate_prefix(config.ego_repo)}; {env_exports}; {launcher}"
 
 
 def build_lead_command(config: LauncherConfig) -> str:

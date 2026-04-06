@@ -87,8 +87,11 @@ def manager_init() -> None:
                        dirty=build_metadata.openpilot.is_dirty,
                        device=HARDWARE.get_device_type())
 
+  blocked = {x for x in os.getenv("BLOCK", "").split(",") if len(x) > 0}
   # preimport all processes
   for p in managed_processes.values():
+    if p.name in blocked:
+      continue
     p.prepare()
 
 
