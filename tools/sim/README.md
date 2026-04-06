@@ -32,10 +32,14 @@ The most commonly used scripts are:
 
 - `./tools/sim/launch_openpilot.sh`
   Starts openpilot in simulation mode.
+- `./tools/sim/launch_openpilot_ego.sh`
+  Starts the ego-side sim stack for the V2V HC3 workflow.
 - `./tools/sim/run_bridge.py`
   Starts the MetaDrive bridge process and input handling.
 - `./tools/sim/open_sim_terminals.sh`
   Opens two prepared terminals for the standard workflow.
+- `./tools/hcc_v2v/launch_ui.sh`
+  Opens the local V2V launcher UI for relay, ego, lead, and bridge startup.
 
 ## Prerequisites
 
@@ -106,6 +110,43 @@ This process:
 - starts the MetaDrive simulator
 - starts the bridge between MetaDrive and openpilot
 - handles keyboard, wheel, or joystick input
+
+## V2V HC3 Launcher
+
+The V2V HC3 workflow uses:
+
+- one repo checkout for `hcc-ego`
+- one second worktree or checkout for `hcc-lead`
+- one local UDP relay
+- one shared-world MetaDrive bridge
+
+Start the launcher UI from the ego repo:
+
+```bash
+./tools/hcc_v2v/launch_ui.sh
+```
+
+The launcher is intended for a desktop session on the sim PC. It starts:
+
+- the UDP relay in the background
+- the ego openpilot manager in the background
+- the lead openpilot manager in the background
+- the bridge in its own terminal window so keyboard or wheel input still works
+
+Typical repo paths:
+
+- ego repo: `~/ethanmathias/openpilot-hcc`
+- lead repo: `~/ethanmathias/openpilot-hcc-lead`
+
+If the lead worktree does not exist yet, create it from the ego repo:
+
+```bash
+cd ~/ethanmathias/openpilot-hcc
+git fetch origin
+GIT_LFS_SKIP_SMUDGE=1 git worktree add ../openpilot-hcc-lead hcc-lead
+```
+
+`GIT_LFS_SKIP_SMUDGE=1` is recommended on machines where the lead branch references LFS objects that are unavailable from the remote. This allows the worktree to be created even if one of the large replay CSV assets is missing on the LFS server.
 
 ## Modes
 
@@ -476,3 +517,71 @@ Confirm that:
 - the `--scn` index is valid
 - the scenario CSV file exists
 - the CSV file is located at `tools/sim/lib/Scenarios.csv` or passed through `--scn_csv`
+
+### `./tools/hcc_v2v/launch_ui.sh` fails with `No module named 'tkinter'`
+
+Install the Ubuntu Tk package:
+
+```bash
+sudo apt update
+sudo apt install -y python3-tk
+```
+
+Then restart the shell and relaunch the UI.
+
+### `git worktree add ../openpilot-hcc-lead hcc-lead` asks for GitLab and fails on an LFS object
+
+That is usually Git LFS during checkout, not a problem with `git worktree` itself.
+
+Use:
+
+```bash
+cd ~/ethanmathias/openpilot-hcc
+rm -rf ../openpilot-hcc-lead
+GIT_LFS_SKIP_SMUDGE=1 git worktree add ../openpilot-hcc-lead hcc-lead
+```
+
+This skips downloading LFS-backed assets during checkout so the lead worktree can still be created.
+
+### `scons -u -j$(nproc)` fails in `tools/cabana` on Ubuntu
+
+If the errors mention APIs such as `horizontalAdvance`, `QRandomGenerator`, `readAllFrames`, or `invokeMethod`, check the include paths. If they point at Anaconda, for example `/home/<user>/anaconda3/include/qt`, then `cabana` is building against an older Qt version than the code expects.
+
+This is separate from the V2V HC3 control path. The sim stack can still be fine even when `cabana` fails.
+
+Recommended clean-shell rebuild:
+
+```bash
+deactivate 2>/dev/null || true
+conda deactivate 2>/dev/null || true
+unset CONDA_PREFIX CONDA_DEFAULT_ENV _CE_CONDA _CE_M
+unset CPATH CPLUS_INCLUDE_PATH LIBRARY_PATH LD_LIBRARY_PATH QT_PLUGIN_PATH QTDIR
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$HOME/.local/bin"
+
+cd ~/ethanmathias/openpilot-hcc-lead
+source .venv/bin/activate
+which qmake
+qmake -v
+scons -u -j$(nproc)
+```
+
+`qmake -v` should resolve to a system Qt installation, not an Anaconda path.
+
+If the system Qt development packages are missing, install them:
+
+```bash
+sudo apt update
+sudo apt install -y qtbase5-dev qtchooser qt5-qmake qtbase5-dev-tools libqt5serialbus5-dev
+```
+
+### `scons` fails with `ModuleNotFoundError: No module named 'opendbc'`
+
+This usually means the build started from an incomplete or contaminated environment before the repo setup was fully in place. After submodules are installed, rerun the build from a clean activated repo virtualenv:
+
+```bash
+cd ~/ethanmathias/openpilot-hcc-lead
+source .venv/bin/activate
+scons -u -j$(nproc)
+```
+
+If the remaining failures are only in `tools/cabana`, focus on fixing the Qt environment issue above.
