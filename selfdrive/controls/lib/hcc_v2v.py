@@ -177,15 +177,22 @@ def _parse_bool_env(value: str | None) -> bool | None:
   return None
 
 
+def _get_optional_param(params: Params, key: str) -> Any | None:
+  try:
+    return params.get(key)
+  except Exception:
+    return None
+
+
 def _read_bool_param(params: Params, key: str) -> bool | None:
-  raw_value = params.get(key)
+  raw_value = _get_optional_param(params, key)
   if raw_value is None:
     return None
   return params.get_bool(key)
 
 
 def _read_str_param(params: Params, key: str) -> str | None:
-  raw_value = params.get(key)
+  raw_value = _get_optional_param(params, key)
   if raw_value is None:
     return None
   stripped = raw_value.strip()

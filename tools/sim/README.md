@@ -32,6 +32,8 @@ The most commonly used scripts are:
 
 - `./tools/sim/launch_openpilot.sh`
   Starts openpilot in simulation mode.
+- `./tools/sim/launch_openpilot_lead.sh`
+  Starts the lead-side sim stack for the V2V HC3 workflow.
 - `./tools/sim/run_bridge.py`
   Starts the MetaDrive bridge process and input handling.
 - `./tools/sim/open_sim_terminals.sh`
@@ -106,6 +108,52 @@ This process:
 - starts the MetaDrive simulator
 - starts the bridge between MetaDrive and openpilot
 - handles keyboard, wheel, or joystick input
+
+## V2V HC3 Workflow
+
+The dual-repo HC3 workflow uses:
+
+- an ego checkout on branch `hcc-ego`
+- a lead checkout on branch `hcc-lead`
+- a local UDP relay
+- one shared-world MetaDrive bridge
+
+Typical repo paths:
+
+- ego repo: `~/ethanmathias/openpilot-hcc`
+- lead repo: `~/ethanmathias/openpilot-hcc-lead`
+
+Start the launcher UI from the ego repo when you want the full desktop flow:
+
+```bash
+cd ~/ethanmathias/openpilot-hcc
+./tools/hcc_v2v/launch_ui.sh
+```
+
+In the launcher UI:
+
+- set Ego repo to `~/ethanmathias/openpilot-hcc`
+- set Lead repo to `~/ethanmathias/openpilot-hcc-lead`
+- set Scenario to `48` when you want the SCN 48 replay
+- use `Start all` to launch relay, ego, lead, and the bridge in order
+
+If you want to start the lead repo manually instead, use:
+
+```bash
+cd ~/ethanmathias/openpilot-hcc-lead
+./tools/sim/launch_openpilot_lead.sh
+```
+
+A matching manual bridge command from the ego repo is:
+
+```bash
+cd ~/ethanmathias/openpilot-hcc
+source .venv/bin/activate
+cd tools/sim
+./run_bridge.py --mode hc3 --scn 48 --lead_prefix hcclead --keyboard \
+  --output_csv ./data/hccc/Test48.vehicle.honda_civic_2022_ICE.hccc.csv \
+  --output_graph ./graphs/hccc/Test48.vehicle.honda_civic_2022_ICE.hccc.png
+```
 
 ## Modes
 
@@ -240,6 +288,11 @@ Generate a PNG speed plot:
 ```bash
 ./run_bridge.py --scn 48 --output_graph /path/to/output.png
 ```
+
+Known-good SCN 48 replay outputs from the dual-repo HC3 setup are:
+
+- `tools/sim/data/hccc/Test48.vehicle.honda_civic_2022_ICE.hccc.csv`
+- `tools/sim/graphs/hccc/Test48.vehicle.honda_civic_2022_ICE.hccc.png`
 
 ## Additional Options
 
