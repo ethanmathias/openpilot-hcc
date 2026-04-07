@@ -33,6 +33,11 @@ def create_bridge(dual_camera, high_quality, mode="default", scn=None, scn_csv=N
                   lead_prefix=None):
   queue: Any = Queue()
 
+  # In the dual-sim V2V setup the bridge must publish ego-side simulator data
+  # into the ego namespace so manager sees pandaStates/can and can go onroad.
+  if lead_prefix is not None and os.getenv('OPENPILOT_PREFIX') is None:
+    os.environ['OPENPILOT_PREFIX'] = 'hccego'
+
   if scn is not None and scn < 1:
     raise RuntimeError("`--scn` must be >= 1.")
 

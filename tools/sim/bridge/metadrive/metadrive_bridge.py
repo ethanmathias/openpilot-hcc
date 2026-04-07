@@ -90,7 +90,7 @@ class MetaDriveBridge(SimulatorBridge):
     should_enable_hcc = enable_hcc or scenario in STRAIGHT_ROAD_SCENARIOS or scn is not None
     super().__init__(dual_camera, high_quality, enable_hcc=should_enable_hcc, lead_sim_prefix=lead_sim_prefix)
 
-    self.should_render = False
+    self.should_render = True
     self.test_run = test_run
     self.test_duration = test_duration if self.test_run else math.inf
     self.scenario = scenario

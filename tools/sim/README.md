@@ -138,6 +138,30 @@ Typical repo paths:
 - ego repo: `~/ethanmathias/openpilot-hcc`
 - lead repo: `~/ethanmathias/openpilot-hcc-lead`
 
+Recommended branches for this workflow:
+
+- ego repo: `hcc-ego`
+- lead repo: `hcc-lead`
+
+Recommended UI startup flow:
+
+```bash
+cd ~/ethanmathias/openpilot-hcc
+./tools/hcc_v2v/launch_ui.sh
+```
+
+In the launcher UI:
+
+- set Ego repo to `~/ethanmathias/openpilot-hcc`
+- set Lead repo to `~/ethanmathias/openpilot-hcc-lead`
+- set Scenario to `48` when you want the SCN 48 replay
+- use `Start all` to launch relay, ego, lead, and the bridge in order
+
+The UI path uses the same dedicated launchers that the manual workflow uses:
+
+- ego: `./tools/sim/launch_openpilot_ego.sh`
+- lead: `./tools/sim/launch_openpilot_lead.sh`
+
 If the lead worktree does not exist yet, create it from the ego repo:
 
 ```bash
@@ -147,6 +171,43 @@ GIT_LFS_SKIP_SMUDGE=1 git worktree add ../openpilot-hcc-lead hcc-lead
 ```
 
 `GIT_LFS_SKIP_SMUDGE=1` is recommended on machines where the lead branch references LFS objects that are unavailable from the remote. This allows the worktree to be created even if one of the large replay CSV assets is missing on the LFS server.
+
+## Manual HC3 Startup
+
+If you want to bypass the launcher UI, start the four pieces directly.
+
+### Terminal 1: relay
+
+```bash
+cd ~/ethanmathias/openpilot-hcc
+source .venv/bin/activate
+python3 tools/hcc_v2v/relay_server.py --host 127.0.0.1 --port 19090 --log_csv ~/hcc_v2v_relay.csv
+```
+
+### Terminal 2: ego
+
+```bash
+cd ~/ethanmathias/openpilot-hcc
+./tools/sim/launch_openpilot_ego.sh
+```
+
+### Terminal 3: lead
+
+```bash
+cd ~/ethanmathias/openpilot-hcc-lead
+./tools/sim/launch_openpilot_lead.sh
+```
+
+### Terminal 4: bridge
+
+```bash
+cd ~/ethanmathias/openpilot-hcc
+source .venv/bin/activate
+cd tools/sim
+./run_bridge.py --mode hc3 --scn 48 --lead_prefix hcclead --keyboard \
+  --output_csv ./data/hccc/Test48.vehicle.honda_civic_2022_ICE.hccc.csv \
+  --output_graph ./graphs/hccc/Test48.vehicle.honda_civic_2022_ICE.hccc.png
+```
 
 ## Modes
 
@@ -281,6 +342,11 @@ Generate a PNG speed plot:
 ```bash
 ./run_bridge.py --scn 48 --output_graph /path/to/output.png
 ```
+
+Known-good SCN 48 replay outputs from the dual-repo HC3 setup are:
+
+- `tools/sim/data/hccc/Test48.vehicle.honda_civic_2022_ICE.hccc.csv`
+- `tools/sim/graphs/hccc/Test48.vehicle.honda_civic_2022_ICE.hccc.png`
 
 ## Additional Options
 

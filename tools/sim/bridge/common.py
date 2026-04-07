@@ -10,6 +10,7 @@ from multiprocessing import Process, Queue, Value
 from abc import ABC, abstractmethod
 
 import cereal.messaging as messaging
+from openpilot.common.prefix import OpenpilotPrefix
 from opendbc.car.honda.values import CruiseButtons
 from openpilot.common.params import Params
 from openpilot.common.realtime import Ratekeeper
@@ -161,11 +162,10 @@ Ignition: {self.simulator_state.ignition} Engaged: {self.simulator_state.is_enga
     self.simulated_car = SimulatedCar()
     self.lead_simulated_car = None
     if self.lead_sim_prefix:
-      messaging.set_fake_prefix(self.lead_sim_prefix)
-      try:
+      # The lead-side simulator needs a real OPENPILOT_PREFIX namespace so its
+      # pub/sub sockets bind to hcclead instead of colliding with the ego side.
+      with OpenpilotPrefix(self.lead_sim_prefix, create_dirs_on_enter=True, clean_dirs_on_exit=False):
         self.lead_simulated_car = SimulatedCar()
-      finally:
-        messaging.delete_fake_prefix()
     self.simulated_sensors = SimulatedSensors(self.dual_camera)
 
     self._exit_event = threading.Event()

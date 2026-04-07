@@ -6,7 +6,7 @@ import sys
 import time
 import traceback
 
-from cereal import log
+from cereal import car, log
 import cereal.messaging as messaging
 import openpilot.system.sentry as sentry
 from openpilot.common.utils import atomic_write
@@ -46,9 +46,11 @@ def manager_init() -> None:
 
   # Create folders needed for msgq
   try:
-    os.mkdir(Paths.shm_path())
-  except FileExistsError:
-    pass
+    os.makedirs(Paths.shm_path(), exist_ok=True)
+    msgq_dir = Paths.shm_path()
+    if prefix := os.getenv("OPENPILOT_PREFIX"):
+      msgq_dir = os.path.join(msgq_dir, f"msgq_{prefix}")
+      os.makedirs(msgq_dir, exist_ok=True)
   except PermissionError:
     print(f"WARNING: failed to make {Paths.shm_path()}")
 
@@ -87,8 +89,11 @@ def manager_init() -> None:
                        dirty=build_metadata.openpilot.is_dirty,
                        device=HARDWARE.get_device_type())
 
+  blocked = {x for x in os.getenv("BLOCK", "").split(",") if len(x) > 0}
   # preimport all processes
   for p in managed_processes.values():
+    if p.name in blocked:
+      continue
     p.prepare()
 
 
@@ -118,10 +123,20 @@ def manager_thread() -> None:
     ignore.append("pandad")
   ignore += [x for x in os.getenv("BLOCK", "").split(",") if len(x) > 0]
 
-  sm = messaging.SubMaster(['deviceState', 'carParams', 'pandaStates'], poll='deviceState')
-  pm = messaging.PubMaster(['managerState'])
-
   write_onroad_params(False, params)
+
+  # Bootstrap always-run processes like hardwared before subscribing to msgq endpoints.
+  bootstrap_cp = car.CarParams.new_message()
+  ensure_running(managed_processes.values(), False, params=params, CP=bootstrap_cp, not_run=ignore)
+
+  while True:
+    try:
+      sm = messaging.SubMaster(['deviceState', 'carParams', 'pandaStates'], poll='deviceState')
+      break
+    except messaging.IpcError:
+      time.sleep(0.1)
+
+  pm = messaging.PubMaster(['managerState'])
   ensure_running(managed_processes.values(), False, params=params, CP=sm['carParams'], not_run=ignore)
 
   started_prev = False
