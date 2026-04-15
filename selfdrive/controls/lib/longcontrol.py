@@ -12,6 +12,11 @@ CONTROL_N_T_IDX = ModelConstants.T_IDXS[:CONTROL_N]
 LongCtrlState = car.CarControl.Actuators.LongControlState
 SIMULATION = os.environ.get("SIMULATION", "0") == "1"
 
+SIM_PEDAL_GAS_GAIN = 1.4
+SIM_PEDAL_BRAKE_GAIN = 4.0
+ROAD_PEDAL_GAS_GAIN = 0.4
+ROAD_PEDAL_BRAKE_GAIN = 1.2
+
 # HCCC_CHANGE_NOTE: longcontrol uses BeamNG-style cooperative blending:
 # controller contribution + signed manual pedal input, blended once in the shared
 # longitudinal path so it works for both simulation and real-car execution.
@@ -23,7 +28,7 @@ def _normalize_pedal(value: float) -> float:
   return float(np.clip(v, 0.0, 1.0))
 
 
-def _manual_longitudinal_input(CS) -> float:
+def _manual_longitudinal_input(CS, simulation_mode: bool = SIMULATION) -> float:
   gas_raw = getattr(CS, "gas", 0.0)
   brake_raw = getattr(CS, "brake", 0.0)
 
@@ -38,13 +43,11 @@ def _manual_longitudinal_input(CS) -> float:
 
   manual_cmd = float(np.clip(gas - brake, -1.0, 1.0))
 
-  # NOTE: This maps manual pedal input into the simulator's accel-command space
-  # so the existing bridge conversion reproduces BeamNG-like pedal authority.
-  # This should be revisited for the real-car version, where actuators.accel is
-  # not simply converted back into throttle/brake with the simulator scaling.
+  gas_gain = SIM_PEDAL_GAS_GAIN if simulation_mode else ROAD_PEDAL_GAS_GAIN
+  brake_gain = SIM_PEDAL_BRAKE_GAIN if simulation_mode else ROAD_PEDAL_BRAKE_GAIN
   if manual_cmd >= 0.0:
-    return manual_cmd * 1.4
-  return manual_cmd * 4.0
+    return manual_cmd * gas_gain
+  return manual_cmd * brake_gain
 
 def long_control_state_trans(CP, active, long_control_state, v_ego,
                              should_stop, brake_pressed, cruise_standstill):

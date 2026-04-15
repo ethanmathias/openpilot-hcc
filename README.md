@@ -16,6 +16,16 @@ Use this guide when you want to:
 - replace the device's existing `openpilot` checkout with this repository
 - reboot into the updated checkout
 
+## Branch-Specific HCC/V2V Behavior
+
+This `hcc-lead` branch is the lead-vehicle side of the HC3 research stack.
+
+- The lead car publishes `carState.aEgo` and `carState.vEgo` to the shared V2V relay through `selfdrive/controls/v2vpublisher.py`.
+- Relay configuration is read from the same V2V config surface used by the ego branch, including `HCC_V2V_RELAY_HOST`, `HCC_V2V_RELAY_PORT`, and `HCC_V2V_DEVICE_ID`.
+- This branch vendors the shared V2V transport snapshot under `selfdrive/controls/lib/vendor/` so it stays packet-compatible with the ego branch and the standalone `hcc-v2v-core` repo.
+- The paired ego branch can run `V2V-only` HC3 against this publisher, meaning the lead car's state becomes the ego car's only lead input when that mode is enabled.
+- Publisher logging is enabled for startup, send failures, and periodic sequence/debug output to make closed-course relay verification easier.
+
 ## Requirements
 
 Before starting:

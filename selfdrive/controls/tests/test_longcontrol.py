@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 
 from cereal import car
-from openpilot.selfdrive.controls.lib.longcontrol import LongControl, LongCtrlState, long_control_state_trans
+from openpilot.selfdrive.controls.lib.longcontrol import LongControl, LongCtrlState, _manual_longitudinal_input, long_control_state_trans
 
 
 
@@ -86,16 +86,18 @@ def _test_lead(status=True, v_rel=0.0, radar=True):
 
 def test_update_uses_only_manual_input_without_valid_lead():
   controller = LongControl(_test_cp(enable_hccc=False))
-  output = controller.update(True, _test_cs(gas=0.4), a_target=0.3, should_stop=False,
+  cs = _test_cs(gas=0.4)
+  output = controller.update(True, cs, a_target=0.3, should_stop=False,
                              accel_limits=(-3.0, 2.0), lead=None)
-  assert abs(output - 0.4) < 1e-6
+  assert abs(output - _manual_longitudinal_input(cs, simulation_mode=False)) < 1e-6
 
 
 def test_update_prefers_hccc_with_valid_lead_and_blends_manual_input():
   controller = LongControl(_test_cp(enable_hccc=True))
-  output = controller.update(True, _test_cs(gas=0.2), a_target=0.8, should_stop=False,
+  cs = _test_cs(gas=0.2)
+  output = controller.update(True, cs, a_target=0.8, should_stop=False,
                              accel_limits=(-3.0, 2.0), lead=_test_lead(True, 5.0))
-  assert output > 0.2
+  assert output > _manual_longitudinal_input(cs, simulation_mode=False)
   assert output <= 2.0
 
 
