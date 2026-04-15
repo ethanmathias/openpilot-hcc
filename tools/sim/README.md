@@ -209,6 +209,67 @@ cd tools/sim
   --output_graph ./graphs/hccc/Test48.vehicle.honda_civic_2022_ICE.hccc.png
 ```
 
+## Lightsail Relay Testing
+
+In the dual-repo HC3 simulator flow, the bridge owns the scenario and the lead vehicle trajectory. The lead branch is not idle: it publishes the simulated lead vehicle state that the bridge is driving.
+
+Use 4 terminals when testing against a remote Lightsail relay.
+
+### Terminal 1: Lightsail log
+
+```bash
+ssh ubuntu@<LIGHTSAIL_STATIC_IP>
+tail -f /var/log/hcc-v2v/hcc-v2v-relay.csv
+```
+
+### Terminal 2: ego
+
+```bash
+cd ~/openpilot-hcc
+export HCC_V2V_ENABLED=1
+export HCC_V2V_ONLY=1
+export HCC_V2V_DEVICE_ID=ego-sim
+export HCC_V2V_RELAY_HOST=<LIGHTSAIL_STATIC_IP>
+export HCC_V2V_RELAY_PORT=19090
+./tools/sim/launch_openpilot_ego.sh
+```
+
+### Terminal 3: lead
+
+```bash
+cd ~/openpilot-hcc-lead
+export HCC_V2V_ENABLED=1
+export HCC_V2V_DEVICE_ID=lead-sim
+export HCC_V2V_RELAY_HOST=<LIGHTSAIL_STATIC_IP>
+export HCC_V2V_RELAY_PORT=19090
+./tools/sim/launch_openpilot_lead.sh
+```
+
+### Terminal 4: bridge with scenario
+
+```bash
+cd ~/openpilot-hcc/tools/sim
+source ../../.venv/bin/activate
+./run_bridge.py --mode hc3 --scn 48 --lead_prefix hcclead --keyboard
+```
+
+That bridge command is what tells the simulated lead car which scenario to follow.
+
+Success looks like:
+
+- the bridge prints a line similar to `Loaded lead trajectory speed profile for scenario 48 ...`
+- the Lightsail relay log shows `registered_peer` for `ego-sim`
+- the Lightsail relay log shows `registered_peer` for `lead-sim`
+- the Lightsail relay log then shows repeated `forwarded`
+
+Mental model:
+
+- bridge = world + scenario + lead trajectory
+- lead branch = publishes the lead vehicle's simulated state
+- ego branch = receives forwarded V2V and runs HC3 in `V2V-only` mode
+
+If the Lightsail CSV stays empty, check the instance firewall rule for `UDP 19090` first.
+
 ## Modes
 
 The bridge supports the following mode presets:
