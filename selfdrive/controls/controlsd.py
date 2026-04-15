@@ -104,8 +104,9 @@ class Controls:
     hccc_enabled = cp_hccc_flag if cp_hccc_flag is not None else self.params.get_bool("EnableHCCC")
     v2v_lead = self.LoC.v2v_snapshot() if self.LoC.v2v_enabled() else None
     v2v_longitudinal_ok = self.LoC.v2v_longitudinal_ok(v2v_lead)
+    longitudinal_input_ok = True if self.LoC.v2v_only_enabled() else v2v_longitudinal_ok
     CC.longActive = CC.enabled and not any(e.overrideLongitudinal for e in self.sm['onroadEvents']) and \
-                    (self.CP.openpilotLongitudinalControl or hccc_enabled) and v2v_longitudinal_ok
+                    (self.CP.openpilotLongitudinalControl or hccc_enabled) and longitudinal_input_ok
 
     actuators = CC.actuators
     actuators.longControlState = self.LoC.long_control_state

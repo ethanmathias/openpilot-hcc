@@ -72,6 +72,7 @@ def build_ego_command(config: LauncherConfig) -> str:
   env_exports = _env_exports({
     "OPENPILOT_PREFIX": config.ego_prefix,
     "HCC_V2V_ENABLED": 1,
+    "HCC_V2V_ONLY": 1,
     "HCC_V2V_DEVICE_ID": config.ego_device_id,
     "HCC_V2V_RELAY_HOST": config.relay_host,
     "HCC_V2V_RELAY_PORT": config.relay_port,

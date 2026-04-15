@@ -1,9 +1,12 @@
-import numpy as np
 import os
+
+import numpy as np
 from cereal import car
-from openpilot.common.realtime import DT_CTRL
-from openpilot.selfdrive.controls.lib.drive_helpers import CONTROL_N
+
 from openpilot.common.params import Params
+from openpilot.common.realtime import DT_CTRL
+from openpilot.common.swaglog import cloudlog
+from openpilot.selfdrive.controls.lib.drive_helpers import CONTROL_N
 from openpilot.selfdrive.controls.lib.hccc_controller import hCCC
 from openpilot.selfdrive.controls.lib.hcc_v2v import ROLE_EGO, V2VLeadSignal, V2VLeadSubscriber, load_v2v_config
 from openpilot.selfdrive.modeld.constants import ModelConstants
@@ -13,9 +16,28 @@ CONTROL_N_T_IDX = ModelConstants.T_IDXS[:CONTROL_N]
 LongCtrlState = car.CarControl.Actuators.LongControlState
 SIMULATION = os.environ.get("SIMULATION", "0") == "1"
 
-# HCCC_CHANGE_NOTE: longcontrol uses BeamNG-style cooperative blending:
-# controller contribution + signed manual pedal input, blended once in the shared
-# longitudinal path so it works for both simulation and real-car execution.
+SIM_PEDAL_GAS_GAIN = 1.4
+SIM_PEDAL_BRAKE_GAIN = 4.0
+ROAD_PEDAL_GAS_GAIN = 0.4
+ROAD_PEDAL_BRAKE_GAIN = 1.2
+
+V2V_MODE_MANUAL_ONLY = "manual_only"
+V2V_MODE_WAITING = "v2v_waiting"
+V2V_MODE_ACTIVE = "v2v_active"
+V2V_MODE_FAULT_STALE = "v2v_fault_stale"
+V2V_MODE_FAULT_TRANSPORT = "v2v_fault_transport"
+
+
+def _parse_bool_env(value: str | None) -> bool | None:
+  if value is None:
+    return None
+  normalized = value.strip().lower()
+  if normalized in ("1", "true", "yes", "on"):
+    return True
+  if normalized in ("0", "false", "no", "off"):
+    return False
+  return None
+
 
 def _normalize_pedal(value: float) -> float:
   v = float(value)
@@ -24,28 +46,25 @@ def _normalize_pedal(value: float) -> float:
   return float(np.clip(v, 0.0, 1.0))
 
 
-def _manual_longitudinal_input(CS) -> float:
+def _manual_longitudinal_input(CS, simulation_mode: bool = SIMULATION) -> float:
   gas_raw = getattr(CS, "gas", 0.0)
   brake_raw = getattr(CS, "brake", 0.0)
 
   gas = _normalize_pedal(gas_raw)
   brake = _normalize_pedal(brake_raw)
 
-  # Fallback for platforms that only expose boolean pressed flags.
   if getattr(CS, "gasPressed", False):
     gas = max(gas, 1.0)
   if getattr(CS, "brakePressed", False):
     brake = max(brake, 1.0)
 
   manual_cmd = float(np.clip(gas - brake, -1.0, 1.0))
-
-  # NOTE: This maps manual pedal input into the simulator's accel-command space
-  # so the existing bridge conversion reproduces BeamNG-like pedal authority.
-  # This should be revisited for the real-car version, where actuators.accel is
-  # not simply converted back into throttle/brake with the simulator scaling.
+  gas_gain = SIM_PEDAL_GAS_GAIN if simulation_mode else ROAD_PEDAL_GAS_GAIN
+  brake_gain = SIM_PEDAL_BRAKE_GAIN if simulation_mode else ROAD_PEDAL_BRAKE_GAIN
   if manual_cmd >= 0.0:
-    return manual_cmd * 1.4
-  return manual_cmd * 4.0
+    return manual_cmd * gas_gain
+  return manual_cmd * brake_gain
+
 
 def long_control_state_trans(CP, active, long_control_state, v_ego,
                              should_stop, brake_pressed, cruise_standstill):
@@ -81,6 +100,7 @@ def long_control_state_trans(CP, active, long_control_state, v_ego,
         long_control_state = LongCtrlState.pid
   return long_control_state
 
+
 class LongControl:
   def __init__(self, CP):
     self.CP = CP
@@ -94,8 +114,6 @@ class LongControl:
     if self.v2v_subscriber is not None:
       self.v2v_subscriber.start()
     self.latest_v2v_signal = V2VLeadSignal(status=False)
-    # Replay/debug telemetry for simulator analysis. These stay on LongControl
-    # so the bridge can log the exact planner/HC3/manual contributions.
     self.debug_planner_accel = 0.0
     self.debug_hccc_accel = 0.0
     self.debug_manual_accel = 0.0
@@ -104,6 +122,9 @@ class LongControl:
     self.debug_hccc_lead_speed = 0.0
     self.debug_hccc_lead_accel = 0.0
     self.debug_hccc_feedforward = 0.0
+    self.debug_v2v_mode = V2V_MODE_MANUAL_ONLY
+    self.debug_v2v_transport_ok = True
+    self.debug_v2v_receive_age_ms = float("inf")
     self._refresh_hccc(force_reset=True)
 
   def reset(self):
@@ -117,13 +138,18 @@ class LongControl:
     self._refresh_hccc(force_reset=True)
 
   def _hccc_enabled(self):
-    # HCCC_CHANGE_NOTE: enable from CarParams override or persistent EnableHCCC toggle.
-    cp_flag = getattr(self.CP, 'enableHCCC', None)
+    cp_flag = getattr(self.CP, "enableHCCC", None)
     if cp_flag is not None:
       return cp_flag
     if not self.params.check_key("EnableHCCC"):
       return SIMULATION
     return self.params.get_bool("EnableHCCC")
+
+  def _v2v_only_enabled(self):
+    env_enabled = _parse_bool_env(os.environ.get("HCC_V2V_ONLY"))
+    if env_enabled is not None:
+      return env_enabled
+    return self.params.check_key("HCCV2VOnly") and self.params.get_bool("HCCV2VOnly")
 
   def _refresh_hccc(self, force_reset=False):
     enabled = self._hccc_enabled()
@@ -133,8 +159,35 @@ class LongControl:
       self.hccc = hCCC(dt=DT_CTRL, max_deceleration=self.CP.stopAccel, max_acceleration=max(self.CP.startAccel, 1.6))
     self.use_hccc = enabled
 
+  def _set_v2v_mode(self, mode: str, signal: V2VLeadSignal, transport_ok: bool):
+    self.debug_v2v_mode = mode
+    self.debug_v2v_transport_ok = transport_ok
+    self.debug_v2v_receive_age_ms = float(signal.receive_age_ms)
+    if getattr(self, "_last_logged_v2v_mode", None) != mode:
+      cloudlog.info(
+        "hcc_v2v_mode_transition mode=%s transport_ok=%s signal_status=%s receive_age_ms=%.2f seq=%d",
+        mode, transport_ok, signal.status, float(signal.receive_age_ms), int(signal.seq),
+      )
+      self._last_logged_v2v_mode = mode
+
+  def _determine_v2v_mode(self, active: bool, signal: V2VLeadSignal, transport_ok: bool) -> str:
+    if not self._v2v_only_enabled() or not self.v2v_enabled() or not self.use_hccc:
+      return V2V_MODE_MANUAL_ONLY
+    if not transport_ok:
+      return V2V_MODE_FAULT_TRANSPORT
+    if signal.status and active:
+      return V2V_MODE_ACTIVE
+    if signal.seq < 0:
+      return V2V_MODE_WAITING
+    if signal.status:
+      return V2V_MODE_WAITING
+    return V2V_MODE_FAULT_STALE
+
   def v2v_enabled(self) -> bool:
     return self.v2v_subscriber is not None and self.v2v_config.enabled
+
+  def v2v_only_enabled(self) -> bool:
+    return self._v2v_only_enabled()
 
   def v2v_snapshot(self) -> V2VLeadSignal:
     if not self.v2v_enabled():
@@ -151,25 +204,28 @@ class LongControl:
     return bool(signal.status)
 
   def update(self, active, CS, a_target, should_stop, accel_limits, lead=None, v2v_lead: V2VLeadSignal | None = None):
-    """Update longitudinal control. This updates the state machine and runs hCCC."""
     self._refresh_hccc()
     accel_min, accel_max = accel_limits
     self.debug_planner_accel = float(a_target)
+
     active_v2v_lead = self.latest_v2v_signal if v2v_lead is None else v2v_lead
+    transport_ok = True
     if self.v2v_enabled():
       active_v2v_lead = self.v2v_snapshot() if v2v_lead is None else v2v_lead
       self.latest_v2v_signal = active_v2v_lead
+      transport_ok = bool(self.v2v_subscriber.transport_ok()) if self.v2v_subscriber is not None else True
 
     controller_accel = 0.0
     hccc_output = None
     if self.use_hccc and self.hccc is not None:
       self.hccc._max_decel = accel_min
       self.hccc._max_accl = accel_max
-      hccc_output = self.hccc.run_step(CS, lead, v2v_lead=active_v2v_lead if self.v2v_enabled() else None)
+      radar_lead = None if self._v2v_only_enabled() else lead
+      v2v_input = active_v2v_lead if self.v2v_enabled() else None
+      hccc_output = self.hccc.run_step(CS, radar_lead, v2v_lead=v2v_input)
       if hccc_output is not None:
         controller_accel = float(hccc_output)
 
-    # HCCC_CHANGE_NOTE: BeamNG-style cooperative input is a single signed manual command.
     manual_accel = _manual_longitudinal_input(CS)
     self.debug_hccc_accel = float(controller_accel)
     self.debug_manual_accel = float(manual_accel)
@@ -179,14 +235,20 @@ class LongControl:
       self.debug_hccc_lead_accel = float(getattr(self.hccc, "debug_lead_accel", 0.0))
       self.debug_hccc_feedforward = float(getattr(self.hccc, "debug_feedforward", 0.0))
 
+    self._set_v2v_mode(self._determine_v2v_mode(active, active_v2v_lead, transport_ok), active_v2v_lead, transport_ok)
+
     if hccc_output is not None:
       should_stop = False
 
-    self.long_control_state = long_control_state_trans(self.CP, active, self.long_control_state, CS.vEgo,
-                                                       should_stop, CS.brakePressed,
-                                                       CS.cruiseState.standstill)
-    if active and hccc_output is not None:
+    if self._v2v_only_enabled() and active:
       self.long_control_state = LongCtrlState.pid
+    else:
+      self.long_control_state = long_control_state_trans(self.CP, active, self.long_control_state, CS.vEgo,
+                                                         should_stop, CS.brakePressed,
+                                                         CS.cruiseState.standstill)
+      if active and hccc_output is not None:
+        self.long_control_state = LongCtrlState.pid
+
     if self.long_control_state == LongCtrlState.off:
       self.reset()
       output_accel = 0.
@@ -202,7 +264,7 @@ class LongControl:
       output_accel = self.CP.startAccel
       self.reset()
 
-    else:  # LongCtrlState.pid
+    else:
       output_accel = controller_accel + manual_accel
 
     self.last_output_accel = np.clip(output_accel, accel_min, accel_max)

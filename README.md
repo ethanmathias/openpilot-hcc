@@ -16,6 +16,18 @@ Use this guide when you want to:
 - replace the device's existing `openpilot` checkout with this repository
 - reboot into the updated checkout
 
+## Branch-Specific HCC/V2V Behavior
+
+This `hcc-ego` branch is the ego-vehicle side of the HC3 research stack.
+
+- `V2V-only` mode can be enabled with the persistent `HCCV2VOnly` param or `HCC_V2V_ONLY=1`.
+- In `V2V-only` mode, HC3 ignores radar lead input and uses fresh V2V packets as its only lead source.
+- Pedal blending remains active in this mode. The final longitudinal command is `HC3 accel + manual pedal accel`, and the manual pedal gains are split between simulation and on-road use in `selfdrive/controls/lib/longcontrol.py`.
+- If V2V goes stale or transport health drops, HC3 contribution falls away instead of silently falling back to radar. The branch logs the current V2V mode as one of `manual_only`, `v2v_waiting`, `v2v_active`, `v2v_fault_stale`, or `v2v_fault_transport`.
+- `selfdrive/controls/controlsd.py` keeps `longActive` true in `V2V-only` mode even when V2V packets go stale, so the ego car degrades to manual pedal authority instead of resetting out of longitudinal control.
+
+This branch also vendors the shared V2V transport snapshot under `selfdrive/controls/lib/vendor/` and expects the lead car and relay to use the same packet contract.
+
 ## Requirements
 
 Before starting:

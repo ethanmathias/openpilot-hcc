@@ -2,7 +2,14 @@ from types import SimpleNamespace
 
 from cereal import car
 from openpilot.selfdrive.controls.lib.hcc_v2v import V2VLeadSignal
-from openpilot.selfdrive.controls.lib.longcontrol import LongControl, LongCtrlState, long_control_state_trans
+from openpilot.selfdrive.controls.lib.longcontrol import (
+  LongControl,
+  LongCtrlState,
+  V2V_MODE_ACTIVE,
+  V2V_MODE_FAULT_STALE,
+  _manual_longitudinal_input,
+  long_control_state_trans,
+)
 
 
 
@@ -98,16 +105,18 @@ def _test_v2v(status=True, v_lead=25.0, a_lead=1.0, seq=1):
 
 def test_update_uses_only_manual_input_without_valid_lead():
   controller = LongControl(_test_cp(enable_hccc=False))
-  output = controller.update(True, _test_cs(gas=0.4), a_target=0.3, should_stop=False,
+  cs = _test_cs(gas=0.4)
+  output = controller.update(True, cs, a_target=0.3, should_stop=False,
                              accel_limits=(-3.0, 2.0), lead=None)
-  assert abs(output - 0.4) < 1e-6
+  assert abs(output - _manual_longitudinal_input(cs, simulation_mode=False)) < 1e-6
 
 
 def test_update_prefers_hccc_with_valid_lead_and_blends_manual_input():
   controller = LongControl(_test_cp(enable_hccc=True))
-  output = controller.update(True, _test_cs(gas=0.2), a_target=0.8, should_stop=False,
+  cs = _test_cs(gas=0.2)
+  output = controller.update(True, cs, a_target=0.8, should_stop=False,
                              accel_limits=(-3.0, 2.0), lead=_test_lead(True, 5.0))
-  assert output > 0.2
+  assert output > _manual_longitudinal_input(cs, simulation_mode=False)
   assert output <= 2.0
 
 
@@ -158,10 +167,50 @@ def test_v2v_longitudinal_gate_rejects_invalid_v2v_signal():
 def test_update_uses_v2v_signal_when_enabled():
   controller = LongControl(_test_cp(enable_hccc=True))
   controller.v2v_config = SimpleNamespace(enabled=True)
-  controller.v2v_subscriber = SimpleNamespace(snapshot=lambda: _test_v2v(status=True, v_lead=28.0, a_lead=1.6))
+  controller.v2v_subscriber = SimpleNamespace(snapshot=lambda: _test_v2v(status=True, v_lead=28.0, a_lead=1.6),
+                                              transport_ok=lambda: True, last_error=lambda: "")
   controller.hccc.run_step = lambda CS, lead, v2v_lead=None: 1.1 if v2v_lead is not None and v2v_lead.status else None
 
   output = controller.update(True, _test_cs(gas=0.0), a_target=0.8, should_stop=False,
                              accel_limits=(-3.0, 2.0), lead=_test_lead(True, 5.0), v2v_lead=_test_v2v(status=True))
 
   assert abs(output - 1.1) < 1e-6
+
+
+def test_update_v2v_only_ignores_radar_input_when_v2v_is_active():
+  controller = LongControl(_test_cp(enable_hccc=True))
+  controller._v2v_only_enabled = lambda: True
+  controller.v2v_config = SimpleNamespace(enabled=True)
+  controller.v2v_subscriber = SimpleNamespace(snapshot=lambda: _test_v2v(status=True, v_lead=28.0, a_lead=1.6),
+                                              transport_ok=lambda: True, last_error=lambda: "")
+  seen = {}
+
+  def fake_run_step(CS, lead, v2v_lead=None):
+    seen["lead"] = lead
+    seen["v2v"] = v2v_lead
+    return 1.1 if v2v_lead is not None and v2v_lead.status else None
+
+  controller.hccc.run_step = fake_run_step
+  output = controller.update(True, _test_cs(gas=0.0), a_target=0.8, should_stop=False,
+                             accel_limits=(-3.0, 2.0), lead=_test_lead(True, 5.0), v2v_lead=_test_v2v(status=True))
+
+  assert seen["lead"] is None
+  assert seen["v2v"].status is True
+  assert abs(output - 1.1) < 1e-6
+  assert controller.debug_v2v_mode == V2V_MODE_ACTIVE
+
+
+def test_update_v2v_only_uses_manual_pedal_when_signal_is_stale():
+  controller = LongControl(_test_cp(enable_hccc=True))
+  controller._v2v_only_enabled = lambda: True
+  controller.v2v_config = SimpleNamespace(enabled=True)
+  controller.v2v_subscriber = SimpleNamespace(snapshot=lambda: _test_v2v(status=False),
+                                              transport_ok=lambda: True, last_error=lambda: "")
+  controller.hccc.run_step = lambda CS, lead, v2v_lead=None: None
+
+  cs = _test_cs(gas=1.0)
+  output = controller.update(True, cs, a_target=0.8, should_stop=False,
+                             accel_limits=(-3.0, 2.0), lead=_test_lead(True, 5.0), v2v_lead=_test_v2v(status=False))
+
+  assert abs(output - _manual_longitudinal_input(cs, simulation_mode=False)) < 1e-6
+  assert controller.debug_v2v_mode == V2V_MODE_FAULT_STALE

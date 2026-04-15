@@ -94,6 +94,23 @@ def test_relay_router_registers_peers_and_forwards_lead_packets():
   assert action.seq == 8
 
 
+def test_relay_router_rejects_sender_address_mismatch():
+  router = RelayRouter()
+  router.handle_datagram(encode_hello_packet(V2VHelloPacket(device_id="lead-1", role=ROLE_LEAD)), ("127.0.0.1", 20001))
+  router.handle_datagram(encode_hello_packet(V2VHelloPacket(device_id="ego-1", role=ROLE_EGO)), ("127.0.0.1", 20002))
+
+  event_type, role, device_id, action = router.handle_datagram(
+    encode_data_packet(V2VLeadPacket(device_id="lead-1", timestamp_us=1_743_000_000_000_000, a_lead=0.1, v_lead=8.0, seq=1)),
+    ("127.0.0.1", 29999),
+  )
+
+  assert event_type == TYPE_DATA
+  assert role == ROLE_LEAD
+  assert device_id == "lead-1"
+  assert action is None
+  assert router.last_reason == "sender_address_mismatch"
+
+
 def test_relay_router_does_not_forward_unregistered_sender():
   router = RelayRouter()
   router.handle_datagram(encode_hello_packet(V2VHelloPacket(device_id="ego-1", role=ROLE_EGO)), ("127.0.0.1", 20002))
