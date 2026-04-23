@@ -55,7 +55,7 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"GsmMetered", {PERSISTENT, BOOL, "1"}},
     {"GsmRoaming", {PERSISTENT, BOOL}},
     {"HCCV2VDeviceId", {PERSISTENT, STRING}},
-    {"HCCV2VEnabled", {PERSISTENT, BOOL}},
+    {"HCCV2VEnabled", {PERSISTENT, BOOL, "0"}},
     {"HCCV2VOnly", {PERSISTENT, BOOL, "0"}},
     {"HCCV2VRelayHost", {PERSISTENT, STRING}},
     {"HCCV2VRelayPort", {PERSISTENT, INT}},

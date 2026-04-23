@@ -28,6 +28,14 @@ DESCRIPTIONS = {
   'hccc_onroad': tr_noop(
     "Enable Human-in-the-Loop Cooperative Cruise Control (hCCC) logic for on-road longitudinal control."
   ),
+  'hcc_v2v_enabled': tr_noop(
+    "Subscribe to V2V lead-vehicle packets from the HCC relay. Required on the ego comma 3x. "
+    "Set HCCV2VRelayHost / HCCV2VRelayPort to point at the relay server."
+  ),
+  'hcc_v2v_only': tr_noop(
+    "Drive HC3 purely from V2V packets and ignore the onboard radar. "
+    "When V2V goes stale, HC3 disengages rather than falling through to radar."
+  ),
 }
 
 
@@ -85,6 +93,20 @@ class DeveloperLayout(Widget):
       callback=self._on_enable_hccc,
     )
 
+    self._hcc_v2v_enabled_toggle = toggle_item(
+      lambda: tr("Enable HCC V2V Subscriber"),
+      description=lambda: tr(DESCRIPTIONS["hcc_v2v_enabled"]),
+      initial_state=self._params.get_bool("HCCV2VEnabled"),
+      callback=self._on_enable_hcc_v2v,
+    )
+
+    self._hcc_v2v_only_toggle = toggle_item(
+      lambda: tr("HCC V2V-Only Mode"),
+      description=lambda: tr(DESCRIPTIONS["hcc_v2v_only"]),
+      initial_state=self._params.get_bool("HCCV2VOnly"),
+      callback=self._on_enable_hcc_v2v_only,
+    )
+
     self._ui_debug_toggle = toggle_item(
       lambda: tr("UI Debug Mode"),
       description="",
@@ -101,6 +123,8 @@ class DeveloperLayout(Widget):
       self._long_maneuver_toggle,
       self._alpha_long_toggle,
       self._hccc_toggle,
+      self._hcc_v2v_enabled_toggle,
+      self._hcc_v2v_only_toggle,
       self._ui_debug_toggle,
     ], line_separator=True, spacing=0)
 
@@ -149,6 +173,8 @@ class DeveloperLayout(Widget):
       ("LongitudinalManeuverMode", self._long_maneuver_toggle),
       ("AlphaLongitudinalEnabled", self._alpha_long_toggle),
       ("EnableHCCC", self._hccc_toggle),
+      ("HCCV2VEnabled", self._hcc_v2v_enabled_toggle),
+      ("HCCV2VOnly", self._hcc_v2v_only_toggle),
       ("ShowDebugInfo", self._ui_debug_toggle),
     ):
       item.action_item.set_state(self._params.get_bool(key))
@@ -198,3 +224,9 @@ class DeveloperLayout(Widget):
 
   def _on_enable_hccc(self, state: bool):
     self._params.put_bool("EnableHCCC", state)
+
+  def _on_enable_hcc_v2v(self, state: bool):
+    self._params.put_bool("HCCV2VEnabled", state)
+
+  def _on_enable_hcc_v2v_only(self, state: bool):
+    self._params.put_bool("HCCV2VOnly", state)

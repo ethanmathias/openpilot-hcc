@@ -154,7 +154,7 @@ From the device shell:
 ```bash
 cd /data
 rm -rf openpilot
-git clone --recurse-submodules https://github.com/ethanmathias/openpilot-hcc.git openpilot
+git clone --recurse-submodules -b hcc-ego https://github.com/ethanmathias/openpilot-hcc.git openpilot
 ```
 
 ## 11. Pull Git LFS Objects
@@ -166,7 +166,23 @@ cd /data/openpilot
 git lfs pull
 ```
 
-## 12. Reboot
+## 12. Disable Automatic Updates
+
+The device's built-in updater will attempt to pull from comma.ai's servers on every reboot. Because this is a custom research fork, those updates will always fail and block startup with an update error prompt. Disable the updater before rebooting:
+
+```bash
+python3 -c "from openpilot.common.params import Params; Params().put_bool('DisableUpdates', True)"
+```
+
+Also clear any lingering update failure alert from a previous boot:
+
+```bash
+python3 -c "from openpilot.common.params import Params; Params().remove('Offroad_UpdateFailed')"
+```
+
+This setting is persistent and survives reboots. You only need to run it once per fresh install.
+
+## 13. Reboot
 
 Reboot the device to start from the updated checkout:
 
@@ -176,6 +192,7 @@ sudo reboot
 
 ## Notes
 
-- The clone step above installs this repository into `/data/openpilot`, which is the expected path on the device.
+- The clone step above checks out the `hcc-ego` branch directly. This is the ego-vehicle side of the HC3 research stack.
 - Removing `/data/openpilot` deletes the existing checkout on the device. Use that step only when you intend to replace it.
+- Disabling updates (step 12) is required for any custom fork. Without it, the device will show an update failure prompt on every reboot and may not start correctly.
 - For local setup, development tooling, and simulator usage, use the READMEs under `tools/`.
