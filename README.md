@@ -171,13 +171,13 @@ git lfs pull
 The device's built-in updater will attempt to pull from comma.ai's servers on every reboot. Because this is a custom research fork, those updates will always fail and block startup with an update error prompt. Disable the updater before rebooting:
 
 ```bash
-python3 -c "from openpilot.common.params import Params; Params().put_bool('DisableUpdates', True)"
+echo -n "1" > /data/params/d/DisableUpdates
 ```
 
 Also clear any lingering update failure alert from a previous boot:
 
 ```bash
-python3 -c "from openpilot.common.params import Params; Params().remove('Offroad_UpdateFailed')"
+rm -f /data/params/d/Offroad_UpdateFailed
 ```
 
 This setting is persistent and survives reboots. You only need to run it once per fresh install.
