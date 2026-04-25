@@ -152,19 +152,49 @@ From the device shell:
 ```bash
 cd /data
 rm -rf openpilot
-git clone --recurse-submodules https://github.com/ethanmathias/openpilot-hcc.git openpilot
+git clone --recurse-submodules -b hcc-lead https://github.com/ethanmathias/openpilot-hcc.git openpilot
 ```
 
-## 11. Pull Git LFS Objects
+## 11. Initialize Submodules and Pull LFS Objects
 
-If the repository uses Git LFS, or if you want to ensure LFS-managed files are present, run:
+After cloning, initialize submodules and pull Git LFS objects:
 
 ```bash
 cd /data/openpilot
+git submodule update --init --recursive
 git lfs pull
 ```
 
-## 12. Reboot
+The `git lfs pull` step downloads neural network models, shared libraries, fonts, and boot binaries — it will take a few minutes. Do not skip it. Running `GIT_LFS_SKIP_SMUDGE=1` as a workaround leaves critical binaries (`updater_magic`, `third_party/*.so`, `*.onnx`) as empty stubs and will prevent openpilot from starting.
+
+## 12. Disable Automatic Updates and Clear Staged Updates
+
+The device's built-in updater will attempt to pull from comma.ai's servers on every reboot. Because this is a custom research fork, those updates will always fail and block startup with an update error prompt. Disable the updater before rebooting:
+
+```bash
+echo -n "1" > /data/params/d/DisableUpdates
+```
+
+Also clear any lingering update failure alert from a previous boot:
+
+```bash
+rm -f /data/params/d/Offroad_UpdateFailed
+```
+
+**Critically**, clear the update staging directory. On every boot, `launch_chffrplus.sh` checks for a finalized staged update at `/data/safe_staging/finalized/.overlay_consistent`. If that file exists from a previous updater run — even one that fetched upstream comma.ai code — the boot script will swap that staged update back over your custom fork before openpilot starts. That upstream code expects a different AGNOS version, which triggers an AGNOS flash and a reboot loop. Removing the staging directory prevents this.
+
+The `merged` subdirectory is an active OverlayFS mount and must be unmounted before the directory can be removed:
+
+```bash
+sudo umount /data/safe_staging/merged
+sudo rm -rf /data/safe_staging
+```
+
+If `umount` reports that `merged` is not mounted, skip it and run only the `rm` line.
+
+These settings are persistent and survive reboots. You only need to run them once per fresh install.
+
+## 13. Reboot
 
 Reboot the device to start from the updated checkout:
 
@@ -174,6 +204,7 @@ sudo reboot
 
 ## Notes
 
-- The clone step above installs this repository into `/data/openpilot`, which is the expected path on the device.
+- The clone step above checks out the `hcc-lead` branch directly. This is the lead-vehicle side of the HC3 research stack.
 - Removing `/data/openpilot` deletes the existing checkout on the device. Use that step only when you intend to replace it.
+- Disabling updates and clearing the staging directory (step 12) is required for any custom fork. Without it, `launch_chffrplus.sh` may swap a previously staged upstream update back over your fork on every boot, which causes an AGNOS version mismatch and a reboot loop.
 - For local setup, development tooling, and simulator usage, use the READMEs under `tools/`.
