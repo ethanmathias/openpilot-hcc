@@ -169,7 +169,58 @@ git lfs pull
 
 The `git lfs pull` step downloads neural network models, shared libraries, fonts, and boot binaries — it will take a few minutes. Do not skip it. Running `GIT_LFS_SKIP_SMUDGE=1` as a workaround leaves critical binaries (`updater_magic`, `third_party/*.so`, `*.onnx`) as empty stubs and will prevent openpilot from starting.
 
-## 12. Disable Automatic Updates and Clear Staged Updates
+## 12. Configure the HCC V2V Relay
+
+The ego device needs a UDP relay that both the ego car and lead car can reach. Run the relay on a laptop, server, or cloud instance with UDP port `19090` open.
+
+On the relay host:
+
+```bash
+cd /path/to/openpilot-hcc
+python3 tools/hcc_v2v/relay_server.py --host 0.0.0.0 --port 19090 --log_csv ~/hcc_v2v_relay.csv
+```
+
+In a second relay-host terminal, watch the relay log:
+
+```bash
+tail -f ~/hcc_v2v_relay.csv
+```
+
+Set the ego device to contact that relay. Replace `555.555.555.555` with the relay host IP address or DNS name:
+
+```bash
+echo -n "1" > /data/params/d/HCCV2VEnabled
+echo -n "1" > /data/params/d/HCCV2VOnly
+echo -n "hcc-ego" > /data/params/d/HCCV2VDeviceId
+echo -n "555.555.555.555" > /data/params/d/HCCV2VRelayHost
+echo -n "19090" > /data/params/d/HCCV2VRelayPort
+```
+
+Use this one-shot ego registration test before rebooting. It sends the same JSON hello shape the ego subscriber uses:
+
+```bash
+python3 - <<'PY'
+import json
+import socket
+
+RELAY_HOST = "555.555.555.555"
+RELAY_PORT = 19090
+
+payload = json.dumps({
+  "type": "hello",
+  "device_id": "hcc-ego-test",
+  "role": "ego",
+}, separators=(",", ":"), sort_keys=True).encode("utf-8")
+
+sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+sock.sendto(payload, (RELAY_HOST, RELAY_PORT))
+print(payload.decode())
+PY
+```
+
+The relay CSV should show a `hello` row with role `ego`, device id `hcc-ego-test`, and reason `registered_peer`. After openpilot starts with V2V enabled, the ego side will keep sending periodic hello packets and will listen for lead packets forwarded by the relay.
+
+## 13. Disable Automatic Updates and Clear Staged Updates
 
 The device's built-in updater will attempt to pull from comma.ai's servers on every reboot. Because this is a custom research fork, those updates will always fail and block startup with an update error prompt. Disable the updater before rebooting:
 
@@ -196,7 +247,7 @@ If `umount` reports that `merged` is not mounted, skip it and run only the `rm` 
 
 These settings are persistent and survive reboots. You only need to run them once per fresh install.
 
-## 13. Reboot
+## 14. Reboot
 
 Reboot the device to start from the updated checkout:
 
@@ -208,5 +259,5 @@ sudo reboot
 
 - The clone step above checks out the `hcc-ego` branch directly. This is the ego-vehicle side of the HC3 research stack.
 - Removing `/data/openpilot` deletes the existing checkout on the device. Use that step only when you intend to replace it.
-- Disabling updates and clearing the staging directory (step 12) is required for any custom fork. Without it, `launch_chffrplus.sh` may swap a previously staged upstream update back over your fork on every boot, which causes an AGNOS version mismatch and a reboot loop.
+- Disabling updates and clearing the staging directory (step 13) is required for any custom fork. Without it, `launch_chffrplus.sh` may swap a previously staged upstream update back over your fork on every boot, which causes an AGNOS version mismatch and a reboot loop.
 - For local setup, development tooling, and simulator usage, use the READMEs under `tools/`.
