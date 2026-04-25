@@ -157,9 +157,9 @@ rm -rf openpilot
 git clone --recurse-submodules -b hcc-ego https://github.com/ethanmathias/openpilot-hcc.git openpilot
 ```
 
-## 11. Fix Incomplete Checkout (LFS smudge error)
+## 11. Initialize Submodules and Pull LFS Objects
 
-The clone may print an error like:
+After cloning, initialize submodules and pull Git LFS objects. The clone may have printed an error like:
 
 ```
 error: external filter 'git-lfs filter-process' failed
@@ -167,14 +167,15 @@ fatal: tools/sim/data/hccc/...: smudge filter lfs failed
 warning: Clone succeeded, but checkout failed.
 ```
 
-This happens because a Git LFS object (simulation CSV data) is missing from the LFS server. The file is not needed for on-device operation. Re-run checkout with LFS skipped to check out all remaining source files:
+This is caused by a simulation CSV file that is missing from the LFS server. It is not needed on-device. Run the following to fix the submodule state and pull all required LFS objects while skipping that file:
 
 ```bash
 cd /data/openpilot
-GIT_LFS_SKIP_SMUDGE=1 git checkout HEAD -- .
+git submodule update --init --recursive
+git lfs pull --exclude="tools/sim/data/hccc/Test14.vehicle.honda_civic_2022_ICE.scn48.hccc.csv"
 ```
 
-This leaves the missing LFS file as a harmless text pointer stub and completes the rest of the checkout.
+The `git lfs pull` step downloads neural network models, shared libraries, fonts, and boot binaries — it will take a few minutes. Do not skip it. Running `GIT_LFS_SKIP_SMUDGE=1` as a workaround leaves critical binaries (`updater_magic`, `third_party/*.so`, `*.onnx`) as empty stubs and will prevent openpilot from starting.
 
 ## 12. Disable Automatic Updates and Clear Staged Updates
 
