@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import math
+import sys
 import threading
 import time
 from dataclasses import dataclass
@@ -8,11 +9,17 @@ from typing import NoReturn
 
 from openpilot.tools.sim.bridge.common import control_cmd_gen
 
-try:
-  import evdev
-  from evdev import ecodes
-except ImportError as e:
-  raise RuntimeError("logitech_wheel_ctrl.py requires python-evdev") from e
+# evdev is Linux-only. On macOS we fall back to pygame.joystick — see
+# logitech_wheel_poll_thread() for dispatch.
+if sys.platform.startswith("linux"):
+  try:
+    import evdev
+    from evdev import ecodes
+  except ImportError as e:
+    raise RuntimeError("logitech_wheel_ctrl.py on Linux requires python-evdev") from e
+else:
+  evdev = None  # type: ignore
+  ecodes = None  # type: ignore
 
 DEFAULT_PUBLISH_HZ = 100.0
 STEER_DEADZONE = 0.015
@@ -189,6 +196,12 @@ def _publisher_loop(q, state: LogitechWheelState, hz: float, stop_event: threadi
 
 
 def logitech_wheel_poll_thread(q, device_path: str | None = None, publish_hz: float = DEFAULT_PUBLISH_HZ) -> NoReturn:
+  if not sys.platform.startswith("linux"):
+    return _pygame_wheel_poll_thread(q, publish_hz=publish_hz)
+  return _evdev_wheel_poll_thread(q, device_path=device_path, publish_hz=publish_hz)
+
+
+def _evdev_wheel_poll_thread(q, device_path: str | None = None, publish_hz: float = DEFAULT_PUBLISH_HZ) -> NoReturn:
   dev = _find_logitech_device(device_path)
   abs_info = _abs_map(dev)
 
@@ -246,6 +259,58 @@ def logitech_wheel_poll_thread(q, device_path: str | None = None, publish_hz: fl
           q.put(control_cmd_gen(cmd))
   except PermissionError as e:
     raise RuntimeError(f"Permission denied reading {dev.path}. Add your user to the input group or run with sudo.") from e
+  finally:
+    stop_event.set()
+
+
+def _pygame_wheel_poll_thread(q, publish_hz: float = DEFAULT_PUBLISH_HZ) -> NoReturn:
+  """macOS / non-Linux fallback using pygame.joystick.
+
+  Axis convention: pygame returns steer in [-1, 1] for axis 0; pedals in
+  [-1, 1] for the Z/RZ pair (resting at -1, fully pressed at +1). We
+  remap pedals to [0, 1] before publishing.
+  """
+  try:
+    import pygame
+  except ImportError as e:
+    raise RuntimeError("pygame is required for wheel input on non-Linux hosts") from e
+
+  pygame.init()
+  pygame.joystick.init()
+  if pygame.joystick.get_count() == 0:
+    raise RuntimeError("No joystick/wheel detected. Plug in the device and try again.")
+
+  js = pygame.joystick.Joystick(0)
+  js.init()
+  print(f"[pygame-wheel] device: {js.get_name()} axes={js.get_numaxes()} buttons={js.get_numbuttons()}")
+
+  state = LogitechWheelState()
+  stop_event = threading.Event()
+  publisher = threading.Thread(target=_publisher_loop, args=(q, state, publish_hz, stop_event), daemon=True)
+  publisher.start()
+
+  # Logitech G29/G920 on macOS: axis 0 = steer, axis 1 = throttle, axis 2 = brake.
+  # Other wheels may differ; expose env vars for overrides.
+  import os
+  steer_idx = int(os.getenv("WHEEL_STEER_AXIS", "0"))
+  throttle_idx = int(os.getenv("WHEEL_THROTTLE_AXIS", "1"))
+  brake_idx = int(os.getenv("WHEEL_BRAKE_AXIS", "2"))
+
+  def _pedal_norm(v: float) -> float:
+    # pygame pedals rest at +1 and press to -1; flip and rescale to [0, 1].
+    return _clamp((1.0 - v) * 0.5, 0.0, 1.0)
+
+  poll_dt = 1.0 / 200.0
+  try:
+    while True:
+      pygame.event.pump()
+      steer_raw = js.get_axis(steer_idx) if js.get_numaxes() > steer_idx else 0.0
+      throttle_raw = js.get_axis(throttle_idx) if js.get_numaxes() > throttle_idx else 1.0
+      brake_raw = js.get_axis(brake_idx) if js.get_numaxes() > brake_idx else 1.0
+      state.set_steer(_apply_deadzone(float(steer_raw), STEER_DEADZONE))
+      state.set_throttle(_pedal_norm(float(throttle_raw)))
+      state.set_brake(_pedal_norm(float(brake_raw)))
+      time.sleep(poll_dt)
   finally:
     stop_event.set()
 

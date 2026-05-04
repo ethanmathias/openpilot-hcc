@@ -692,6 +692,37 @@ def _capture_rgb_image(env: MetaDriveEnv, sensor_name: str):
   return captured_frame if isinstance(captured_frame, np.ndarray) else captured_frame.get()
 
 
+def _capture_rgb_for_vehicle(env: MetaDriveEnv, sensor_name: str, vehicle):
+  """HIL: capture an RGB frame from a named camera reparented to a specific vehicle."""
+  camera_sensor = env.engine.sensors[sensor_name]
+  camera_sensor.get_cam().reparentTo(vehicle.origin)
+  camera_sensor.get_cam().setPos(C3_POSITION)
+  camera_sensor.get_cam().setHpr(C3_HPR)
+  captured_frame = camera_sensor.perceive(to_float=False)
+  return captured_frame if isinstance(captured_frame, np.ndarray) else captured_frame.get()
+
+
+def _capture_topdown(env: MetaDriveEnv, target_w: int, target_h: int):
+  """HIL: render an off-screen top-down view as a (H, W, 3) uint8 RGB array."""
+  try:
+    frame = env.render(mode="topdown", screen_record=False, window=False, screen_size=(target_w, target_h))
+  except TypeError:
+    # Older MetaDrive signatures don't accept screen_size; fall back.
+    frame = env.render(mode="topdown", screen_record=False, window=False)
+  if frame is None:
+    return np.zeros((target_h, target_w, 3), dtype=np.uint8)
+  if not isinstance(frame, np.ndarray):
+    frame = np.asarray(frame)
+  if frame.ndim == 3 and frame.shape[2] == 4:
+    frame = frame[..., :3]
+  if frame.shape[0] != target_h or frame.shape[1] != target_w:
+    # Cheap nearest-neighbor resize without pulling in cv2.
+    yi = (np.linspace(0, frame.shape[0] - 1, target_h)).astype(np.int32)
+    xi = (np.linspace(0, frame.shape[1] - 1, target_w)).astype(np.int32)
+    frame = frame[yi][:, xi]
+  return frame.astype(np.uint8, copy=False)
+
+
 def _send_running_state(simulation_state_send: Connection):
   """Publish a 'running' simulation lifecycle message to the bridge."""
   simulation_state_send.send(metadrive_simulation_state(running=True, done=False, done_info=None))
@@ -921,6 +952,11 @@ def metadrive_process(
   op_engaged,
   test_duration,
   test_run,
+  hil_two_vehicle: bool = False,
+  lead_camera_array=None,
+  topdown_array=None,
+  lead_controls_recv: Connection | None = None,
+  lead_vehicle_state_send: Connection | None = None,
 ):
   """Run the MetaDrive simulation worker loop and exchange data with the bridge."""
   # Pull bridge-specific knobs out of the world config dictionary.
@@ -952,6 +988,20 @@ def metadrive_process(
   if dual_camera:
     assert wide_camera_array is not None
     wide_road_image = np.frombuffer(wide_camera_array.get_obj(), dtype=np.uint8).reshape((H, W, 3))
+
+  # HIL-only: lead POV + top-down composite buffers shared with the bridge.
+  lead_road_image = None
+  topdown_image = None
+  topdown_w = topdown_h = 0
+  if hil_two_vehicle:
+    if lead_camera_array is not None:
+      lead_road_image = np.frombuffer(lead_camera_array.get_obj(), dtype=np.uint8).reshape((H, W, 3))
+    if topdown_array is not None:
+      total = len(topdown_array)
+      side = int(round((total // 3) ** 0.5))
+      topdown_h = topdown_w = side
+      topdown_image = np.frombuffer(topdown_array.get_obj(), dtype=np.uint8).reshape((topdown_h, topdown_w, 3))
+  lead_external_action: list[float] | None = None
 
   env = MetaDriveEnv(config)
   lead_state = LeadState()
@@ -1053,13 +1103,41 @@ def metadrive_process(
       if op_engaged.is_set() and engage_start_time is None:
         engage_start_time = time.monotonic()
 
+      # HIL: drain externally-controlled lead actions and apply directly to the
+      # spawned lead vehicle, bypassing the IDM/profile path.
+      if hil_two_vehicle and lead_controls_recv is not None:
+        while lead_controls_recv.poll(0):
+          payload = lead_controls_recv.recv()
+          if isinstance(payload, (list, tuple)) and len(payload) >= 2:
+            lead_external_action = [float(payload[0]), float(payload[1])]
+
       if ratekeeper.frame % sim_step_interval_frames == 0:
-        _update_lead_vehicle(env, lead_cfg, lead_state)
+        if hil_two_vehicle and lead_state.vehicle is not None and lead_external_action is not None:
+          lead_state.vehicle.before_step(lead_external_action)
+        else:
+          _update_lead_vehicle(env, lead_cfg, lead_state)
         pre_step_debug = ego_debug_state
         pre_step_position_xy = np.array(env.vehicle.position, dtype=np.float64)[:2]
         pre_step_heading = float(env.vehicle.heading_theta)
         _, _, terminated, _, _ = env.step(ego_control)
         _update_lead_measurement(env, lead_state, sim_step_dt_s)
+
+        if hil_two_vehicle and lead_vehicle_state_send is not None and lead_state.vehicle is not None:
+          lead_vehicle_state_send.send(metadrive_vehicle_state(
+            velocity=vec3(x=float(lead_state.vehicle.velocity[0]), y=float(lead_state.vehicle.velocity[1]), z=0),
+            position=lead_state.vehicle.position,
+            bearing=float(math.degrees(lead_state.vehicle.heading_theta)),
+            steering_angle=lead_state.vehicle.steering * lead_state.vehicle.MAX_STEERING,
+            lead_status=False, lead_d_rel=0.0, lead_y_rel=0.0, lead_v_rel=0.0, lead_a_rel=0.0,
+            lead_vehicle_valid=False,
+            lead_vehicle_velocity=vec3(x=0.0, y=0.0, z=0.0),
+            lead_vehicle_bearing=0.0,
+            lead_vehicle_steering_angle=0.0,
+            debug_has_lane=False, debug_on_lane=False,
+            debug_lane_s=0.0, debug_lane_lateral=0.0, debug_lane_heading_error_deg=0.0,
+            debug_on_yellow_line=False, debug_on_white_line=False,
+            debug_crash_sidewalk=False, debug_out_of_route=False,
+          ))
 
         ego_speed_mps = _planar_speed(env.vehicle.velocity)
         ego_accel_mps2 = (ego_speed_mps - prev_ego_speed_mps) / max(sim_step_dt_s, 1e-3)
@@ -1199,8 +1277,18 @@ def metadrive_process(
       if ratekeeper.frame % camera_capture_frames == 0:
         if dual_camera and wide_road_image is not None:
           wide_road_image[...] = _capture_rgb_image(env, "rgb_wide")
+        # HIL: snap a lead POV by reparenting rgb_road to the lead before the ego capture,
+        # then reparent back to the ego (the existing _capture_rgb_image does that for us).
+        if hil_two_vehicle and lead_road_image is not None and lead_state.vehicle is not None:
+          lead_road_image[...] = _capture_rgb_for_vehicle(env, "rgb_road", lead_state.vehicle)
         road_image[...] = _capture_rgb_image(env, "rgb_road")
+        if hil_two_vehicle and topdown_image is not None and topdown_w > 0:
+          topdown_image[...] = _capture_topdown(env, topdown_w, topdown_h)
         image_lock.release()
+        # HIL two-vehicle: the lead camera thread also calls image_lock.acquire(),
+        # so the producer must release once per consumer per frame.
+        if hil_two_vehicle:
+          image_lock.release()
 
       ratekeeper.keep_time()
   finally:

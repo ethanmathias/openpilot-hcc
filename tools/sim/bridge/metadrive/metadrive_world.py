@@ -16,12 +16,23 @@ NOT_MOVING_CHECK_AFTER_ENGAGE_S = 5.0
 NOT_MOVING_CHECK_PERIOD_S = 29.0
 
 
+TOPDOWN_W = 800
+TOPDOWN_H = 800
+
+
 class MetaDriveWorld(World):
   """Bridge-side world wrapper that hosts a dedicated MetaDrive worker process."""
-  def __init__(self, status_q, config: dict, test_duration, test_run, dual_camera=False):
-    """Start the MetaDrive worker process and initialize bridge-side shared state."""
+  def __init__(self, status_q, config: dict, test_duration, test_run, dual_camera=False, hil_two_vehicle=False):
+    """Start the MetaDrive worker process and initialize bridge-side shared state.
+
+    When hil_two_vehicle is True, the lead is controllable from the bridge over
+    a separate pipe (rather than IDM/profile-driven), and the worker captures
+    a lead-POV camera + a top-down view into additional shared arrays. Used
+    by MetaDriveHILBridge for the two-Comma-3X HIL setup.
+    """
     super().__init__(dual_camera)
     self.status_q = status_q
+    self.hil_two_vehicle = hil_two_vehicle
 
     # Shared memory backing for camera frames produced by the MetaDrive process.
     self.camera_array = Array(ctypes.c_uint8, W * H * 3)
@@ -32,10 +43,31 @@ class MetaDriveWorld(World):
       self.wide_camera_array = Array(ctypes.c_uint8, W * H * 3)
       self.wide_road_image = np.frombuffer(self.wide_camera_array.get_obj(), dtype=np.uint8).reshape((H, W, 3))
 
+    # HIL-only: lead POV + top-down composite frames live in their own arrays
+    # so window.py can blit them without contending with the ego sensor pipeline.
+    self.lead_camera_array = None
+    self.lead_road_image = None
+    self.topdown_array = None
+    self.topdown_image = None
+    if hil_two_vehicle:
+      self.lead_camera_array = Array(ctypes.c_uint8, W * H * 3)
+      self.lead_road_image = np.frombuffer(self.lead_camera_array.get_obj(), dtype=np.uint8).reshape((H, W, 3))
+      self.topdown_array = Array(ctypes.c_uint8, TOPDOWN_W * TOPDOWN_H * 3)
+      self.topdown_image = np.frombuffer(self.topdown_array.get_obj(), dtype=np.uint8).reshape((TOPDOWN_H, TOPDOWN_W, 3))
+
     # IPC channels with the dedicated MetaDrive worker process.
     self.controls_send, self.controls_recv = Pipe()
     self.simulation_state_send, self.simulation_state_recv = Pipe()
     self.vehicle_state_send, self.vehicle_state_recv = Pipe()
+
+    # HIL-only: dedicated lead control / state pipes.
+    self.lead_controls_send = None
+    self.lead_controls_recv = None
+    self.lead_vehicle_state_send = None
+    self.lead_vehicle_state_recv = None
+    if hil_two_vehicle:
+      self.lead_controls_send, self.lead_controls_recv = Pipe()
+      self.lead_vehicle_state_send, self.lead_vehicle_state_recv = Pipe()
 
     self.exit_event = multiprocessing.Event()
     self.op_engaged = multiprocessing.Event()
@@ -45,6 +77,8 @@ class MetaDriveWorld(World):
     self.first_engage_time = None
     self.last_motion_check_time = 0.0
     self.distance_moved_since_check = 0.0
+
+    self.lead_control_command = [0.0, 0.0]
 
     self.metadrive_process = multiprocessing.Process(
       name="metadrive process",
@@ -62,6 +96,11 @@ class MetaDriveWorld(World):
         self.op_engaged,
         test_duration,
         self.test_run,
+        hil_two_vehicle,
+        self.lead_camera_array,
+        self.topdown_array,
+        self.lead_controls_recv,
+        self.lead_vehicle_state_send,
       ),
     )
 
@@ -86,6 +125,27 @@ class MetaDriveWorld(World):
 
     self.controls_send.send([*self.ego_control_command, self.should_reset, bridge_telemetry or {}])
     self.should_reset = False
+
+  def apply_lead_controls(self, steer_angle, throttle_out, brake_out):
+    """HIL-only: send the lead vehicle's actuation to the worker."""
+    if not self.hil_two_vehicle or self.lead_controls_send is None:
+      return
+    self.lead_control_command[0] = steer_angle
+    self.lead_control_command[1] = throttle_out if throttle_out else -brake_out
+    self.lead_controls_send.send(list(self.lead_control_command))
+
+  def read_lead_sensors(self, state):
+    """HIL-only: drain latest lead-vehicle samples into the lead's SimulatorState."""
+    if not self.hil_two_vehicle or self.lead_vehicle_state_recv is None:
+      return
+    while self.lead_vehicle_state_recv.poll(0):
+      md = self.lead_vehicle_state_recv.recv()
+      state.velocity = md.velocity
+      state.bearing = md.bearing
+      state.steering_angle = md.steering_angle
+      state.position_xy = (float(md.position[0]), float(md.position[1]))
+      state.gps.from_xy(md.position)
+      state.valid = True
 
   def read_state(self):
     """Consume simulation lifecycle updates (running/done) from the worker."""

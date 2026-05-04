@@ -1,0 +1,17 @@
+# Copy this file to devices.toml (gitignored) and fill in real values.
+#
+# `iface` is the PC-side RNDIS interface name (e.g., from `ip link` on Linux
+# or `ifconfig` on macOS). `ip` is the device-side RNDIS IP — set once on
+# each device by tools/sim/hil/scripts/setup_rndis.sh and persisted via
+# /data/etc/network/interfaces.d/usb0.
+
+[lead]
+iface = "enx00e04c360001"
+ip = "192.168.32.10"
+
+[ego]
+iface = "enx00e04c360002"
+ip = "192.168.32.11"
+# IP of the ego's WiFi hotspot, as seen by the lead device. Used by
+# setup_v2v_network.sh on the lead to set HCCV2VRelayHost.
+hotspot_ip = "10.42.0.1"

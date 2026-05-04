@@ -10,6 +10,7 @@ from openpilot.tools.sim.bridge.metadrive.metadrive_bridge import MetaDriveBridg
 SIM_MODE_TO_SCENARIO = {
   "default": "default",
   "hc3": "hccc_step",
+  "hcc_hil": "hccc_step",
 }
 
 
@@ -30,8 +31,26 @@ def _resolve_scn_csv_path(scn_csv: str | None) -> str | None:
 
 
 def create_bridge(dual_camera, high_quality, mode="default", scn=None, scn_csv=None, output_csv=None, output_graph=None,
-                  lead_prefix=None):
+                  lead_prefix=None, devices_toml=None, raw_yuv=False, with_lead=False):
   queue: Any = Queue()
+
+  if mode == "hcc_hil":
+    # HIL mode owns its own per-role OPENPILOT_PREFIX contexts; don't set one
+    # on the bridge process itself.
+    from openpilot.tools.sim.bridge.metadrive.metadrive_hil_bridge import MetaDriveHILBridge
+    from openpilot.tools.sim.hil.device_config import load as load_devices, warn_on_mismatch
+    if devices_toml is None:
+      sim_dir = os.path.dirname(os.path.abspath(__file__))
+      devices_toml = os.path.join(sim_dir, "hil", "devices.toml")
+    cfg = load_devices(devices_toml)
+    warn_on_mismatch(cfg)
+
+    lead_dev = cfg.lead if with_lead else None
+    simulator_bridge = MetaDriveHILBridge(dual_camera, high_quality, ego_device=cfg.ego, lead_device=lead_dev,
+                                          raw_yuv=raw_yuv, scenario=SIM_MODE_TO_SCENARIO[mode],
+                                          scn=scn, scn_csv=scn_csv, output_csv=output_csv, output_graph=output_graph)
+    simulator_process = simulator_bridge.run(queue)
+    return queue, simulator_process, simulator_bridge
 
   # In the dual-sim V2V setup the bridge must publish ego-side simulator data
   # into the ego namespace so manager sees pandaStates/can and can go onroad.
@@ -66,8 +85,14 @@ def parse_args(add_args=None):
                       help='Wheel command publish rate (Hz) when using --logitech_wheel')
   parser.add_argument('--high_quality', action='store_true')
   parser.add_argument('--dual_camera', action='store_true')
-  parser.add_argument('--mode', default="default", choices=["default", "hc3"],
-                      help='Simulation mode preset: default or hc3')
+  parser.add_argument('--mode', default="default", choices=["default", "hc3", "hcc_hil"],
+                      help='Simulation mode preset: default, hc3, or hcc_hil (hardware-in-the-loop with Comma 3X devices)')
+  parser.add_argument('--devices_toml', default=None,
+                      help='Path to tools/sim/hil/devices.toml (hcc_hil mode only)')
+  parser.add_argument('--raw_yuv', action='store_true',
+                      help='Bring-up fallback: ship NV12 frames to devices instead of H.264 (hcc_hil mode only)')
+  parser.add_argument('--lead', action='store_true',
+                      help='Enable the lead Comma 3X device (two-vehicle HIL; hcc_hil mode only)')
   parser.add_argument('--scn', type=int, default=None,
                       help='Replay lead trajectory from scenario column index in Scenarios.csv (e.g., 48)')
   parser.add_argument('--scn_csv', default=None,
@@ -87,7 +112,9 @@ if __name__ == "__main__":
   queue, simulator_process, simulator_bridge = create_bridge(args.dual_camera, args.high_quality,
                                                              mode=args.mode, scn=args.scn, scn_csv=args.scn_csv,
                                                              output_csv=args.output_csv, output_graph=args.output_graph,
-                                                             lead_prefix=args.lead_prefix)
+                                                             lead_prefix=args.lead_prefix,
+                                                             devices_toml=args.devices_toml, raw_yuv=args.raw_yuv,
+                                                             with_lead=args.lead)
 
   use_logitech_wheel = not args.keyboard and not args.joystick
   if args.logitech_wheel:

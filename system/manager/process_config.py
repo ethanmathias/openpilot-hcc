@@ -8,6 +8,7 @@ from openpilot.system.hardware import PC, TICI
 from openpilot.system.manager.process import PythonProcess, NativeProcess, DaemonProcess
 
 WEBCAM = os.getenv("USE_WEBCAM") is not None
+HIL_MODE = os.getenv("HIL_MODE") == "1"
 
 def driverview(started: bool, params: Params, CP: car.CarParams) -> bool:
   return started or params.get_bool("IsDriverViewEnabled")
@@ -113,6 +114,10 @@ procs = [
   PythonProcess("webrtcd", "system.webrtc.webrtcd", notcar),
   PythonProcess("webjoystick", "tools.bodyteleop.web", notcar),
   PythonProcess("joystick", "tools.joystick.joystick_control", and_(joystick, iscar)),
+
+  # HIL: replaces the on-device camerad/sensord/pandad path. camerad/pandad/sensord
+  # are silenced via the BLOCK env var in tools/sim/hil/scripts/launch_device.sh.
+  PythonProcess("remote_sensor_bridge", "tools.sim.hil.remote_sensor_bridge", only_onroad, enabled=HIL_MODE),
 ]
 
 managed_processes = {p.name: p for p in procs}

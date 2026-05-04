@@ -85,7 +85,8 @@ class MetaDriveBridge(SimulatorBridge):
   TICKS_PER_FRAME = 2
 
   def __init__(self, dual_camera, high_quality, test_duration=math.inf, test_run=False, scenario=SCENARIO_DEFAULT,
-               enable_hcc=False, scn=None, scn_csv=None, output_csv=None, output_graph=None, lead_sim_prefix=None):
+               enable_hcc=False, scn=None, scn_csv=None, output_csv=None, output_graph=None, lead_sim_prefix=None,
+               hil_two_vehicle=False):
     """Configure bridge behavior and test/scenario options before spawning world."""
     should_enable_hcc = enable_hcc or scenario in STRAIGHT_ROAD_SCENARIOS or scn is not None
     super().__init__(dual_camera, high_quality, enable_hcc=should_enable_hcc, lead_sim_prefix=lead_sim_prefix)
@@ -100,6 +101,7 @@ class MetaDriveBridge(SimulatorBridge):
     self.output_graph = output_graph
     self.output_control_method = "hccc" if should_enable_hcc else "default"
     self.output_vehicle_name = "honda_civic_2022"
+    self.hil_two_vehicle = hil_two_vehicle
 
   def spawn_world(self, queue: Queue):
     """Create and return a MetaDriveWorld instance with scenario-specific config."""
@@ -157,4 +159,5 @@ class MetaDriveBridge(SimulatorBridge):
       anisotropic_filtering=False
     )
 
-    return MetaDriveWorld(queue, world_config, self.test_duration, self.test_run, self.dual_camera)
+    return MetaDriveWorld(queue, world_config, self.test_duration, self.test_run, self.dual_camera,
+                          hil_two_vehicle=self.hil_two_vehicle)
