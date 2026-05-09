@@ -25,6 +25,18 @@ if [[ "$CI" ]]; then
 fi
 
 python3 -c "from openpilot.selfdrive.test.helpers import set_params_enabled; set_params_enabled()"
-python3 -c 'from openpilot.common.params import Params; p=Params(); p.put_bool("AlphaLongitudinalEnabled", True); p.put_bool("EnableHCCC", True)'
+# Write hCCC params.  V2VOnly is disabled in single-device sim so hCCC can
+# follow the MetaDrive lead via radar/model data without a V2V relay.
+python3 -c "
+from openpilot.common.params import Params
+p = Params()
+p.put_bool('AlphaLongitudinalEnabled', True)
+p.put_bool('EnableHCCC', True)
+p.put_bool('HCCV2VEnabled', int('${HCC_V2V_ENABLED}') == 1)
+p.put_bool('HCCV2VOnly', int('${HCC_V2V_ONLY}') == 1)
+p.put('HCCV2VDeviceId', '${HCC_V2V_DEVICE_ID}')
+p.put('HCCV2VRelayHost', '${HCC_V2V_RELAY_HOST}')
+p.put('HCCV2VRelayPort', '${HCC_V2V_RELAY_PORT}')
+"
 
 cd $OPENPILOT_DIR/system/manager && exec ./manager.py
