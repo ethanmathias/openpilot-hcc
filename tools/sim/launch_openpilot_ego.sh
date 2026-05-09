@@ -36,7 +36,7 @@ p.put_bool('HCCV2VEnabled', int('${HCC_V2V_ENABLED}') == 1)
 p.put_bool('HCCV2VOnly', int('${HCC_V2V_ONLY}') == 1)
 p.put('HCCV2VDeviceId', '${HCC_V2V_DEVICE_ID}')
 p.put('HCCV2VRelayHost', '${HCC_V2V_RELAY_HOST}')
-p.put_int('HCCV2VRelayPort', int('${HCC_V2V_RELAY_PORT}'))
+p.put('HCCV2VRelayPort', int('${HCC_V2V_RELAY_PORT}'))
 "
 
 cd $OPENPILOT_DIR/system/manager && exec ./manager.py
