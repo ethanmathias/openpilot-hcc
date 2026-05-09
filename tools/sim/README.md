@@ -113,12 +113,15 @@ Two openpilot instances run on the same PC under different cereal prefixes
 at `127.0.0.1:19090`. The lead's `v2vpublisher` sends its state through the
 relay to the ego's V2V subscriber, and hCCC follows using V2V data.
 
+The ego instance runs from the **`hcc-ego`** branch. The lead instance runs
+from a **separate checkout on the `hcc-lead` branch** (worktree or clone).
+
 ```
 PC
 ├── MetaDrive (two vehicles, one per prefix)
 ├── SimulatedCar × 2 (ego prefix + lead prefix)
-├── openpilot "ego"  (OPENPILOT_PREFIX=hccego, V2V subscriber)
-├── openpilot "lead" (OPENPILOT_PREFIX=hcclead, V2V publisher)
+├── openpilot "ego"  (hcc-ego branch, OPENPILOT_PREFIX=hccego, V2V subscriber)
+├── openpilot "lead" (hcc-lead branch, OPENPILOT_PREFIX=hcclead, V2V publisher)
 └── relay_server.py (127.0.0.1:19090)
     hCCC input: V2V lead data from the relay
     V2V: ON
@@ -133,13 +136,19 @@ uv run python tools/hcc_v2v/relay_server.py --host 127.0.0.1 --port 19090
 # Terminal 2 — ego openpilot (V2V enabled, V2V-only mode)
 HCC_V2V_ENABLED=1 HCC_V2V_ONLY=1 ./tools/sim/launch_openpilot_ego.sh
 
-# Terminal 3 — lead openpilot
-cd /path/to/openpilot-hcc-lead
+# Terminal 3 — lead openpilot (MUST be the hcc-lead branch / repo)
+cd /path/to/openpilot-hcc-lead    # separate checkout on the hcc-lead branch
 ./tools/sim/launch_openpilot_lead.sh
 
-# Terminal 4 — bridge (feeds both prefixes)
+# Terminal 4 — bridge (feeds both prefixes, runs from the ego repo)
+cd /path/to/openpilot-hcc         # back to the ego repo
 uv run python tools/sim/run_bridge.py --mode hc3 --scn 48 --keyboard --lead_prefix hcclead
 ```
+
+**Important:** The lead openpilot instance (Terminal 3) must run from a
+separate checkout or worktree on the **`hcc-lead`** branch. The `hcc-lead`
+branch contains the lead-specific `v2vpublisher` process and device-side
+configuration. The ego repo (`hcc-ego` branch) runs Terminals 1, 2, and 4.
 
 If the lead worktree does not exist yet, create it from the ego repo:
 
