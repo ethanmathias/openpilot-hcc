@@ -52,9 +52,10 @@ def create_bridge(dual_camera, high_quality, mode="default", scn=None, scn_csv=N
     simulator_process = simulator_bridge.run(queue)
     return queue, simulator_process, simulator_bridge
 
-  # In the dual-sim V2V setup the bridge must publish ego-side simulator data
-  # into the ego namespace so manager sees pandaStates/can and can go onroad.
-  if lead_prefix is not None and os.getenv('OPENPILOT_PREFIX') is None:
+  # hc3 mode and dual-sim V2V both expect openpilot running under the 'hccego'
+  # prefix (launch_openpilot_ego.sh exports OPENPILOT_PREFIX=hccego).  Set it
+  # here so the bridge's cereal sockets land in the same namespace.
+  if (mode == "hc3" or lead_prefix is not None) and os.getenv('OPENPILOT_PREFIX') is None:
     os.environ['OPENPILOT_PREFIX'] = 'hccego'
 
   if scn is not None and scn < 1:
