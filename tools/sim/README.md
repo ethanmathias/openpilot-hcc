@@ -61,152 +61,159 @@ If the virtual environment is missing, initialize the repository first. A setup 
 tools/op.sh setup
 ```
 
-## Quick Start
+## Three Operational Modes
 
-For the standard workflow, use:
+The HC3 simulation stack supports three distinct modes. Each mode exercises
+progressively more of the real system. Understand which mode you need before
+launching anything.
 
-```bash
-./tools/sim/open_sim_terminals.sh
+### Mode 1: Single-Device Sim (radar-based hCCC, no V2V)
+
+Everything runs on one PC. MetaDrive renders a scripted lead vehicle. The ego
+openpilot stack sees the lead through its simulated camera, and hCCC uses the
+resulting `radarState.leadOne` to compute acceleration. **V2V is off.**
+
+This is the simplest way to test hCCC longitudinal behavior.
+
+```
+PC
+├── MetaDrive (world sim + scripted lead vehicle)
+├── SimulatedCar (fake Honda CAN → openpilot)
+├── SimulatedSensors (fake IMU/GPS/camera → openpilot)
+└── openpilot (modeld → radard → controlsd/hCCC → carControl)
+    hCCC input: radarState.leadOne (from camera/model)
+    V2V: OFF
 ```
 
-This opens:
-
-- one terminal running openpilot in simulation mode
-- one terminal prepared to launch the simulator bridge
-
-From the second terminal, start the bridge:
+**Launch (2 terminals):**
 
 ```bash
-./run_bridge.py --mode default
+# Terminal 1 — openpilot
+./tools/sim/launch_openpilot_ego.sh
+
+# Terminal 2 — MetaDrive bridge
+uv run python tools/sim/run_bridge.py --mode hc3 --scn 48 --keyboard
 ```
 
-## Manual Startup
+**Key V2V settings** (defaults in `launch_openpilot_ego.sh`):
 
-If you prefer to launch each process directly, use two terminals.
+| Variable | Value | Why |
+|---|---|---|
+| `HCC_V2V_ENABLED` | `0` | No V2V subscriber — hCCC uses radar lead only |
+| `HCC_V2V_ONLY` | `0` | Not in V2V-only mode |
 
-### Terminal 1: openpilot
+If `HCC_V2V_ENABLED=1` is set by accident, the V2V subscriber is created but
+cannot reach a relay. hCCC sees `v2v_lead.status=False`, returns `None`, and
+the car never accelerates — even though `Engaged: True` appears.
+
+### Mode 2: Dual-Device Sim (V2V via relay, all on PC)
+
+Two openpilot instances run on the same PC under different cereal prefixes
+(`hccego` and `hcclead`). MetaDrive simulates both vehicles. A V2V relay runs
+at `127.0.0.1:19090`. The lead's `v2vpublisher` sends its state through the
+relay to the ego's V2V subscriber, and hCCC follows using V2V data.
+
+```
+PC
+├── MetaDrive (two vehicles, one per prefix)
+├── SimulatedCar × 2 (ego prefix + lead prefix)
+├── openpilot "ego"  (OPENPILOT_PREFIX=hccego, V2V subscriber)
+├── openpilot "lead" (OPENPILOT_PREFIX=hcclead, V2V publisher)
+└── relay_server.py (127.0.0.1:19090)
+    hCCC input: V2V lead data from the relay
+    V2V: ON
+```
+
+**Launch (4 terminals):**
 
 ```bash
-source .venv/bin/activate
-./tools/sim/launch_openpilot.sh
+# Terminal 1 — V2V relay
+uv run python tools/hcc_v2v/relay_server.py --host 127.0.0.1 --port 19090
+
+# Terminal 2 — ego openpilot (V2V enabled, V2V-only mode)
+HCC_V2V_ENABLED=1 HCC_V2V_ONLY=1 ./tools/sim/launch_openpilot_ego.sh
+
+# Terminal 3 — lead openpilot
+cd /path/to/openpilot-hcc-lead
+./tools/sim/launch_openpilot_lead.sh
+
+# Terminal 4 — bridge (feeds both prefixes)
+uv run python tools/sim/run_bridge.py --mode hc3 --scn 48 --keyboard --lead_prefix hcclead
 ```
-
-This script:
-
-- activates the repository virtual environment
-- enables simulation-related environment variables
-- starts the openpilot manager process
-
-### Terminal 2: simulator bridge
-
-```bash
-source .venv/bin/activate
-cd tools/sim
-./run_bridge.py --mode default
-```
-
-This process:
-
-- starts the MetaDrive simulator
-- starts the bridge between MetaDrive and openpilot
-- handles keyboard, wheel, or joystick input
-
-## V2V HC3 Launcher
-
-The V2V HC3 workflow uses:
-
-- one repo checkout for `hcc-ego`
-- one second worktree or checkout for `hcc-lead`
-- one local UDP relay
-- one shared-world MetaDrive bridge
-
-Start the launcher UI from the ego repo:
-
-```bash
-./tools/hcc_v2v/launch_ui.sh
-```
-
-The launcher is intended for a desktop session on the sim PC. It starts:
-
-- the UDP relay in the background
-- the ego openpilot manager in the background
-- the lead openpilot manager in the background
-- the bridge in its own terminal window so keyboard or wheel input still works
-
-Typical repo paths:
-
-- ego repo: `~/ethanmathias/openpilot-hcc`
-- lead repo: `~/ethanmathias/openpilot-hcc-lead`
-
-Recommended branches for this workflow:
-
-- ego repo: `hcc-ego`
-- lead repo: `hcc-lead`
-
-Recommended UI startup flow:
-
-```bash
-cd ~/ethanmathias/openpilot-hcc
-./tools/hcc_v2v/launch_ui.sh
-```
-
-In the launcher UI:
-
-- set Ego repo to `~/ethanmathias/openpilot-hcc`
-- set Lead repo to `~/ethanmathias/openpilot-hcc-lead`
-- set Scenario to `48` when you want the SCN 48 replay
-- use `Start all` to launch relay, ego, lead, and the bridge in order
-
-The UI path uses the same dedicated launchers that the manual workflow uses:
-
-- ego: `./tools/sim/launch_openpilot_ego.sh`
-- lead: `./tools/sim/launch_openpilot_lead.sh`
 
 If the lead worktree does not exist yet, create it from the ego repo:
 
 ```bash
-cd ~/ethanmathias/openpilot-hcc
+cd /path/to/openpilot-hcc
 git fetch origin
 GIT_LFS_SKIP_SMUDGE=1 git worktree add ../openpilot-hcc-lead hcc-lead
 ```
 
-`GIT_LFS_SKIP_SMUDGE=1` is recommended on machines where the lead branch references LFS objects that are unavailable from the remote. This allows the worktree to be created even if one of the large replay CSV assets is missing on the LFS server.
+`GIT_LFS_SKIP_SMUDGE=1` is recommended when the lead branch references LFS
+objects that are unavailable from the remote.
 
-## Manual HC3 Startup
+#### V2V HC3 Launcher UI
 
-If you want to bypass the launcher UI, start the four pieces directly.
-
-### Terminal 1: relay
+A convenience UI can start all four processes at once:
 
 ```bash
-cd ~/ethanmathias/openpilot-hcc
-source .venv/bin/activate
-python3 tools/hcc_v2v/relay_server.py --host 127.0.0.1 --port 19090 --log_csv ~/hcc_v2v_relay.csv
+./tools/hcc_v2v/launch_ui.sh
 ```
 
-### Terminal 2: ego
+In the launcher UI, set the ego and lead repo paths and scenario number, then
+use `Start all`. The UI uses the same launch scripts as the manual workflow.
+
+### Mode 3: HIL (real Comma 3X devices, MetaDrive on PC)
+
+Two physical Comma 3X devices run the real openpilot stack. MetaDrive on the
+PC sends H.264 camera frames (ZMQ) and CAN/sensor data (cereal bridge) to
+each device over USB-C RNDIS. Each device returns `carControl` over the same
+link. V2V runs device-to-device over WiFi (ego hosts hotspot, lead joins as
+client). The PC is not in the V2V path.
+
+```
+PC (MetaDrive + camera encoder + cereal bridges)
+  │ USB-C RNDIS              │ USB-C RNDIS
+  ▼                          ▼
+Comma 3X (ego)             Comma 3X (lead)
+  openpilot (full stack)     openpilot (full stack)
+  V2V subscriber             V2V publisher
+  relay_server.py            ◄── WiFi hotspot ──►
+```
+
+**Launch:** See [`tools/sim/hil/README.md`](hil/README.md) for the full
+5-step bring-up (RNDIS setup, V2V network, device launch, PC launch).
+
+### Mode summary
+
+| | Mode 1 | Mode 2 | Mode 3 |
+|---|---|---|---|
+| **Where openpilot runs** | PC | PC (×2) | Comma 3X (×2) |
+| **Lead vehicle** | MetaDrive IDM/scripted | MetaDrive + lead openpilot | MetaDrive + lead openpilot |
+| **hCCC input** | Radar (camera → model) | V2V relay | V2V relay |
+| **V2V** | Off | Local relay on PC | Device-to-device WiFi |
+| **Terminals** | 2 | 4 | 2 SSH + 1 PC |
+| **`HCC_V2V_ENABLED`** | `0` | `1` | `1` (set by device script) |
+| **`HCC_V2V_ONLY`** | `0` | `1` | `1` (set by device script) |
+
+---
+
+## Quick Start (Mode 1)
+
+For the simplest workflow, use two terminals from the repo root:
 
 ```bash
-cd ~/ethanmathias/openpilot-hcc
+# Terminal 1 — start openpilot
 ./tools/sim/launch_openpilot_ego.sh
+
+# Terminal 2 — start the MetaDrive bridge
+uv run python tools/sim/run_bridge.py --mode hc3 --scn 48 --keyboard
 ```
 
-### Terminal 3: lead
+Or use the helper script that opens both terminals:
 
 ```bash
-cd ~/ethanmathias/openpilot-hcc-lead
-./tools/sim/launch_openpilot_lead.sh
-```
-
-### Terminal 4: bridge
-
-```bash
-cd ~/ethanmathias/openpilot-hcc
-source .venv/bin/activate
-cd tools/sim
-./run_bridge.py --mode hc3 --scn 48 --lead_prefix hcclead --keyboard \
-  --output_csv ./data/hccc/Test48.vehicle.honda_civic_2022_ICE.hccc.csv \
-  --output_graph ./graphs/hccc/Test48.vehicle.honda_civic_2022_ICE.hccc.png
+./tools/sim/open_sim_terminals.sh
 ```
 
 ## Lightsail Relay Testing
@@ -270,20 +277,20 @@ Mental model:
 
 If the Lightsail CSV stays empty, check the instance firewall rule for `UDP 19090` first.
 
-## Modes
+## Bridge Mode Presets
 
-The bridge supports the following mode presets:
+The `--mode` flag selects the scenario and map configuration:
 
-- `default`
-  Standard simulator driving environment.
-- `hc3`
-  hC3 straight-road preset.
+- `default` — Standard simulator driving environment (loop map, no lead).
+- `hc3` — HC3 straight-road preset with a lead vehicle (Modes 1 and 2).
+- `hcc_hil` — Hardware-in-the-loop preset (Mode 3, requires `--lead` and `devices.toml`).
 
 Examples:
 
 ```bash
-./run_bridge.py --mode default
-./run_bridge.py --mode hc3
+./run_bridge.py --mode default --keyboard
+./run_bridge.py --mode hc3 --scn 48 --keyboard
+./run_bridge.py --mode hcc_hil --lead --devices_toml tools/sim/hil/devices.toml
 ```
 
 ## Control Input
@@ -615,6 +622,29 @@ Simplified components:
 This simulator should therefore be viewed as a practical integration and behavior-testing tool, not a full sensor-accurate vehicle dynamics and perception simulator.
 
 ## Troubleshooting
+
+### Ego is engaged but never accelerates (`accelCmd=0.00`)
+
+This almost always means the V2V settings are wrong for the mode you are
+running. In Mode 1 (single-device sim), V2V must be **disabled**:
+
+```bash
+# Correct for Mode 1 — these are the defaults in launch_openpilot_ego.sh
+HCC_V2V_ENABLED=0 HCC_V2V_ONLY=0 ./tools/sim/launch_openpilot_ego.sh
+```
+
+If `HCC_V2V_ENABLED=1` is set without a relay running, the hCCC controller
+creates a V2V subscriber, sees `v2v_lead.status=False`, and returns `None`
+before it ever checks the radar lead. The car shows `Engaged: True` but
+`accelCmd` stays at zero.
+
+For Mode 2 (dual-device sim), V2V must be **enabled** and the relay must be
+running before the ego openpilot starts:
+
+```bash
+# Start relay first, then:
+HCC_V2V_ENABLED=1 HCC_V2V_ONLY=1 ./tools/sim/launch_openpilot_ego.sh
+```
 
 ### openpilot starts but the simulator does not
 
