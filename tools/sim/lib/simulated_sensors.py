@@ -10,6 +10,23 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
   from openpilot.tools.sim.lib.common import World, SimulatorState
 
+# Number of IMU and GPS messages published per tick (matches hardware cadence).
+_IMU_MSGS_PER_TICK = 5
+_GPS_MSGS_PER_TICK = 10
+
+# Sensor IDs and type code matching the C3 hardware (see locationd).
+_ACCEL_SENSOR_ID = 4
+_GYRO_SENSOR_ID = 5
+_IMU_SENSOR_TYPE = 0x10
+
+# Peripheral state publish interval (seconds).
+_PERIPHERAL_INTERVAL_SECS = 0.25
+
+# Simulated peripheral electrical values.
+_PERIPHERAL_VOLTAGE_MV = 12000
+_PERIPHERAL_CURRENT_MA = 5678
+_PERIPHERAL_FAN_RPM = 1000
+
 
 class SimulatedSensors:
   """Simulates the C3 sensors (acc, gyro, gps, peripherals, dm state, cameras) to OpenPilot"""
@@ -20,24 +37,24 @@ class SimulatedSensors:
     self.last_perp_update = 0
     self.last_dmon_update = 0
 
-  def send_imu_message(self, simulator_state: 'SimulatorState'):
-    for _ in range(5):
-      dat = messaging.new_message('accelerometer', valid=True)
-      dat.accelerometer.sensor = 4
-      dat.accelerometer.type = 0x10
-      dat.accelerometer.timestamp = dat.logMonoTime  # TODO: use the IMU timestamp
-      dat.accelerometer.init('acceleration')
-      dat.accelerometer.acceleration.v = [simulator_state.imu.accelerometer.x, simulator_state.imu.accelerometer.y, simulator_state.imu.accelerometer.z]
-      self.pm.send('accelerometer', dat)
+  def _send_imu_message(self, service: str, sensor_id: int, field: str, values: list[float]):
+    """Build and publish a single IMU message (shared by accel and gyro paths)."""
+    dat = messaging.new_message(service, valid=True)
+    entry = getattr(dat, service)
+    entry.sensor = sensor_id
+    entry.type = _IMU_SENSOR_TYPE
+    entry.timestamp = dat.logMonoTime
+    entry.init(field)
+    getattr(entry, field).v = values
+    self.pm.send(service, dat)
 
-      # copied these numbers from locationd
-      dat = messaging.new_message('gyroscope', valid=True)
-      dat.gyroscope.sensor = 5
-      dat.gyroscope.type = 0x10
-      dat.gyroscope.timestamp = dat.logMonoTime  # TODO: use the IMU timestamp
-      dat.gyroscope.init('gyroUncalibrated')
-      dat.gyroscope.gyroUncalibrated.v = [simulator_state.imu.gyroscope.x, simulator_state.imu.gyroscope.y, simulator_state.imu.gyroscope.z]
-      self.pm.send('gyroscope', dat)
+  def send_imu_message(self, simulator_state: 'SimulatorState'):
+    imu = simulator_state.imu
+    for _ in range(_IMU_MSGS_PER_TICK):
+      self._send_imu_message('accelerometer', _ACCEL_SENSOR_ID, 'acceleration',
+                             [imu.accelerometer.x, imu.accelerometer.y, imu.accelerometer.z])
+      self._send_imu_message('gyroscope', _GYRO_SENSOR_ID, 'gyroUncalibrated',
+                             [imu.gyroscope.x, imu.gyroscope.y, imu.gyroscope.z])
 
   def send_gps_message(self, simulator_state: 'SimulatorState'):
     if not simulator_state.valid:
@@ -50,7 +67,7 @@ class SimulatedSensors:
       simulator_state.velocity.z,
     ]
 
-    for _ in range(10):
+    for _ in range(_GPS_MSGS_PER_TICK):
       dat = messaging.new_message('gpsLocationExternal', valid=True)
       dat.gpsLocationExternal = {
         "unixTimestampMillis": int(time.time() * 1000),  # noqa: TID251
@@ -75,9 +92,9 @@ class SimulatedSensors:
     dat.valid = True
     dat.peripheralState = {
       'pandaType': log.PandaState.PandaType.blackPanda,
-      'voltage': 12000,
-      'current': 5678,
-      'fanSpeedRpm': 1000
+      'voltage': _PERIPHERAL_VOLTAGE_MV,
+      'current': _PERIPHERAL_CURRENT_MA,
+      'fanSpeedRpm': _PERIPHERAL_FAN_RPM
     }
     self.pm.send('peripheralState', dat)
 
@@ -117,6 +134,6 @@ class SimulatedSensors:
       self.send_fake_driver_monitoring()
       self.last_dmon_update = now
 
-    if (now - self.last_perp_update) > 0.25:
+    if (now - self.last_perp_update) > _PERIPHERAL_INTERVAL_SECS:
       self.send_peripheral_state()
       self.last_perp_update = now

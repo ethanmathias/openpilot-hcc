@@ -20,7 +20,7 @@ import argparse
 import os
 import sys
 
-from openpilot.tools.sim.run_bridge import create_bridge
+from openpilot.tools.sim.run_bridge import create_bridge, run_input_poll
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -47,17 +47,8 @@ def main(argv: list[str] | None = None) -> int:
     devices_toml=args.devices_toml, raw_yuv=args.raw_yuv, with_lead=args.lead,
   )
 
-  if args.keyboard:
-    from openpilot.tools.sim.lib.keyboard_ctrl import keyboard_poll_thread
-    keyboard_poll_thread(queue)
-  else:
-    try:
-      from openpilot.tools.sim.lib.logitech_wheel_ctrl import logitech_wheel_poll_thread
-      logitech_wheel_poll_thread(queue, device_path=args.wheel_device, publish_hz=args.wheel_hz)
-    except RuntimeError as err:
-      print(f"[launch_pc] wheel unavailable: {err}; falling back to keyboard")
-      from openpilot.tools.sim.lib.keyboard_ctrl import keyboard_poll_thread
-      keyboard_poll_thread(queue)
+  run_input_poll(queue, use_keyboard=args.keyboard,
+                 wheel_device=args.wheel_device, wheel_hz=args.wheel_hz)
 
   simulator_bridge.shutdown()
   simulator_process.join()

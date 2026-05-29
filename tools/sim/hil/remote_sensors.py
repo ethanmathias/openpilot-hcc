@@ -31,38 +31,57 @@ if TYPE_CHECKING:
   from openpilot.tools.sim.lib.common import SimulatorState, World
 
 
+# How many duplicate messages to publish per tick. locationd expects IMU at
+# ~500 Hz but the bridge ticks at 100 Hz, so we send batches to fill the gap.
+_IMU_MSGS_PER_TICK = 5
+_GPS_MSGS_PER_TICK = 10
+
+# BMI088 sensor IDs matching the values openpilot's sensord uses on TICI
+_ACCEL_SENSOR_ID = 4
+_GYRO_SENSOR_ID = 5
+_IMU_SENSOR_TYPE = 0x10  # SENSOR_TYPE_ACCELEROMETER / GYRO_UNCALIBRATED
+
+# Simulated peripheral hardware values (safe constants for panda health check)
+_PERIPHERAL_VOLTAGE_MV = 12000
+_PERIPHERAL_CURRENT_MA = 5678
+_PERIPHERAL_FAN_RPM = 1000
+
+# Rate-limiting intervals for low-frequency publishers
+_PERIPHERAL_INTERVAL_SECS = 0.25
+
+
 class RemoteSensors:
   def __init__(self, device_ip: str, dual_camera: bool = True, raw_yuv: bool = False):
     self.dual_camera = dual_camera
     self.pm = messaging.PubMaster(['accelerometer', 'gyroscope', 'gpsLocationExternal', 'driverStateV2', 'driverMonitoringState', 'peripheralState'])
     self.road_encoder = RemoteCameraEncoder(device_ip, proto.StreamId.ROAD, raw_yuv=raw_yuv)
     self.wide_encoder = RemoteCameraEncoder(device_ip, proto.StreamId.WIDE_ROAD, raw_yuv=raw_yuv) if dual_camera else None
-    self._last_perp = 0.0
-    self._last_dmon = 0.0
+    self._last_peripheral_send = 0.0
+    self._last_dmon_send = 0.0
+
+  def _send_imu_message(self, service: str, sensor_id: int, field_name: str, sub_field: str, values: list[float]) -> None:
+    """Build and publish one accelerometer or gyroscope cereal message."""
+    dat = messaging.new_message(service, valid=True)
+    msg = getattr(dat, service)
+    msg.sensor = sensor_id
+    msg.type = _IMU_SENSOR_TYPE
+    msg.timestamp = dat.logMonoTime
+    msg.init(sub_field)
+    getattr(msg, sub_field).v = values
+    self.pm.send(service, dat)
 
   def send_imu(self, s: SimulatorState) -> None:
-    for _ in range(5):
-      dat = messaging.new_message('accelerometer', valid=True)
-      dat.accelerometer.sensor = 4
-      dat.accelerometer.type = 0x10
-      dat.accelerometer.timestamp = dat.logMonoTime
-      dat.accelerometer.init('acceleration')
-      dat.accelerometer.acceleration.v = [s.imu.accelerometer.x, s.imu.accelerometer.y, s.imu.accelerometer.z]
-      self.pm.send('accelerometer', dat)
-
-      dat = messaging.new_message('gyroscope', valid=True)
-      dat.gyroscope.sensor = 5
-      dat.gyroscope.type = 0x10
-      dat.gyroscope.timestamp = dat.logMonoTime
-      dat.gyroscope.init('gyroUncalibrated')
-      dat.gyroscope.gyroUncalibrated.v = [s.imu.gyroscope.x, s.imu.gyroscope.y, s.imu.gyroscope.z]
-      self.pm.send('gyroscope', dat)
+    for _ in range(_IMU_MSGS_PER_TICK):
+      self._send_imu_message('accelerometer', _ACCEL_SENSOR_ID, 'accelerometer', 'acceleration',
+                             [s.imu.accelerometer.x, s.imu.accelerometer.y, s.imu.accelerometer.z])
+      self._send_imu_message('gyroscope', _GYRO_SENSOR_ID, 'gyroscope', 'gyroUncalibrated',
+                             [s.imu.gyroscope.x, s.imu.gyroscope.y, s.imu.gyroscope.z])
 
   def send_gps(self, s: SimulatorState) -> None:
     if not s.valid:
       return
     velNED = [-s.velocity.y, s.velocity.x, s.velocity.z]
-    for _ in range(10):
+    for _ in range(_GPS_MSGS_PER_TICK):
       dat = messaging.new_message('gpsLocationExternal', valid=True)
       dat.gpsLocationExternal = {
         "unixTimestampMillis": int(time.monotonic() * 1000),
@@ -86,9 +105,9 @@ class RemoteSensors:
     dat.valid = True
     dat.peripheralState = {
       'pandaType': log.PandaState.PandaType.blackPanda,
-      'voltage': 12000,
-      'current': 5678,
-      'fanSpeedRpm': 1000,
+      'voltage': _PERIPHERAL_VOLTAGE_MV,
+      'current': _PERIPHERAL_CURRENT_MA,
+      'fanSpeedRpm': _PERIPHERAL_FAN_RPM,
     }
     self.pm.send('peripheralState', dat)
 
@@ -114,12 +133,14 @@ class RemoteSensors:
     now = time.monotonic()
     self.send_imu(s)
     self.send_gps(s)
-    if (now - self._last_dmon) > DT_DMON / 2:
+    # dmon runs at half the normal dmon rate — device-side dmonitoringd doesn't
+    # need real camera data in HIL, just a heartbeat to stay non-distracted.
+    if (now - self._last_dmon_send) > DT_DMON / 2:
       self.send_dmon()
-      self._last_dmon = now
-    if (now - self._last_perp) > 0.25:
+      self._last_dmon_send = now
+    if (now - self._last_peripheral_send) > _PERIPHERAL_INTERVAL_SECS:
       self.send_peripheral()
-      self._last_perp = now
+      self._last_peripheral_send = now
 
   def close(self) -> None:
     self.road_encoder.close()

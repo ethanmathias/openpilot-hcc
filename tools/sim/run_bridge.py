@@ -22,7 +22,6 @@ def _resolve_scn_csv_path(scn_csv: str | None) -> str | None:
   candidate_paths = [
     os.path.join(sim_dir, "lib", "Scenarios.csv"),
     os.path.join(sim_dir, "bridge", "lib", "Scenarios.csv"),
-    os.path.expanduser("~/Downloads/hc3-manual-code/scn/Scenarios.csv"),
   ]
   for path in candidate_paths:
     if os.path.isfile(path):
@@ -107,6 +106,36 @@ def parse_args(add_args=None):
 
   return parser.parse_args(add_args)
 
+
+def run_input_poll(queue, *, use_keyboard: bool = False, use_joystick: bool = False,
+                   require_wheel: bool = False, wheel_device: str | None = None,
+                   wheel_hz: float = 100.0) -> None:
+  """Start the blocking input-poll thread. Tries Logitech wheel first unless
+  keyboard or joystick is explicitly requested. Falls back to keyboard if the
+  wheel is unavailable and not explicitly required."""
+  if use_joystick:
+    from openpilot.tools.sim.lib.manual_ctrl import wheel_poll_thread
+    wheel_poll_thread(queue)
+    return
+
+  if use_keyboard:
+    from openpilot.tools.sim.lib.keyboard_ctrl import keyboard_poll_thread
+    keyboard_poll_thread(queue)
+    return
+
+  # Default: try wheel, fall back to keyboard
+  try:
+    from openpilot.tools.sim.lib.logitech_wheel_ctrl import logitech_wheel_poll_thread
+    logitech_wheel_poll_thread(queue, device_path=wheel_device, publish_hz=wheel_hz)
+  except RuntimeError as err:
+    if require_wheel:
+      raise
+    print(f"[logitech] {err}")
+    print("[logitech] Falling back to keyboard input. Use --keyboard to skip wheel autodetect.")
+    from openpilot.tools.sim.lib.keyboard_ctrl import keyboard_poll_thread
+    keyboard_poll_thread(queue)
+
+
 if __name__ == "__main__":
   args = parse_args()
 
@@ -117,32 +146,9 @@ if __name__ == "__main__":
                                                              devices_toml=args.devices_toml, raw_yuv=args.raw_yuv,
                                                              with_lead=args.lead)
 
-  use_logitech_wheel = not args.keyboard and not args.joystick
-  if args.logitech_wheel:
-    use_logitech_wheel = True
-
-  if use_logitech_wheel:
-    try:
-      from openpilot.tools.sim.lib.logitech_wheel_ctrl import logitech_wheel_poll_thread
-      logitech_wheel_poll_thread(queue, device_path=args.wheel_device, publish_hz=args.wheel_hz)
-    except RuntimeError as err:
-      if args.logitech_wheel:
-        raise
-
-      print(f"[logitech] {err}")
-      print("[logitech] Falling back to keyboard input. Use --keyboard to skip wheel autodetect.")
-      from openpilot.tools.sim.lib.keyboard_ctrl import keyboard_poll_thread
-      keyboard_poll_thread(queue)
-  elif args.joystick:
-    # start input poll for joystick
-    from openpilot.tools.sim.lib.manual_ctrl import wheel_poll_thread
-
-    wheel_poll_thread(queue)
-  else:
-    # start input poll for keyboard
-    from openpilot.tools.sim.lib.keyboard_ctrl import keyboard_poll_thread
-
-    keyboard_poll_thread(queue)
+  run_input_poll(queue, use_keyboard=args.keyboard, use_joystick=args.joystick,
+                 require_wheel=args.logitech_wheel, wheel_device=args.wheel_device,
+                 wheel_hz=args.wheel_hz)
 
   simulator_bridge.shutdown()
 

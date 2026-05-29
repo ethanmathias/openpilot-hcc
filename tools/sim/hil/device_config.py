@@ -66,11 +66,13 @@ def discover_device_ip(iface: str) -> str | None:
     return None
   for entry in data:
     for ai in entry.get("addr_info", []):
-      peer = ai.get("address")  # on point-to-point links, "address" is local
+      # On point-to-point links (RNDIS), "local" is the PC side and
+      # "address" is the device side. On broadcast links only "local" exists.
       if "broadcast" not in ai and "local" in ai:
-        return ai.get("address")
-      if peer:
-        return peer
+        return ai.get("local")
+      addr = ai.get("address")
+      if addr:
+        return addr
   return None
 
 

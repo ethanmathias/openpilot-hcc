@@ -14,13 +14,19 @@ import numpy as np
 if TYPE_CHECKING:
   from openpilot.tools.sim.bridge.metadrive.metadrive_world import MetaDriveWorld
 
-
+# Layout: 1600×900 split into a 900×900 top-down pane on the left, and two
+# 700×450 camera POV panes stacked vertically on the right (ego on top, lead
+# below).
 WINDOW_W = 1600
 WINDOW_H = 900
 TOPDOWN_RECT = (0, 0, 900, 900)
 EGO_RECT = (900, 0, 700, 450)
 LEAD_RECT = (900, 450, 700, 450)
 HUD_FONT_SIZE = 18
+
+_PANE_BG_COLOR = (32, 32, 40)
+_HUD_TEXT_COLOR = (220, 220, 220)
+_HUD_TEXT_OFFSET = (8, 8)
 
 
 class HILWindow:
@@ -31,6 +37,8 @@ class HILWindow:
     self._thread: threading.Thread | None = None
     self.ego_telemetry: dict[str, float | str] = {}
     self.lead_telemetry: dict[str, float | str] = {}
+    self._pygame = None
+    self._font = None
 
   def start(self) -> None:
     if self._thread is not None:
@@ -50,10 +58,11 @@ class HILWindow:
       print("[hil-window] pygame not available; window disabled")
       return
 
+    self._pygame = pygame
     pygame.init()
     pygame.display.set_caption(self.title)
     screen = pygame.display.set_mode((WINDOW_W, WINDOW_H))
-    font = pygame.font.SysFont(None, HUD_FONT_SIZE)
+    self._font = pygame.font.SysFont(None, HUD_FONT_SIZE)
     clock = pygame.time.Clock()
 
     while not self._stop.is_set():
@@ -64,20 +73,14 @@ class HILWindow:
           break
 
       screen.fill((0, 0, 0))
-      self._blit_pane(screen, pygame, font, TOPDOWN_RECT, self._safe_image(self.world.topdown_image), "Top-down")
-      self._blit_pane(screen, pygame, font, EGO_RECT, self._safe_image(self.world.road_image), self._hud_text("EGO", self.ego_telemetry))
-      self._blit_pane(screen, pygame, font, LEAD_RECT, self._safe_image(self.world.lead_road_image), self._hud_text("LEAD", self.lead_telemetry))
+      self._blit_pane(screen, TOPDOWN_RECT, self.world.topdown_image, "Top-down")
+      self._blit_pane(screen, EGO_RECT, self.world.road_image, self._hud_text("EGO", self.ego_telemetry))
+      self._blit_pane(screen, LEAD_RECT, self.world.lead_road_image, self._hud_text("LEAD", self.lead_telemetry))
 
       pygame.display.flip()
       clock.tick(20)
 
     pygame.quit()
-
-  @staticmethod
-  def _safe_image(arr: np.ndarray | None) -> np.ndarray | None:
-    if arr is None:
-      return None
-    return arr
 
   @staticmethod
   def _hud_text(label: str, telemetry: dict[str, float | str]) -> str:
@@ -90,20 +93,19 @@ class HILWindow:
         parts.append(f"{key}={v:.2f}" if isinstance(v, (int, float)) else f"{key}={v}")
     return "  ".join(parts)
 
-  @staticmethod
-  def _blit_pane(screen, pygame, font, rect, img: np.ndarray | None, label: str) -> None:
+  def _blit_pane(self, screen, rect: tuple, img: np.ndarray | None, label: str) -> None:
     x, y, w, h = rect
-    pygame.draw.rect(screen, (32, 32, 40), (x, y, w, h))
+    self._pygame.draw.rect(screen, _PANE_BG_COLOR, (x, y, w, h))
     if img is not None and img.size > 0:
       try:
         # pygame surfaces want (W, H, 3); numpy arrays are (H, W, 3).
-        surf = pygame.surfarray.make_surface(img.swapaxes(0, 1))
-        surf = pygame.transform.smoothscale(surf, (w, h))
+        surf = self._pygame.surfarray.make_surface(img.swapaxes(0, 1))
+        surf = self._pygame.transform.smoothscale(surf, (w, h))
         screen.blit(surf, (x, y))
       except Exception:
         pass
-    text = font.render(label, True, (220, 220, 220))
-    screen.blit(text, (x + 8, y + 8))
+    text = self._font.render(label, True, _HUD_TEXT_COLOR)
+    screen.blit(text, (x + _HUD_TEXT_OFFSET[0], y + _HUD_TEXT_OFFSET[1]))
 
 
 def maybe_start_window(world: MetaDriveWorld) -> HILWindow | None:

@@ -15,6 +15,28 @@ SCENARIO_LEAD_LOOP = "lead_loop"
 STRAIGHT_ROAD_SCENARIOS = {SCENARIO_LEAD_LOOP, SCENARIO_HCCC_STEP}
 LEAD_SCENARIOS = {SCENARIO_LEAD_LOOP, SCENARIO_HCCC_STEP}
 
+# Default oval track half-length (number of straight blocks).
+_DEFAULT_TRACK_SIZE = 60
+
+# Curve angle (degrees) for oval track corners.
+_CURVE_ANGLE_DEG = 90
+
+# Total length of each straight segment in the replay/lead-follow map.
+_STRAIGHT_MAP_SEGMENT_LENGTH = 1000
+
+# Lane geometry shared by all map configs.
+_LANE_COUNT = 2
+_LANE_WIDTH_M = 4.5
+
+# How far ahead (metres) the lead vehicle spawns.
+_LEAD_SPAWN_DISTANCE_M = 8.0
+
+# Ratio between openpilot steer command and MetaDrive steer input.
+_STEER_CMD_RATIO = 1.2
+
+# Camera-capture cadence: MetaDrive renders a frame every N simulation ticks.
+_CAMERA_CAPTURE_TICKS = 5
+
 
 
 
@@ -44,32 +66,32 @@ def curve_block(length: float, angle: float = 45, direction: int = 0):
     "dir": direction
   }
 
-def create_map(track_size=60):
+def create_map(track_size=_DEFAULT_TRACK_SIZE):
   """Build a closed-loop map composed of straights and 90-degree curves."""
   curve_len = track_size * 2
   return dict(
     type=MapGenerateMethod.PG_MAP_FILE,
-    lane_num=2,
-    lane_width=4.5,
+    lane_num=_LANE_COUNT,
+    lane_width=_LANE_WIDTH_M,
     config=[
       None,
       straight_block(track_size),
-      curve_block(curve_len, 90),
+      curve_block(curve_len, _CURVE_ANGLE_DEG),
       straight_block(track_size),
-      curve_block(curve_len, 90),
+      curve_block(curve_len, _CURVE_ANGLE_DEG),
       straight_block(track_size),
-      curve_block(curve_len, 90),
+      curve_block(curve_len, _CURVE_ANGLE_DEG),
       straight_block(track_size),
-      curve_block(curve_len, 90),
+      curve_block(curve_len, _CURVE_ANGLE_DEG),
     ]
   )
 
-def create_straight_map(length=1000):
+def create_straight_map(length=_STRAIGHT_MAP_SEGMENT_LENGTH):
   """Build a long straight map used by replay/lead-follow scenarios."""
   return dict(
     type=MapGenerateMethod.PG_MAP_FILE,
-    lane_num=2,
-    lane_width=4.5,
+    lane_num=_LANE_COUNT,
+    lane_width=_LANE_WIDTH_M,
     config=[
       None,
       straight_block(length),
@@ -137,7 +159,7 @@ class MetaDriveBridge(SimulatorBridge):
       arrive_dest_done=False,
       traffic_density=0.0,
       lead_vehicle_enabled=enable_lead_vehicle,
-      lead_vehicle_distance=8.0,
+      lead_vehicle_distance=_LEAD_SPAWN_DISTANCE_M,
       lead_start_delay_s=lead_start_delay_s,
       lead_vehicle_lateral_offset=0.0,
       lead_vehicle_model="m",
@@ -148,9 +170,9 @@ class MetaDriveBridge(SimulatorBridge):
       lead_profile_output_graph=self.output_graph,
       lead_profile_output_control_method=self.output_control_method,
       lead_profile_output_vehicle_name=self.output_vehicle_name,
-      steer_cmd_ratio=1.2,
+      steer_cmd_ratio=_STEER_CMD_RATIO,
       sim_step_frames=self.TICKS_PER_FRAME,
-      camera_capture_frames=5,
+      camera_capture_frames=_CAMERA_CAPTURE_TICKS,
       map_config=map_config,
       decision_repeat=1,
       physics_world_step_size=self.TICKS_PER_FRAME/100,

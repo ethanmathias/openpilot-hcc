@@ -39,11 +39,15 @@ SERVICES_FROM_DEVICE = [
 ]
 
 
+_STOP_TIMEOUT_SECS = 2.0
+
+
 @dataclass
 class BridgePair:
   prefix: str
   device_ip: str
   procs: list[subprocess.Popen]
+  _log_files: list = None  # opened log file handles; closed on stop()
 
   def stop(self) -> None:
     for p in self.procs:
@@ -53,9 +57,13 @@ class BridgePair:
         pass
     for p in self.procs:
       try:
-        p.wait(timeout=2.0)
+        p.wait(timeout=_STOP_TIMEOUT_SECS)
       except subprocess.TimeoutExpired:
         p.kill()
+    if self._log_files:
+      for f in self._log_files:
+        f.close()
+      self._log_files = None
 
 
 def _bridge_binary() -> str:
@@ -73,14 +81,15 @@ def spawn(prefix: str, device_ip: str, log_dir: str = "/tmp") -> BridgePair:
   env["OPENPILOT_PREFIX"] = prefix
 
   whitelist = " ".join(SERVICES_FROM_DEVICE)
-  out_to_dev = open(os.path.join(log_dir, f"hil_bridge_{prefix}_msgq_to_zmq.log"), "ab")
-  in_from_dev = open(os.path.join(log_dir, f"hil_bridge_{prefix}_zmq_to_msgq.log"), "ab")
+  log_to_dev = open(os.path.join(log_dir, f"hil_bridge_{prefix}_msgq_to_zmq.log"), "ab")
+  log_from_dev = open(os.path.join(log_dir, f"hil_bridge_{prefix}_zmq_to_msgq.log"), "ab")
 
   procs = [
-    subprocess.Popen([binary], env=env, stdout=out_to_dev, stderr=subprocess.STDOUT),
-    subprocess.Popen([binary, device_ip, whitelist], env=env, stdout=in_from_dev, stderr=subprocess.STDOUT),
+    subprocess.Popen([binary], env=env, stdout=log_to_dev, stderr=subprocess.STDOUT),
+    subprocess.Popen([binary, device_ip, whitelist], env=env, stdout=log_from_dev, stderr=subprocess.STDOUT),
   ]
-  return BridgePair(prefix=prefix, device_ip=device_ip, procs=procs)
+  return BridgePair(prefix=prefix, device_ip=device_ip, procs=procs,
+                    _log_files=[log_to_dev, log_from_dev])
 
 
 def main() -> int:

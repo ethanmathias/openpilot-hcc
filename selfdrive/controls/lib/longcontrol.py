@@ -7,7 +7,7 @@ from openpilot.common.params import Params
 from openpilot.common.realtime import DT_CTRL
 from openpilot.common.swaglog import cloudlog
 from openpilot.selfdrive.controls.lib.drive_helpers import CONTROL_N
-from openpilot.selfdrive.controls.lib.hccc_controller import hCCC
+from openpilot.selfdrive.controls.lib.hccc_controller import HCCC
 from openpilot.selfdrive.controls.lib.hcc_v2v import ROLE_EGO, V2VLeadSignal, V2VLeadSubscriber, load_v2v_config
 from openpilot.selfdrive.modeld.constants import ModelConstants
 
@@ -115,19 +115,13 @@ class LongControl:
       self.v2v_subscriber.start()
     self.latest_v2v_signal = V2VLeadSignal(status=False)
     self.debug_planner_accel = 0.0
-    self.debug_hccc_accel = 0.0
-    self.debug_manual_accel = 0.0
-    self.debug_output_accel = 0.0
-    self.debug_hccc_active = False
-    self.debug_hccc_lead_speed = 0.0
-    self.debug_hccc_lead_accel = 0.0
-    self.debug_hccc_feedforward = 0.0
     self.debug_v2v_mode = V2V_MODE_MANUAL_ONLY
     self.debug_v2v_transport_ok = True
     self.debug_v2v_receive_age_ms = float("inf")
+    self._reset_debug_state()
     self._refresh_hccc(force_reset=True)
 
-  def reset(self):
+  def _reset_debug_state(self):
     self.debug_hccc_accel = 0.0
     self.debug_manual_accel = 0.0
     self.debug_output_accel = 0.0
@@ -135,6 +129,9 @@ class LongControl:
     self.debug_hccc_lead_speed = 0.0
     self.debug_hccc_lead_accel = 0.0
     self.debug_hccc_feedforward = 0.0
+
+  def reset(self):
+    self._reset_debug_state()
     self._refresh_hccc(force_reset=True)
 
   def _hccc_enabled(self):
@@ -156,7 +153,7 @@ class LongControl:
     if not enabled:
       self.hccc = None
     elif self.hccc is None or force_reset:
-      self.hccc = hCCC(dt=DT_CTRL, max_deceleration=self.CP.stopAccel, max_acceleration=max(self.CP.startAccel, 1.6))
+      self.hccc = HCCC(dt=DT_CTRL, max_deceleration=self.CP.stopAccel, max_acceleration=max(self.CP.startAccel, 1.6))
     self.use_hccc = enabled
 
   def _set_v2v_mode(self, mode: str, signal: V2VLeadSignal, transport_ok: bool):
@@ -218,8 +215,7 @@ class LongControl:
     controller_accel = 0.0
     hccc_output = None
     if self.use_hccc and self.hccc is not None:
-      self.hccc._max_decel = accel_min
-      self.hccc._max_accl = accel_max
+      self.hccc.set_accel_limits(accel_min, accel_max)
       radar_lead = None if self._v2v_only_enabled() else lead
       v2v_input = active_v2v_lead if self.v2v_enabled() else None
       hccc_output = self.hccc.run_step(CS, radar_lead, v2v_lead=v2v_input)

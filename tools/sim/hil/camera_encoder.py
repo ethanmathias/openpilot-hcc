@@ -29,7 +29,11 @@ _CODEC_OPTIONS = {
   "profile": "baseline",
 }
 _GOP = 20
-_BITRATE = 8_000_000
+_BITRATE = 8_000_000  # ~8 Mbit/s per stream; combined road+wide stays under USB-RNDIS headroom
+
+# ZMQ socket high-water mark: caps the send queue to avoid unbounded memory
+# growth when the device decoder can't keep up. 4 frames ≈ 200 ms at 20 fps.
+_ZMQ_HWM = 4
 
 
 class RemoteCameraEncoder:
@@ -41,7 +45,7 @@ class RemoteCameraEncoder:
     self.frame_id = 0
     self._ctx = zmq.Context.instance()
     self._sock = self._ctx.socket(zmq.PUSH)
-    self._sock.setsockopt(zmq.SNDHWM, 4)
+    self._sock.setsockopt(zmq.SNDHWM, _ZMQ_HWM)
     self._sock.setsockopt(zmq.LINGER, 0)
     self._sock.connect(f"tcp://{device_ip}:{proto.PORT_BY_STREAM[stream_id]}")
 
@@ -71,6 +75,14 @@ class RemoteCameraEncoder:
       self._send_encoded(rgb, ts_ns)
     self.frame_id += 1
 
+  def _send_packets(self, packets, ts_ns: int) -> None:
+    """Ship a list of av.Packet objects over ZMQ with proto framing."""
+    for pkt in packets:
+      payload = bytes(pkt)
+      flags = proto.FrameFlags.KEYFRAME if pkt.is_keyframe else proto.FrameFlags.NONE
+      header = proto.FrameHeader(self.stream_id, self.frame_id, ts_ns, flags, len(payload))
+      self._sock.send(proto.encode_message(header, payload))
+
   def _send_encoded(self, rgb: np.ndarray, ts_ns: int) -> None:
     import av
     frame = av.VideoFrame.from_ndarray(rgb, format="rgb24")
@@ -78,19 +90,15 @@ class RemoteCameraEncoder:
     packets = list(self._codec.encode(frame))
 
     # extradata is populated by the encoder lazily, after the first encode().
-    # Decoder must see it before any frame packet; emit it as a special keyframe-flagged
-    # message the very first time we have it.
+    # Decoder must see it before any frame packet; emit it as a special
+    # keyframe-flagged message the very first time we have it.
     if not self._extradata_sent and self._codec.extradata:
       ed = bytes(self._codec.extradata)
       header = proto.FrameHeader(self.stream_id, self.frame_id, ts_ns, proto.FrameFlags.EXTRADATA | proto.FrameFlags.KEYFRAME, len(ed))
       self._sock.send(proto.encode_message(header, ed))
       self._extradata_sent = True
 
-    for pkt in packets:
-      payload = bytes(pkt)
-      flags = proto.FrameFlags.KEYFRAME if pkt.is_keyframe else proto.FrameFlags.NONE
-      header = proto.FrameHeader(self.stream_id, self.frame_id, ts_ns, flags, len(payload))
-      self._sock.send(proto.encode_message(header, payload))
+    self._send_packets(packets, ts_ns)
 
   def _send_raw_nv12(self, rgb: np.ndarray, ts_ns: int) -> None:
     nv12 = _rgb_to_nv12(rgb)
@@ -100,11 +108,7 @@ class RemoteCameraEncoder:
   def close(self) -> None:
     if self._codec is not None:
       try:
-        for pkt in self._codec.encode(None):
-          payload = bytes(pkt)
-          flags = proto.FrameFlags.KEYFRAME if pkt.is_keyframe else proto.FrameFlags.NONE
-          header = proto.FrameHeader(self.stream_id, self.frame_id, time.monotonic_ns(), flags, len(payload))
-          self._sock.send(proto.encode_message(header, payload))
+        self._send_packets(self._codec.encode(None), time.monotonic_ns())
       except Exception:
         pass
     self._sock.close(linger=0)
@@ -116,6 +120,7 @@ def _rgb_to_nv12(rgb: np.ndarray) -> np.ndarray:
   r = rgb[..., 0].astype(np.int32)
   g = rgb[..., 1].astype(np.int32)
   b = rgb[..., 2].astype(np.int32)
+  # BT.601 fixed-point integer coefficients (SDTV full-range)
   y = ((66 * r + 129 * g + 25 * b + 128) >> 8) + 16
   u = ((-38 * r - 74 * g + 112 * b + 128) >> 8) + 128
   v = ((112 * r - 94 * g - 18 * b + 128) >> 8) + 128

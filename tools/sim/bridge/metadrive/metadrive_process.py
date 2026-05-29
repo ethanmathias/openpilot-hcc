@@ -31,6 +31,24 @@ EGO_LANE_LOOKAHEAD_M = 6.0
 HCCC_PARITY_DT_S = 0.1
 HCCC_PARITY_BETA = 0.65
 
+# Approximate ego vehicle bumper-to-bumper length (metres) used to convert
+# centre-to-centre dRel into a net gap (headway) for CSV output.
+_VEHICLE_LENGTH_M = 4.5
+
+# Effectively unlimited speed cap so MetaDrive never clamps ego velocity.
+_MAX_SPEED_KMH = 1000
+
+# Lane-centering steering PD gains for the lead vehicle controller.
+_LANE_STEER_HEADING_GAIN = 1.2
+_LANE_STEER_LATERAL_GAIN = 0.18
+
+# Steering P-gain for the ego-lane fallback (lead tracks ego's lane when its
+# own lane reference is unavailable).
+_EGO_LANE_FALLBACK_HEADING_GAIN = 1.8
+
+# Speed-tracking P-gain for profile fallback when pose-replay fails.
+_SPEED_TRACKING_P_GAIN = 0.35
+
 # IPC message payloads shared with MetaDriveWorld.
 metadrive_simulation_state = namedtuple("metadrive_simulation_state", ["running", "done", "done_info"])
 metadrive_vehicle_state = namedtuple(
@@ -417,7 +435,7 @@ def _lane_center_steer(vehicle, lane) -> float | None:
 
     lane_heading = float(math.atan2(lane_tangent[1], lane_tangent[0]))
     heading_error = _wrap_to_pi(lane_heading - float(vehicle.heading_theta))
-    return float(np.clip(1.2 * heading_error - 0.18 * float(lane_lateral_offset), -1.0, 1.0))
+    return float(np.clip(_LANE_STEER_HEADING_GAIN * heading_error - _LANE_STEER_LATERAL_GAIN * float(lane_lateral_offset), -1.0, 1.0))
   except Exception:
     return None
 
@@ -439,7 +457,7 @@ def _ego_lane_fallback_steer(lead_vehicle, ego_vehicle, lead_distance_m: float) 
 
     desired_heading = float(math.atan2(lead_to_target_vec[1], lead_to_target_vec[0]))
     heading_error = _wrap_to_pi(desired_heading - float(lead_vehicle.heading_theta))
-    return float(np.clip(1.8 * heading_error, -1.0, 1.0))
+    return float(np.clip(_EGO_LANE_FALLBACK_HEADING_GAIN * heading_error, -1.0, 1.0))
   except Exception:
     return None
 
@@ -636,7 +654,7 @@ def _update_lead_vehicle(env: MetaDriveEnv, lead_cfg: LeadConfig, lead_state: Le
       target_speed_mps = _profile_interp_speed(lead_state, elapsed_s - lead_cfg.start_delay_s)
       lead_state.target_speed_mps = float(target_speed_mps)
       current_speed_mps = _planar_speed(lead_state.vehicle.velocity)
-      longitudinal_command = float(np.clip((target_speed_mps - current_speed_mps) * 0.35, -1.0, 1.0))
+      longitudinal_command = float(np.clip((target_speed_mps - current_speed_mps) * _SPEED_TRACKING_P_GAIN, -1.0, 1.0))
       lane_steer = _lane_center_steer(lead_state.vehicle, getattr(lead_state.vehicle, "lane", None))
       if lane_steer is None:
         lane_steer = _ego_lane_fallback_steer(lead_state.vehicle, env.vehicle, lead_cfg.distance_m)
@@ -1020,7 +1038,7 @@ def metadrive_process(
     """Reset env and lead-vehicle state while keeping bridge worker alive."""
     _clear_lead_vehicle(env, lead_state)
     env.reset()
-    env.vehicle.config["max_speed_km_h"] = 1000
+    env.vehicle.config["max_speed_km_h"] = _MAX_SPEED_KMH
     lead_state.measurement = _lead_measurement(False)
     lead_state.prev_v_rel = 0.0
     _spawn_lead_vehicle(env, lead_cfg, lead_state)
@@ -1147,7 +1165,7 @@ def metadrive_process(
         lead_d_rel = float(lead_measurement["d_rel"]) if lead_measurement["status"] else ""
         lead_v_rel = float(lead_measurement["v_rel"]) if lead_measurement["status"] else ""
         lead_a_rel = float(lead_measurement["a_rel"]) if lead_measurement["status"] else ""
-        headway_m = (float(lead_measurement["d_rel"]) - 4.5) if lead_measurement["status"] else ""
+        headway_m = (float(lead_measurement["d_rel"]) - _VEHICLE_LENGTH_M) if lead_measurement["status"] else ""
         deltav_mps = float(ego_speed_mps - lead_speed_mps) if lead_state.vehicle is not None else ""
 
         engine_long_cmd = float(getattr(env.vehicle, "throttle_brake", ego_control[1]))

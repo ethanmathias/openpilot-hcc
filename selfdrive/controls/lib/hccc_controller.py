@@ -2,25 +2,36 @@ import numpy as np
 
 from openpilot.selfdrive.controls.lib.hcc_v2v import V2VLeadSignal
 
-# HCCC_CHANGE_NOTE: standalone hCCC implementation used by longcontrol and dedicated tests.
+# Final acceleration command is scaled by this factor after the beta * speed_error +
+# feedforward computation.  Empirically tuned to avoid overshoot in the sim.
+_ACCEL_OUTPUT_SCALE = 0.6
 
-class hCCC:
+# Time constant (seconds) for the first-order feedforward low-pass filter.
+_FEEDFORWARD_TIME_CONSTANT_S = 1.0
+
+
+class HCCC:
   """Human-in-the-Loop Cooperative Cruise Control (hCCC) for OpenPilot."""
 
   def __init__(self, dt=0.1, t_h=1.5, beta=0.65, max_deceleration=-3.0,
-               max_acceleration=3.0, jam=0.0):
+               max_acceleration=3.0):
     self._dt = dt
     self._t_h = t_h
     self._beta = beta
     self._max_decel = max_deceleration
     self._max_accl = max_acceleration
-    self._jam = jam
 
-    # Keep only scalar state needed for the controller update. So that infinite memory is not needed for the feedforward filter.
+    # Scalar state for the feedforward filter (avoids needing full history).
     self._prev_lead_speed = None
-    self.ff_y_prev = 0.0
-    # These debug fields are exported through the simulator logging path so we
-    # can compare the live controller inputs and outputs against replay traces.
+    self._feedforward_state = 0.0
+    # Debug fields exported through the simulator logging path for comparing
+    # live controller inputs/outputs against replay traces.
+    self.debug_lead_speed = 0.0
+    self.debug_lead_accel = 0.0
+    self.debug_feedforward = 0.0
+    self.debug_output = 0.0
+
+  def _reset_debug_state(self):
     self.debug_lead_speed = 0.0
     self.debug_lead_accel = 0.0
     self.debug_feedforward = 0.0
@@ -28,18 +39,21 @@ class hCCC:
 
   def reset(self):
     self._prev_lead_speed = None
-    self.ff_y_prev = 0.0
-    self.debug_lead_speed = 0.0
-    self.debug_lead_accel = 0.0
-    self.debug_feedforward = 0.0
-    self.debug_output = 0.0
+    self._feedforward_state = 0.0
+    self._reset_debug_state()
 
-  def feedforward_no_delay(self, a_lead):
-    """Apply the same feedforward filter used in the BeamNG version."""
-    th_bar = 1.0
-    y = self.ff_y_prev + (self._dt / th_bar) * ((1 - th_bar * self._beta) * a_lead - self.ff_y_prev)
-    self.ff_y_prev = y
-    return y
+  def set_accel_limits(self, max_decel: float, max_accel: float):
+    """Update the acceleration clamp bounds (called by longcontrol each tick)."""
+    self._max_decel = max_decel
+    self._max_accl = max_accel
+
+  def _feedforward_no_delay(self, a_lead: float) -> float:
+    """First-order low-pass feedforward filter (matches the BeamNG version)."""
+    tau = _FEEDFORWARD_TIME_CONSTANT_S
+    self._feedforward_state += (self._dt / tau) * (
+      (1 - tau * self._beta) * a_lead - self._feedforward_state
+    )
+    return self._feedforward_state
 
   # Keep a small amount of internal state so replay logging can reconstruct the
   # lead-speed and feedforward terms that drive the HC3 command.
@@ -69,11 +83,12 @@ class hCCC:
 
     self._prev_lead_speed = lead_speed
 
-    feedforward_state = self.feedforward_no_delay(pre_accl_current)
-    accl_command = (self._beta * (lead_speed - ego_speed) + feedforward_state) * 0.6
+    feedforward = self._feedforward_no_delay(pre_accl_current)
+    speed_error = lead_speed - ego_speed
+    accl_command = (self._beta * speed_error + feedforward) * _ACCEL_OUTPUT_SCALE
     self.debug_lead_speed = float(lead_speed)
     self.debug_lead_accel = float(pre_accl_current)
-    self.debug_feedforward = float(feedforward_state)
+    self.debug_feedforward = float(feedforward)
     self.debug_output = float(accl_command)
 
     accl_command = np.clip(accl_command, self._max_decel, self._max_accl)

@@ -24,6 +24,13 @@ from msgq.visionipc import VisionIpcServer, VisionStreamType
 from openpilot.tools.sim.hil import proto
 from openpilot.tools.sim.lib.common import H, W
 
+# ZMQ socket high-water mark: caps the recv queue so back-pressure discards
+# stale frames rather than buffering unboundedly. Matches the encoder side.
+_ZMQ_HWM = 4
+
+# Number of VisionIPC shared-memory buffers per stream. Consumers (modeld)
+# hold one while processing, so we need a few extras for the producer.
+_VIPC_BUFFER_COUNT = 5
 
 _VST_BY_STREAM = {
   proto.StreamId.ROAD: VisionStreamType.VISION_STREAM_ROAD,
@@ -38,14 +45,14 @@ def _stream_worker(stream_id: proto.StreamId, vipc_server: VisionIpcServer, widt
   port = proto.PORT_BY_STREAM[stream_id]
   ctx = zmq.Context.instance()
   sock = ctx.socket(zmq.PULL)
-  sock.setsockopt(zmq.RCVHWM, 4)
+  sock.setsockopt(zmq.RCVHWM, _ZMQ_HWM)
   sock.setsockopt(zmq.LINGER, 0)
   sock.bind(f"tcp://0.0.0.0:{port}")
 
   vst = _VST_BY_STREAM[stream_id]
   codec = av.CodecContext.create("h264", "r")
-  seen_iframe = False
-  cnt = 0
+  seen_extradata = False
+  frame_count = 0
 
   while True:
     msg = sock.recv()
@@ -54,8 +61,8 @@ def _stream_worker(stream_id: proto.StreamId, vipc_server: VisionIpcServer, widt
     # Raw NV12 fast-path: bring-up only.
     if header.flags & proto.FrameFlags.RAW_YUV:
       ts = int(time.monotonic() * 1e9)
-      vipc_server.send(vst, np.frombuffer(payload, dtype=np.uint8).data, cnt, ts, ts)
-      cnt += 1
+      vipc_server.send(vst, np.frombuffer(payload, dtype=np.uint8).data, frame_count, ts, ts)
+      frame_count += 1
       continue
 
     # Codec extradata: feed once as the codec header, then continue.
@@ -64,14 +71,14 @@ def _stream_worker(stream_id: proto.StreamId, vipc_server: VisionIpcServer, widt
         codec.decode(av.packet.Packet(payload))
       except av.AVError:
         pass
-      seen_iframe = True
+      seen_extradata = True
       continue
 
     # Wait for the first IDR before forwarding anything.
-    if not seen_iframe:
+    if not seen_extradata:
       if not (header.flags & proto.FrameFlags.KEYFRAME):
         continue
-      seen_iframe = True
+      seen_extradata = True
 
     try:
       frames = codec.decode(av.packet.Packet(payload))
@@ -88,8 +95,8 @@ def _stream_worker(stream_id: proto.StreamId, vipc_server: VisionIpcServer, widt
     nv12 = np.concatenate([y, uv])
 
     ts = int(time.monotonic() * 1e9)
-    vipc_server.send(vst, nv12.data, cnt, header.ts_ns or ts, ts)
-    cnt += 1
+    vipc_server.send(vst, nv12.data, frame_count, header.ts_ns or ts, ts)
+    frame_count += 1
 
 
 def main() -> int:
@@ -100,9 +107,9 @@ def main() -> int:
   dual_camera = os.getenv("HIL_DUAL_CAMERA", "1") == "1"
 
   vipc_server = VisionIpcServer("camerad")
-  vipc_server.create_buffers(VisionStreamType.VISION_STREAM_ROAD, 5, W, H)
+  vipc_server.create_buffers(VisionStreamType.VISION_STREAM_ROAD, _VIPC_BUFFER_COUNT, W, H)
   if dual_camera:
-    vipc_server.create_buffers(VisionStreamType.VISION_STREAM_WIDE_ROAD, 5, W, H)
+    vipc_server.create_buffers(VisionStreamType.VISION_STREAM_WIDE_ROAD, _VIPC_BUFFER_COUNT, W, H)
   vipc_server.start_listener()
 
   procs = []

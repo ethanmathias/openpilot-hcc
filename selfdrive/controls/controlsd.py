@@ -95,18 +95,14 @@ class Controls:
 
     # Check which actuators can be enabled
     standstill = abs(CS.vEgo) <= max(self.CP.minSteerSpeed, 0.3) or CS.standstill
-    # CC.latActive = self.sm['selfdriveState'].active and not CS.steerFaultTemporary and not CS.steerFaultPermanent and \
-    #                (not standstill or self.CP.steerAtStandstill)
     # Manual-steering mode: keep longitudinal automation, disable all lateral actuation.
     CC.latActive = False
     # HCCC_CHANGE_NOTE: on-road longActive can be enabled via the EnableHCCC toggle.
-    cp_hccc_flag = getattr(self.CP, "enableHCCC", None)
-    hccc_enabled = cp_hccc_flag if cp_hccc_flag is not None else self.params.get_bool("EnableHCCC")
     v2v_lead = self.LoC.v2v_snapshot() if self.LoC.v2v_enabled() else None
     v2v_longitudinal_ok = self.LoC.v2v_longitudinal_ok(v2v_lead)
     longitudinal_input_ok = True if self.LoC.v2v_only_enabled() else v2v_longitudinal_ok
     CC.longActive = CC.enabled and not any(e.overrideLongitudinal for e in self.sm['onroadEvents']) and \
-                    (self.CP.openpilotLongitudinalControl or hccc_enabled) and longitudinal_input_ok
+                    (self.CP.openpilotLongitudinalControl or self.LoC.use_hccc) and longitudinal_input_ok
 
     actuators = CC.actuators
     actuators.longControlState = self.LoC.long_control_state

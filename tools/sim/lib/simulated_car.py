@@ -8,6 +8,21 @@ from openpilot.common.params import Params
 from openpilot.selfdrive.pandad.pandad_api_impl import can_list_to_can_capnp
 from openpilot.tools.sim.lib.common import SimulatorState
 
+# CAN counter wraps at this modulus (Honda uses 2-bit counters).
+_CAN_COUNTER_MOD = 4
+
+# Metres-per-second to kilometres-per-hour.
+_MPS_TO_KPH = 3.6
+
+# Honda automatic gearbox "Drive" gear position value.
+_GEAR_DRIVE = 4
+
+# Speed threshold (m/s) below which WHEELS_MOVING is cleared.
+_STANDSTILL_SPEED_MPS = 1.0
+
+# Panda state is sent at 10 Hz (every 10th tick of the 100 Hz loop).
+_PANDA_STATE_DIVIDER = 10
+
 
 class SimulatedCar:
   """Simulates a honda civic 2022 (panda state + can messages) to OpenPilot"""
@@ -31,11 +46,11 @@ class SimulatedCar:
       return
 
     msg = []
-    counter = self.idx % 4
+    counter = self.idx % _CAN_COUNTER_MOD
 
     # *** powertrain bus ***
 
-    speed = simulator_state.speed * 3.6 # convert m/s to kph
+    speed = simulator_state.speed * _MPS_TO_KPH
     msg.append(self.packer.make_can_msg("ENGINE_DATA", 0, {"XMISSION_SPEED": speed, "COUNTER": counter}))
     msg.append(self.packer.make_can_msg("WHEEL_SPEEDS", 0, {
       "WHEEL_SPEED_FL": speed,
@@ -46,13 +61,13 @@ class SimulatedCar:
 
     msg.append(self.packer.make_can_msg("SCM_BUTTONS", 0, {"CRUISE_BUTTONS": simulator_state.cruise_button, "COUNTER": counter}))
 
-    msg.append(self.packer.make_can_msg("GEARBOX_AUTO", 0, {"GEAR_SHIFTER": 4, "COUNTER": counter}))
+    msg.append(self.packer.make_can_msg("GEARBOX_AUTO", 0, {"GEAR_SHIFTER": _GEAR_DRIVE, "COUNTER": counter}))
     msg.append(self.packer.make_can_msg("GAS_PEDAL_2", 0, {}))
     msg.append(self.packer.make_can_msg("SEATBELT_STATUS", 0, {"SEATBELT_DRIVER_LATCHED": 1, "COUNTER": counter}))
     msg.append(self.packer.make_can_msg("STEER_STATUS", 0, {"STEER_TORQUE_SENSOR": simulator_state.user_torque, "COUNTER": counter}))
     msg.append(self.packer.make_can_msg("STEERING_SENSORS", 0, {"STEER_ANGLE": simulator_state.steering_angle, "COUNTER": counter}))
     msg.append(self.packer.make_can_msg("VSA_STATUS", 0, {"COUNTER": counter}))
-    msg.append(self.packer.make_can_msg("STANDSTILL", 0, {"WHEELS_MOVING": 1 if simulator_state.speed >= 1.0 else 0}))
+    msg.append(self.packer.make_can_msg("STANDSTILL", 0, {"WHEELS_MOVING": 1 if simulator_state.speed >= _STANDSTILL_SPEED_MPS else 0}))
     msg.append(self.packer.make_can_msg("STEER_MOTOR_TORQUE", 0, {}))
     msg.append(self.packer.make_can_msg("EPB_STATUS", 0, {}))
     msg.append(self.packer.make_can_msg("DOORS_STATUS", 0, {}))
@@ -128,7 +143,7 @@ class SimulatedCar:
       self.send_can_messages(simulator_state)
       self.send_live_tracks(simulator_state)
 
-      if self.idx % 10 == 0: # send panda states at 10hz (matches service frequency)
+      if self.idx % _PANDA_STATE_DIVIDER == 0:
         self.send_panda_state(simulator_state)
 
       self.idx += 1
