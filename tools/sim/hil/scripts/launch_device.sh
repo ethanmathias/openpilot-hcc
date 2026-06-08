@@ -36,7 +36,7 @@ export FINGERPRINT="${FINGERPRINT:-HONDA_CIVIC_2022}"
 export HIL_MODE=1
 export HIL_ROLE="$ROLE"
 export HIL_PC_IP="$PC_IP"
-export BLOCK="camerad,pandad,sensord,loggerd,encoderd,micd,logmessaged,ui"
+export BLOCK="camerad,pandad,sensord,loggerd,encoderd,micd,logmessaged,ui,updated"
 
 python3 -c "from openpilot.selfdrive.test.helpers import set_params_enabled; set_params_enabled()"
 python3 - <<'PY'
