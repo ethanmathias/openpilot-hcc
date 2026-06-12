@@ -60,7 +60,10 @@ def _read_str_param(params: Params, key: str) -> str | None:
   raw_value = _get_optional_param(params, key)
   if raw_value is None:
     return None
-  stripped = raw_value.strip()
+  # Typed params can come back as int (e.g. HCCV2VRelayPort) or bytes.
+  if isinstance(raw_value, (bytes, bytearray)):
+    raw_value = raw_value.decode()
+  stripped = str(raw_value).strip()
   return stripped if len(stripped) > 0 else None
 
 
