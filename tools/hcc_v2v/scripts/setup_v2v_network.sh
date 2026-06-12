@@ -26,7 +26,7 @@ if [ "$ROLE" != "ego" ] && [ "$ROLE" != "lead" ]; then
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null && pwd)"
-OPENPILOT_DIR="$SCRIPT_DIR/../../.."
+OPENPILOT_DIR="$(readlink -f "$SCRIPT_DIR/../../..")"
 RELAY_PY="$OPENPILOT_DIR/tools/hcc_v2v/relay_server.py"
 
 if [ ! -f "$RELAY_PY" ]; then
