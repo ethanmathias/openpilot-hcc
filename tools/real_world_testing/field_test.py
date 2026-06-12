@@ -29,6 +29,7 @@ import contextlib
 import csv
 import io
 import json
+import select
 import shlex
 import signal
 import subprocess
@@ -64,6 +65,30 @@ def ssh_ok(user: str, host: str, command: str, timeout: float = 20.0) -> str:
   if result.returncode != 0:
     raise CheckFailure(f"ssh {host} `{command}` failed: {result.stderr.strip() or result.stdout.strip()}")
   return result.stdout.strip()
+
+
+def ssh_launch(user: str, host: str, command: str, timeout: float = 30.0) -> str:
+  """Start a remote background process; return the PID it echoes.
+
+  `command` must end with `& echo $!`. On some devices sshd holds the
+  session open until the nohup'd child exits even with every fd redirected,
+  so subprocess.run() blocks for the child's whole lifetime (this is what
+  timed out bench takes 2 and 3 — the launch itself succeeded). Read the
+  one PID line ourselves and tear down the local ssh client; the remote
+  process is under nohup and keeps running."""
+  proc = subprocess.Popen(["ssh", *SSH_OPTS, f"{user}@{host}", command],
+                          stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+  try:
+    ready, _, _ = select.select([proc.stdout], [], [], timeout)
+    if not ready:
+      raise CheckFailure(f"ssh {host}: no PID within {timeout:.0f}s from `{command}`")
+    line = proc.stdout.readline().strip()
+  finally:
+    proc.kill()
+    proc.wait()
+  if not line.isdigit():
+    raise CheckFailure(f"ssh {host}: launch did not return a PID (got {line!r}): `{command}`")
+  return line
 
 
 def scp_from(user: str, host: str, remote_path: str, local_path: Path) -> bool:
@@ -287,9 +312,9 @@ def run(args) -> int:
     # register a stand-in ego with the relay to exercise the forwarding path.
     ego_py = remote_python(args.user, args.ego_host, args.remote_dir)
     bench_cmd = (f"cd {args.remote_dir} && mkdir -p {REMOTE_LOG_DIR} && "
-                 f"nohup env PYTHONPATH={args.remote_dir} {ego_py} tools/hcc_v2v/bench_ego.py "
-                 f"> {remote_bench_log} 2>&1 < /dev/null & echo $!")
-    bench_pid = ssh_ok(args.user, args.ego_host, bench_cmd, timeout=30)
+                 f"{{ nohup env PYTHONPATH={args.remote_dir} {ego_py} tools/hcc_v2v/bench_ego.py "
+                 f"> {remote_bench_log} 2>&1 < /dev/null & echo $!; }}")
+    bench_pid = ssh_launch(args.user, args.ego_host, bench_cmd, timeout=30)
     print(f"ego: BENCH ego subscriber started (pid {bench_pid}) — do not use --bench with a real car")
 
   # Which relay CSV is live right now (newest per-boot file on the ego)?
@@ -303,10 +328,10 @@ def run(args) -> int:
   # Start the ego-side monitor (records engaged/vEgo/accel contributions).
   ego_py = remote_python(args.user, args.ego_host, args.remote_dir)
   monitor_cmd = (f"cd {args.remote_dir} && mkdir -p {REMOTE_LOG_DIR} && "
-                 f"nohup env PYTHONPATH={args.remote_dir} {ego_py} tools/hcc_v2v/scripts/hcc_monitor.py "
+                 f"{{ nohup env PYTHONPATH={args.remote_dir} {ego_py} tools/hcc_v2v/scripts/hcc_monitor.py "
                  f"--log_csv {remote_monitor_csv} --hz {args.monitor_hz} "
-                 f"> {remote_monitor_log} 2>&1 < /dev/null & echo $!")
-  monitor_pid = ssh_ok(args.user, args.ego_host, monitor_cmd, timeout=30)
+                 f"> {remote_monitor_log} 2>&1 < /dev/null & echo $!; }}")
+  monitor_pid = ssh_launch(args.user, args.ego_host, monitor_cmd, timeout=30)
   print(f"ego: monitor started (pid {monitor_pid}) -> {remote_monitor_csv}")
 
   # Start the virtual lead. nohup survives SSH drops; we watch its PID.
@@ -319,10 +344,10 @@ def run(args) -> int:
     vl_flags += " --loop"
   lead_py = remote_python(args.user, args.lead_host, args.remote_dir)
   vl_cmd = (f"cd {args.remote_dir} && mkdir -p {REMOTE_LOG_DIR} && "
-            f"nohup env PYTHONPATH={args.remote_dir} {lead_py} tools/hcc_v2v/virtual_lead.py {vl_flags} "
-            f"> {remote_vl_log} 2>&1 < /dev/null & echo $!")
+            f"{{ nohup env PYTHONPATH={args.remote_dir} {lead_py} tools/hcc_v2v/virtual_lead.py {vl_flags} "
+            f"> {remote_vl_log} 2>&1 < /dev/null & echo $!; }}")
   try:
-    vl_pid = ssh_ok(args.user, args.lead_host, vl_cmd, timeout=30)
+    vl_pid = ssh_launch(args.user, args.lead_host, vl_cmd, timeout=30)
   except (CheckFailure, subprocess.TimeoutExpired):
     _kill_remote(args.user, args.ego_host, "hcc_monitor.py")
     _kill_remote(args.user, args.ego_host, "bench_ego.py")

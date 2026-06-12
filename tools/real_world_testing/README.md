@@ -214,19 +214,24 @@ Still open (be aware):
 - **2026-06-12**: full device setup completed (ego `comma-7259cb5e` =
   10.42.0.1 hotspot + relay + params; lead = 10.42.0.60 joined + params).
   Preflight 12/12 green, clock skew ~20 ms. Take 1 caught the
-  int-param crash (fixed); take 2 hit a 20 s SSH timeout launching the
-  virtual lead (launch hardening pushed in `bbe705aa8`). **Next: take 3** —
+  int-param crash (fixed); takes 2 and 3 both hit an SSH timeout launching
+  the virtual lead. Root cause found after take 3: the lead's sshd keeps the
+  session open until the nohup'd child *exits*, even with stdin/stdout/stderr
+  fully redirected — so the launch always outlived the SSH timeout (the
+  launch itself was succeeding). Fixed PC-side in `field_test.py` with
+  `ssh_launch()`: read the echoed PID, then close the local ssh client
+  ourselves. No device-side update needed (ego already has the
+  `hcc_monitor.py` fix via scp; both devices have the `hcc_v2v.py` fix).
+  **Next: take 4** —
   ```bash
-  python3 tools/real_world_testing/field_test.py abort --lead_host 10.42.0.60   # clear take-2 strays
-  time ssh comma@10.42.0.60 true                                                # is lead SSH chronically slow?
+  python3 tools/real_world_testing/field_test.py abort --lead_host 10.42.0.60   # clear strays (safe if none)
   python3 tools/real_world_testing/field_test.py run --scn 48 --duration 30 \
-      --lead_host 10.42.0.60 --bench --notes "bench take 3"
+      --lead_host 10.42.0.60 --bench --notes "bench take 4"
   ```
-  Make sure the ego has the monitor fix:
-  `scp tools/hcc_v2v/scripts/hcc_monitor.py comma@10.42.0.1:/data/openpilot/tools/hcc_v2v/scripts/hcc_monitor.py`
-  (both devices already received `selfdrive/controls/lib/hcc_v2v.py` via scp).
-  Open question for take 3: confirm `ego_monitor.csv` gets created (take 1
-  produced none; the CSV-open was moved ahead of SubMaster init to fix it).
+  Open questions for take 4: confirm `ego_monitor.csv` gets created (take 1
+  produced none; the CSV-open was moved ahead of SubMaster init to fix it),
+  and check `/data/hcc_v2v_logs/vl_run_*.log` + `sent_*.csv` from takes 2/3
+  on the lead — if they have data, the publisher really was running all along.
 
 ## Safety checklist (before every session)
 
