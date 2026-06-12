@@ -53,11 +53,6 @@ def _manual_longitudinal_input(CS, simulation_mode: bool = SIMULATION) -> float:
   gas = _normalize_pedal(gas_raw)
   brake = _normalize_pedal(brake_raw)
 
-  if getattr(CS, "gasPressed", False):
-    gas = max(gas, 1.0)
-  if getattr(CS, "brakePressed", False):
-    brake = max(brake, 1.0)
-
   manual_cmd = float(np.clip(gas - brake, -1.0, 1.0))
   gas_gain = SIM_PEDAL_GAS_GAIN if simulation_mode else ROAD_PEDAL_GAS_GAIN
   brake_gain = SIM_PEDAL_BRAKE_GAIN if simulation_mode else ROAD_PEDAL_BRAKE_GAIN
