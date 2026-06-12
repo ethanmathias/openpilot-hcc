@@ -55,6 +55,16 @@ if [ "$ROLE" = "ego" ]; then
   # that must complete (relay unit, params) therefore happens BEFORE the
   # network switch, which is the very last step.
   echo "[ego] installing systemd unit hcc-v2v-relay.service"
+  # AGNOS keeps the system partition read-only; remount rw just for the unit
+  # install. Note: the unit lives on the system partition, so an AGNOS
+  # update/reflash removes it — re-run this script afterwards.
+  REMOUNTED=0
+  if ! touch /etc/systemd/system/.hcc_rw_test 2>/dev/null; then
+    mount -o remount,rw /
+    REMOUNTED=1
+  else
+    rm -f /etc/systemd/system/.hcc_rw_test
+  fi
   cat > /etc/systemd/system/hcc-v2v-relay.service <<EOF
 [Unit]
 Description=HCC V2V relay (ego device, on-device)
@@ -72,6 +82,9 @@ WantedBy=multi-user.target
 EOF
   systemctl daemon-reload
   systemctl enable --now hcc-v2v-relay.service
+  if [ "$REMOUNTED" = "1" ]; then
+    mount -o remount,ro /
+  fi
   systemctl status --no-pager hcc-v2v-relay.service | head -15
 
   echo "[ego] setting V2V + HC3 params"
