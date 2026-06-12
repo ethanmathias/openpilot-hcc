@@ -183,6 +183,51 @@ Still open (be aware):
   (`ssh comma@<dev> 'rm /data/hcc_v2v_logs/*'` — collected runs are safe
   on the laptop).
 
+## Device gotchas (learned during bring-up — read before debugging)
+
+- **Python on the devices**: openpilot's deps live in `/usr/local/venv`, which
+  only interactive login shells put on PATH. Non-interactive SSH and `sudo`
+  shells must use `/usr/local/venv/bin/python3` with
+  `PYTHONPATH=/data/openpilot` explicitly. `field_test.py` handles this
+  automatically; remember it when running ad-hoc commands.
+- **One WiFi radio per device**: activating the hotspot (ego) or joining it
+  (lead) drops the device off the lab WiFi — your SSH session dying at the
+  end of `setup_v2v_network.sh` is the success signal, not a failure. The
+  script does all real work *before* the network switch for this reason.
+- **No internet on the hotspot**: once both devices are on `hcc-v2v`,
+  `git pull` doesn't work on them. Push single-file fixes with
+  `scp <file> comma@10.42.0.x:/data/openpilot/<file>`; reconcile with
+  `git checkout -- . && git pull` next time they're on lab WiFi.
+- **Read-only rootfs**: writing systemd units needs
+  `sudo mount -o remount,rw /` first (and `,ro` after). If remount says
+  "busy", reboot and retry. An AGNOS update/reflash deletes the relay unit —
+  re-run `setup_v2v_network.sh ego` afterwards.
+- **Typed params**: `HCCV2VRelayPort` is INT-typed; `Params().get()` returns
+  an `int`, not a string. Code that assumes str crashes (fixed in
+  `hcc_v2v.py::_read_str_param`, commit `6a2da835c`).
+- **Run state lives on the devices** under `/data/hcc_v2v_logs/`. If a run
+  fails before collection, the logs are still there — use
+  `field_test.py collect <run_id>`, and `abort` to kill stray processes.
+
+## Bench-test status log
+
+- **2026-06-12**: full device setup completed (ego `comma-7259cb5e` =
+  10.42.0.1 hotspot + relay + params; lead = 10.42.0.60 joined + params).
+  Preflight 12/12 green, clock skew ~20 ms. Take 1 caught the
+  int-param crash (fixed); take 2 hit a 20 s SSH timeout launching the
+  virtual lead (launch hardening pushed in `bbe705aa8`). **Next: take 3** —
+  ```bash
+  python3 tools/real_world_testing/field_test.py abort --lead_host 10.42.0.60   # clear take-2 strays
+  time ssh comma@10.42.0.60 true                                                # is lead SSH chronically slow?
+  python3 tools/real_world_testing/field_test.py run --scn 48 --duration 30 \
+      --lead_host 10.42.0.60 --bench --notes "bench take 3"
+  ```
+  Make sure the ego has the monitor fix:
+  `scp tools/hcc_v2v/scripts/hcc_monitor.py comma@10.42.0.1:/data/openpilot/tools/hcc_v2v/scripts/hcc_monitor.py`
+  (both devices already received `selfdrive/controls/lib/hcc_v2v.py` via scp).
+  Open question for take 3: confirm `ego_monitor.csv` gets created (take 1
+  produced none; the CSV-open was moved ahead of SubMaster init to fix it).
+
 ## Safety checklist (before every session)
 
 - Empty road / closed area; scenario top speed fits the space
