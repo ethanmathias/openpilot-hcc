@@ -1,5 +1,8 @@
 # HCC V2V — relay, virtual lead, and real-world testing
 
+> Non-technical overview of the whole project (what, why, every design
+> decision): [`HCC_PROJECT_GUIDE.md`](../../HCC_PROJECT_GUIDE.md).
+
 This directory holds everything for the V2V (vehicle-to-vehicle) leg of HC3:
 the UDP relay, the tools that publish and analyze lead data, and the
 procedure for in-car testing.

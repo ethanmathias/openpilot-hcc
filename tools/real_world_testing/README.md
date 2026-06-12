@@ -1,5 +1,8 @@
 # Real-world testing (in-car HC3)
 
+> Non-technical overview of the whole project (what, why, every design
+> decision): [`HCC_PROJECT_GUIDE.md`](../../HCC_PROJECT_GUIDE.md).
+
 Everything for running HC3 tests in a real car lives here. The test design,
 the V2V components it relies on (relay, virtual lead, hotspot setup), and
 the device-side details are documented in
@@ -126,6 +129,93 @@ bench — openpilot is offroad — that's expected.
 **Never pass `--bench` when the ego is in a car**: the relay tracks one ego
 peer, and the stand-in would steal the registration from the real
 subscriber.
+
+## In-car test day (phase 1) — step by step
+
+The bench test (2026-06-12) validated everything except the driving:
+launch, V2V transport at 50 Hz with 0% loss, monitoring, collection,
+analysis. What changes in the car: the real subscriber inside `controlsd`
+replaces `bench_ego` (so **no `--bench`**), and `ego_monitor.csv` records a
+real response instead of NaNs.
+
+### The day before (devices on lab WiFi — internet available)
+
+1. **Reconcile the device checkouts.** Both devices accumulated scp'd
+   single-file fixes during the bench campaign; their git trees are dirty.
+   On each device:
+   ```bash
+   cd /data/openpilot && git checkout -- . && git pull origin hcc-ego
+   ```
+2. **Sync the clocks.** The lead has no internet on the hotspot, so its
+   clock drifts between sessions. While both devices have internet, confirm
+   NTP has them within ~100 ms (preflight will verify again on the day).
+3. **Re-run the ego setup if anything changed** (`sudo
+   tools/hcc_v2v/scripts/setup_v2v_network.sh ego`) — it is idempotent and
+   skips work already done. The relay unit now chowns
+   `/data/hcc_v2v_logs` to `comma`, which matters after an AGNOS reflash.
+4. **Update your laptop checkout** (`git pull`) — `field_test.py` runs from
+   the laptop, and all bench-campaign fixes live there.
+
+### Packing list
+
+- Both Comma 3X devices (ego mounts on the car harness as usual)
+- USB power for the lead device (car USB port or battery pack)
+- Laptop, charged — it will be on the ego's hotspot with **no internet**,
+  so anything you need from the internet, get before leaving
+- Two people: a **driver** (hands on wheel, foot over brake) and an
+  **operator** (laptop, runs/aborts the scenario). Do not solo this.
+
+### In the car
+
+1. Mount + plug the ego, power the lead from USB. Both boot; the ego brings
+   the hotspot up automatically (relay is a systemd service), and the lead
+   re-joins it automatically.
+2. Laptop: join the `hcc-v2v` hotspot, then preflight:
+   ```bash
+   python3 tools/real_world_testing/field_test.py check --lead_host 10.42.0.60
+   ```
+   All 14 checks green before moving the car. Skew or params can be fixed
+   on the spot; the fix for each failure is printed with it.
+3. Walk the [safety checklist](#safety-checklist-before-every-session)
+   out loud with the driver.
+4. First run: short and capped. Drive to the start point, car in gear,
+   road clear, then:
+   ```bash
+   python3 tools/real_world_testing/field_test.py run --scn 48 --duration 30 \
+       --lead_host 10.42.0.60 --start_delay 10 --notes "first in-car run, <location>, <driver>"
+   ```
+   `--start_delay 10` holds the initial speed for 10 s — the driver engages
+   openpilot during this window, *then* the profile starts moving.
+5. While it runs, the operator watches the streamed lead status line
+   (`v=` should track the scenario) and the road. The driver drives: the
+   car **will accelerate** to follow the virtual lead. Brake = instant
+   manual override, always.
+6. The run ends itself at `--duration`; collection is automatic. **Ctrl-C**
+   ends it early and still collects. `abort` (second terminal) is the
+   emergency stop for the data feed — the driver's brake is the emergency
+   stop for the car.
+7. Between runs, a quick look at the freshly collected
+   `runs/<id>/stats.txt` tells you transport health; `ego_monitor.csv` now
+   has the real response (`engaged`, `v_ego_mps`, `hccc_accel`).
+
+### Success criteria for the first in-car session
+
+- Preflight 14/14 green in the car.
+- Relay stats comparable to the bench (≈50 Hz, ~0% loss, max gap < 100 ms)
+  — WiFi inside one car should be at least as good as the desk.
+- `ego_monitor.csv` shows `engaged=1` during the run and a nonzero
+  `hccc_accel` trace.
+- `v_ego_mps` visibly tracks the scenario ramp (plot it against
+  `relay.csv`'s `v_lead` — both are on the ego's clock).
+
+### If something looks wrong while driving
+
+| Symptom | Meaning | Action |
+|---|---|---|
+| Engaged but no acceleration | V2V signal not reaching hCCC | End run; check `stats.txt` rejection reasons (`missing_ego_peer` = subscriber not registered; skew = clocks) |
+| Car accelerates harder than expected | It's tracking the profile — scenario 48 ramps to 32 mph | Driver brakes (disengages); pick a longer road or smaller `--duration` |
+| Lead status line stops streaming | Laptop fell off the hotspot or lead died | Driver disengages; rejoin hotspot, `abort`, then `collect <run_id>` recovers the data |
+| Anything else | — | Brake, disengage, `abort`, review the run folder before retrying |
 
 ## Reviewing a run
 

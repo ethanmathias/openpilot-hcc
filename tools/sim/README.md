@@ -1,5 +1,8 @@
 # openpilot Simulator (MetaDrive) — HC3 testing guide
 
+> Non-technical overview of the whole project (what, why, every design
+> decision): [`HCC_PROJECT_GUIDE.md`](../../HCC_PROJECT_GUIDE.md).
+
 This directory runs openpilot **without a car**: the MetaDrive driving
 simulator provides the world (road, vehicles, cameras), and a "bridge"
 process translates between the simulator and openpilot's normal message
