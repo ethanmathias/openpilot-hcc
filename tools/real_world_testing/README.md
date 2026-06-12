@@ -230,16 +230,16 @@ Still open (be aware):
   hcc_monitor died at launch while still echoing plausible PIDs. Fixed:
   launches now verify the process survived 1 s (`DEAD` + stderr otherwise),
   preflight checks log-dir writability on both devices, and the relay unit
-  chowns the dir to comma. **Next: take 5** — first the one-time ownership
-  fix on the ego, then the run:
-  ```bash
-  ssh comma@10.42.0.1 'sudo chown comma:comma /data/hcc_v2v_logs'
-  python3 tools/real_world_testing/field_test.py abort --lead_host 10.42.0.60
-  python3 tools/real_world_testing/field_test.py run --scn 48 --duration 30 \
-      --lead_host 10.42.0.60 --bench --notes "bench take 5"
-  ```
-  Open question for take 5: confirm `ego_monitor.csv` gets created (the
-  monitor has never actually run yet — every prior take died before it).
+  chowns the dir to comma. **Take 5 (after a one-time
+  `sudo chown comma:comma /data/hcc_v2v_logs` on the ego): SUCCESS.**
+  1750/1750 packets forwarded at 50.0 Hz, 0.00% loss, inter-arrival median
+  19.9 ms / max 51.4 ms (limit 100 ms), bench_ego received all 1750,
+  `ego_monitor.csv` created with 410 samples (all-nan/invalid as expected
+  offroad), full artifact set + plot collected
+  (`runs/run_20260612_190830_scn48`). **The bench pipeline is fully
+  validated — next step is the phase-1 in-car test** (same two devices, ego
+  on the car harness, NO `--bench`, see the run procedure and safety
+  checklist above).
 
 ## Safety checklist (before every session)
 
