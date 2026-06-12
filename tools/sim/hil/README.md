@@ -183,8 +183,8 @@ that fails:
 Then launch:
 
 ```bash
-# Two-device (ego + lead):
-python -m tools.sim.hil.launch_pc --lead
+# Two-device (ego + lead), lead driven by Scenario 48:
+python -m tools.sim.hil.launch_pc --lead --scn 48
 
 # Ego only:
 python -m tools.sim.hil.launch_pc
@@ -193,8 +193,19 @@ python -m tools.sim.hil.launch_pc
 #   --raw_yuv          Ship NV12 instead of H.264 (bring-up fallback, ~270 Mbit/s)
 #   --dual_camera      Enable wide-road camera stream
 #   --keyboard         Force keyboard input instead of auto-detecting wheel
+#   --scn N            Lead vehicle follows scenario column N of Scenarios.csv
+#   --output_csv PATH  Log the run (same format as local-sim test runs)
 #   --devices_toml PATH  Override path to devices.toml
+#   --lead_device_drive  Experimental: lead device drives the lead vehicle
 ```
+
+**Who drives the lead vehicle:** by default MetaDrive drives it along the
+CSV speed profile, and the lead Comma 3X only *measures* it and publishes
+V2V — exactly the role the lead device has in a real two-car test, where a
+human drives the lead car. (`--lead_device_drive` instead applies the lead
+device's own carControl, but the worker currently gives the lead role no
+radar target, so its hCCC commands zero — leave this off until a virtual
+target is added.)
 
 Or via the main bridge script:
 
@@ -204,9 +215,20 @@ python tools/sim/run_bridge.py --mode hcc_hil [--lead] [--raw_yuv] [--dual_camer
 
 Expected behavior:
 - MetaDrive window opens with three panes: top-down, ego POV, lead POV
-- Both devices go onroad and `selfdriveState.active` becomes `True`
-- Turning the wheel steers only the ego; lead is pure on-device hCCC
+- The ego device goes onroad and `selfdriveState.active` becomes `True`
+- Turning the wheel steers only the ego; the lead follows the CSV profile
 - With `EnableHCCC=1`, ego follows lead via V2V `a_lead`/`v_lead`
+
+While it runs, watch live status on either device:
+
+```bash
+# On the device (SSH over RNDIS):
+cd /data/openpilot && python3 tools/sim/hil/scripts/hil_monitor.py
+```
+
+It prints one line per second: message health, engaged state, speed, and the
+HC3/manual/planner accel contributions — the fastest way to tell whether the
+ego is receiving V2V-driven HC3 commands.
 
 ---
 
@@ -306,6 +328,7 @@ tools/sim/hil/
 │   └── zmq_bind_address.patch — msgq patch for two-device bridge coexistence (PC only)
 └── scripts/
     ├── check_hil.sh           — PC-side preflight: verifies every leg before launch
+    ├── hil_monitor.py         — device-side live HC3/engage status line
     ├── launch_device.sh       — device-side HIL launcher (runs on the Comma 3X)
     ├── setup_rndis.sh         — one-shot static RNDIS IP setup (on device)
     └── setup_v2v_network.sh   — one-shot hotspot + V2V relay setup (on device)

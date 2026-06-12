@@ -107,7 +107,7 @@ class MetaDriveHILBridge(MetaDriveBridge):
 
   def __init__(self, dual_camera: bool, high_quality: bool, ego_device: DeviceConfig, lead_device: DeviceConfig | None = None,
                raw_yuv: bool = False, scenario: str = "hccc_step", scn=None, scn_csv=None,
-               output_csv=None, output_graph=None):
+               output_csv=None, output_graph=None, lead_device_drive: bool = False):
     super().__init__(dual_camera=dual_camera, high_quality=high_quality, scenario=scenario,
                      enable_hcc=True, scn=scn, scn_csv=scn_csv, output_csv=output_csv,
                      output_graph=output_graph, lead_sim_prefix=None,
@@ -115,6 +115,7 @@ class MetaDriveHILBridge(MetaDriveBridge):
     self.ego_device = ego_device
     self.lead_device = lead_device
     self.raw_yuv = raw_yuv
+    self.lead_device_drive = lead_device_drive
     self.ego: _RoleStack | None = None
     self.lead: _RoleStack | None = None
 
@@ -268,19 +269,32 @@ class MetaDriveHILBridge(MetaDriveBridge):
     return steer_angle, throttle_manual, brake_manual
 
   def _update_lead(self) -> None:
-    """Read the lead device's carControl and push its commands to MetaDrive's second vehicle."""
+    """Ship sensors to the lead device and keep its sim state current.
+
+    By default the MetaDrive worker drives the lead vehicle along the CSV
+    speed profile (matching the field deployment, where the lead car is
+    human-driven and its device only measures + publishes V2V). With
+    lead_device_drive, the lead device's carControl is applied instead —
+    note the worker currently ships lead_status=False to the lead role, so
+    the lead's on-device hCCC has no radar target and will command zero
+    until a virtual target is added.
+    """
     self.lead.car.sm.update(0)
     ls = self.lead.simulator_state
     ls.is_engaged = self.lead.car.sm['selfdriveState'].active
 
-    if ls.is_engaged:
-      accel = self.lead.car.sm['carControl'].actuators.accel
-      lead_throttle, lead_brake = _accel_to_controls(accel)
-      lead_steer = 0.0
-    else:
-      lead_throttle = lead_brake = lead_steer = 0.0
+    if self.lead_device_drive:
+      if ls.is_engaged:
+        accel = self.lead.car.sm['carControl'].actuators.accel
+        lead_throttle, lead_brake = _accel_to_controls(accel)
+        lead_steer = 0.0
+      else:
+        lead_throttle = lead_brake = lead_steer = 0.0
+      # Sending any control permanently switches the worker off the CSV
+      # profile path (lead_external_action is sticky) — only do so in
+      # device-drive mode.
+      self.world.apply_lead_controls(lead_steer, lead_throttle, lead_brake)
 
-    self.world.apply_lead_controls(lead_steer, lead_throttle, lead_brake)
     self.lead.sensors.update(ls, self.world)
     self.world.read_lead_sensors(ls)
 

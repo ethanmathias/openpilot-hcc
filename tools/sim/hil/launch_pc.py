@@ -28,6 +28,14 @@ def main(argv: list[str] | None = None) -> int:
   parser.add_argument("--devices_toml", default=None, help="Path to tools/sim/hil/devices.toml")
   parser.add_argument("--raw_yuv", action="store_true", help="Bring-up: ship NV12 instead of H.264")
   parser.add_argument("--lead", action="store_true", help="Enable the lead device (two-vehicle HIL)")
+  parser.add_argument("--lead_device_drive", action="store_true",
+                      help="Experimental: lead device drives the lead vehicle (default: CSV profile drives it)")
+  parser.add_argument("--scn", type=int, default=None,
+                      help="Drive the lead vehicle from a Scenarios.csv column (e.g., 48)")
+  parser.add_argument("--scn_csv", default=None,
+                      help="Path to the scenario CSV (defaults to tools/sim/lib/Scenarios.csv)")
+  parser.add_argument("--output_csv", default=None,
+                      help="Log the run to a CSV (same format as the local-sim test runs)")
   parser.add_argument("--dual_camera", action="store_true")
   parser.add_argument("--high_quality", action="store_true")
   parser.add_argument("--keyboard", action="store_true", help="Force keyboard input instead of wheel")
@@ -45,6 +53,8 @@ def main(argv: list[str] | None = None) -> int:
   queue, simulator_process, simulator_bridge = create_bridge(
     args.dual_camera, args.high_quality, mode="hcc_hil",
     devices_toml=args.devices_toml, raw_yuv=args.raw_yuv, with_lead=args.lead,
+    lead_device_drive=args.lead_device_drive,
+    scn=args.scn, scn_csv=args.scn_csv, output_csv=args.output_csv,
   )
 
   run_input_poll(queue, use_keyboard=args.keyboard,

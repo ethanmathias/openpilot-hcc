@@ -30,7 +30,7 @@ def _resolve_scn_csv_path(scn_csv: str | None) -> str | None:
 
 
 def create_bridge(dual_camera, high_quality, mode="default", scn=None, scn_csv=None, output_csv=None, output_graph=None,
-                  lead_prefix=None, devices_toml=None, raw_yuv=False, with_lead=False):
+                  lead_prefix=None, devices_toml=None, raw_yuv=False, with_lead=False, lead_device_drive=False):
   queue: Any = Queue()
 
   if mode == "hcc_hil":
@@ -44,10 +44,15 @@ def create_bridge(dual_camera, high_quality, mode="default", scn=None, scn_csv=N
     cfg = load_devices(devices_toml)
     warn_on_mismatch(cfg)
 
+    scn_csv = _resolve_scn_csv_path(scn_csv) if scn is not None else None
+    if scn is not None and scn_csv is None:
+      raise RuntimeError("`--scn` requires a CSV file. Place it at tools/sim/lib/Scenarios.csv or pass --scn_csv.")
+
     lead_dev = cfg.lead if with_lead else None
     simulator_bridge = MetaDriveHILBridge(dual_camera, high_quality, ego_device=cfg.ego, lead_device=lead_dev,
                                           raw_yuv=raw_yuv, scenario=SIM_MODE_TO_SCENARIO[mode],
-                                          scn=scn, scn_csv=scn_csv, output_csv=output_csv, output_graph=output_graph)
+                                          scn=scn, scn_csv=scn_csv, output_csv=output_csv, output_graph=output_graph,
+                                          lead_device_drive=lead_device_drive)
     simulator_process = simulator_bridge.run(queue)
     return queue, simulator_process, simulator_bridge
 
@@ -93,6 +98,8 @@ def parse_args(add_args=None):
                       help='Bring-up fallback: ship NV12 frames to devices instead of H.264 (hcc_hil mode only)')
   parser.add_argument('--lead', action='store_true',
                       help='Enable the lead Comma 3X device (two-vehicle HIL; hcc_hil mode only)')
+  parser.add_argument('--lead_device_drive', action='store_true',
+                      help='Let the lead device drive the lead vehicle instead of the CSV profile (experimental; hcc_hil mode only)')
   parser.add_argument('--scn', type=int, default=None,
                       help='Replay lead trajectory from scenario column index in Scenarios.csv (e.g., 48)')
   parser.add_argument('--scn_csv', default=None,
@@ -144,7 +151,7 @@ if __name__ == "__main__":
                                                              output_csv=args.output_csv, output_graph=args.output_graph,
                                                              lead_prefix=args.lead_prefix,
                                                              devices_toml=args.devices_toml, raw_yuv=args.raw_yuv,
-                                                             with_lead=args.lead)
+                                                             with_lead=args.lead, lead_device_drive=args.lead_device_drive)
 
   run_input_poll(queue, use_keyboard=args.keyboard, use_joystick=args.joystick,
                  require_wheel=args.logitech_wheel, wheel_device=args.wheel_device,
