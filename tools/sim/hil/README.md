@@ -1,5 +1,12 @@
 # HC3 Hardware-in-the-Loop (HIL) Simulation
 
+> **Status: not currently used.** The Comma 3X's USB-C port is wired to the
+> panda MCU, not the SoC, so the USB RNDIS link this design depends on is
+> not available (the SoC's USB gadget comes up on-device but never
+> enumerates on the PC). Real-world in-car testing replaced this workflow —
+> see [`tools/hcc_v2v/README.md`](../../hcc_v2v/README.md). The V2V scripts
+> formerly in `scripts/` moved to `tools/hcc_v2v/scripts/` (stubs remain).
+
 MetaDrive runs on the PC as the simulated world. Each Comma 3X runs the full
 openpilot stack (modeld, plannerd, controlsd, hCCC, V2V) natively on-device.
 
@@ -114,7 +121,7 @@ ping 192.168.32.11   # ego
 ### On the ego device
 
 ```bash
-sudo /data/openpilot/tools/sim/hil/scripts/setup_v2v_network.sh ego
+sudo /data/openpilot/tools/hcc_v2v/scripts/setup_v2v_network.sh ego
 ```
 
 This:
@@ -125,7 +132,7 @@ This:
 ### On the lead device
 
 ```bash
-sudo /data/openpilot/tools/sim/hil/scripts/setup_v2v_network.sh lead
+sudo /data/openpilot/tools/hcc_v2v/scripts/setup_v2v_network.sh lead
 ```
 
 This joins the ego's hotspot and sets `HCCV2VRelayHost=<ego hotspot IP>`.
@@ -223,7 +230,7 @@ While it runs, watch live status on either device:
 
 ```bash
 # On the device (SSH over RNDIS):
-cd /data/openpilot && python3 tools/sim/hil/scripts/hil_monitor.py
+cd /data/openpilot && python3 tools/hcc_v2v/scripts/hcc_monitor.py
 ```
 
 It prints one line per second: message health, engaged state, speed, and the
@@ -328,10 +335,10 @@ tools/sim/hil/
 │   └── zmq_bind_address.patch — msgq patch for two-device bridge coexistence (PC only)
 └── scripts/
     ├── check_hil.sh           — PC-side preflight: verifies every leg before launch
-    ├── hil_monitor.py         — device-side live HC3/engage status line
+    ├── hil_monitor.py         — stub → tools/hcc_v2v/scripts/hcc_monitor.py
     ├── launch_device.sh       — device-side HIL launcher (runs on the Comma 3X)
     ├── setup_rndis.sh         — one-shot static RNDIS IP setup (on device)
-    └── setup_v2v_network.sh   — one-shot hotspot + V2V relay setup (on device)
+    └── setup_v2v_network.sh   — stub → tools/hcc_v2v/scripts/setup_v2v_network.sh
 ```
 
 ## Real-world readiness: what HIL must demonstrate before two-car testing
