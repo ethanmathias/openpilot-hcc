@@ -50,18 +50,10 @@ PY
 }
 
 if [ "$ROLE" = "ego" ]; then
-  echo "[ego] enabling hotspot SSID=$SSID"
-  # Comma 3X uses NetworkManager. Reuse an existing hotspot connection if
-  # present, otherwise create one. ifname=wlan0 is the standard radio on AGNOS.
-  if ! nmcli -t -f NAME connection show | grep -qx "hcc-hotspot"; then
-    nmcli connection add type wifi ifname wlan0 con-name hcc-hotspot autoconnect yes ssid "$SSID" \
-      mode ap ipv4.method shared 802-11-wireless.band bg
-    nmcli connection modify hcc-hotspot wifi-sec.key-mgmt wpa-psk wifi-sec.psk "$PSK"
-  fi
-  nmcli connection up hcc-hotspot
-  HOTSPOT_IP="$(ip -4 -o addr show wlan0 | awk '{print $4}' | cut -d/ -f1 | head -n1)"
-  echo "[ego] hotspot up at $HOTSPOT_IP — set this as the lead's HCCV2VRelayHost"
-
+  # IMPORTANT ORDERING: bringing the hotspot up swaps wlan0 out of the LAN,
+  # which kills a WiFi SSH session — and with it, this script. Everything
+  # that must complete (relay unit, params) therefore happens BEFORE the
+  # network switch, which is the very last step.
   echo "[ego] installing systemd unit hcc-v2v-relay.service"
   cat > /etc/systemd/system/hcc-v2v-relay.service <<EOF
 [Unit]
@@ -82,41 +74,61 @@ EOF
   systemctl enable --now hcc-v2v-relay.service
   systemctl status --no-pager hcc-v2v-relay.service | head -15
 
-  echo "[ego] setting V2V params"
+  echo "[ego] setting V2V + HC3 params"
   set_param HCCV2VEnabled 1
   set_param HCCV2VOnly 1
   set_param HCCV2VDeviceId hcc-ego
   set_param HCCV2VRelayHost 127.0.0.1
   set_param HCCV2VRelayPort 19090
+  set_param EnableHCCC 1
+  set_param AlphaLongitudinalEnabled 1
 
-  echo "[ego] done. Lead should run:"
-  echo "        sudo $0 lead $SSID $PSK"
-  echo "      and set HCCV2VRelayHost=$HOTSPOT_IP"
+  echo "[ego] enabling hotspot SSID=$SSID — if you are SSHed in over WiFi,"
+  echo "[ego] your session will drop NOW. That is fine: setup is complete."
+  echo "[ego] Reconnect by joining the '$SSID' network and: ssh comma@10.42.0.1"
+  # Comma 3X uses NetworkManager. Reuse an existing hotspot connection if
+  # present, otherwise create one. ifname=wlan0 is the standard radio on AGNOS.
+  if ! nmcli -t -f NAME connection show | grep -qx "hcc-hotspot"; then
+    nmcli connection add type wifi ifname wlan0 con-name hcc-hotspot autoconnect yes ssid "$SSID" \
+      mode ap ipv4.method shared 802-11-wireless.band bg
+    nmcli connection modify hcc-hotspot wifi-sec.key-mgmt wpa-psk wifi-sec.psk "$PSK"
+  fi
+  nmcli connection up hcc-hotspot
+  HOTSPOT_IP="$(ip -4 -o addr show wlan0 | awk '{print $4}' | cut -d/ -f1 | head -n1)"
+  echo "[ego] hotspot up at $HOTSPOT_IP — lead should run: sudo $0 lead $SSID $PSK"
 
 elif [ "$ROLE" = "lead" ]; then
   if [ "$SSID" = "hcc-v2v" ] && [ "$PSK" = "hcc-v2v-research" ]; then
     echo "[lead] using default SSID/PSK; pass real values if you changed them on the ego" >&2
   fi
-  echo "[lead] joining hotspot SSID=$SSID"
+
+  # Params first: joining the hotspot swaps wlan0 off the LAN, which kills a
+  # WiFi SSH session — and with it, this script. NetworkManager shared mode
+  # always puts the ego (the AP) at 10.42.0.1.
+  RELAY_HOST="${4:-10.42.0.1}"
+  echo "[lead] setting V2V params (relay host $RELAY_HOST)"
+  set_param HCCV2VEnabled 1
+  set_param HCCV2VOnly 0
+  set_param HCCV2VDeviceId hcc-lead
+  set_param HCCV2VRelayHost "$RELAY_HOST"
+  set_param HCCV2VRelayPort 19090
+
+  echo "[lead] joining hotspot SSID=$SSID — if you are SSHed in over WiFi,"
+  echo "[lead] your session will drop NOW. That is fine: setup is complete."
+  echo "[lead] Reconnect from a machine on the '$SSID' network."
   if ! nmcli -t -f NAME connection show | grep -qx "hcc-hotspot-client"; then
     nmcli connection add type wifi ifname wlan0 con-name hcc-hotspot-client ssid "$SSID" \
       wifi-sec.key-mgmt wpa-psk wifi-sec.psk "$PSK" autoconnect yes
   fi
   nmcli connection up hcc-hotspot-client
+  # Anything below may not run if SSH died with the network switch — keep it
+  # to best-effort verification only.
   GATEWAY="$(ip -4 route | awk '/default/ {print $3; exit}')"
-  if [ -z "$GATEWAY" ]; then
-    echo "[lead] WARN: no default gateway after joining hotspot; check connectivity" >&2
-  else
-    echo "[lead] gateway = $GATEWAY (this is the ego's hotspot IP)"
-    echo "[lead] setting HCCV2VRelayHost=$GATEWAY"
-    set_param HCCV2VEnabled 1
-    set_param HCCV2VOnly 0
-    set_param HCCV2VDeviceId hcc-lead
-    set_param HCCV2VRelayHost "$GATEWAY"
-    set_param HCCV2VRelayPort 19090
-    echo "[lead] testing relay reachability..."
-    ping -c 2 -W 2 "$GATEWAY" || echo "[lead] WARN: ping failed; relay may not be reachable yet"
+  if [ -n "$GATEWAY" ] && [ "$GATEWAY" != "$RELAY_HOST" ]; then
+    echo "[lead] WARN: gateway is $GATEWAY but HCCV2VRelayHost=$RELAY_HOST — fix with:" >&2
+    echo "[lead]   python3 -c \"from openpilot.common.params import Params; Params().put('HCCV2VRelayHost','$GATEWAY')\"" >&2
   fi
+  ping -c 2 -W 2 "$RELAY_HOST" || echo "[lead] WARN: ping failed; relay may not be reachable yet" >&2
 fi
 
 echo "done."
