@@ -5,9 +5,9 @@ to be the world: spawn MetaDrive vehicles, ship synthesized camera frames +
 CAN/sensor inputs to each device over USB-RNDIS, and apply the device's
 returned `carControl` to the corresponding MetaDrive vehicle.
 
-M3 scope: ego device only. M4 adds the lead device + on-ego V2V relay; the
-two-prefix port-collision concern documented in cereal_bridges.py applies
-only at M4.
+Two-device runs (--lead) require the msgq ZMQ_BIND_ADDRESS patch on the PC —
+see cereal_bridges.py and tools/sim/hil/patches/zmq_bind_address.patch.
+Single-device (ego-only) runs work with stock msgq.
 """
 from __future__ import annotations
 
@@ -90,7 +90,7 @@ class _RoleStack:
   def __init__(self, prefix: str, device: DeviceConfig, dual_camera: bool, raw_yuv: bool):
     self.prefix = prefix
     self.device = device
-    self.bridge_pair = cereal_bridges.spawn(prefix, device.ip)
+    self.bridge_pair = cereal_bridges.spawn(prefix, device.ip, bind_ip=device.pc_ip)
     with OpenpilotPrefix(prefix, create_dirs_on_enter=True, clean_dirs_on_exit=False):
       messaging.reset_context()
       self.car = SimulatedCar()

@@ -17,6 +17,8 @@ class DeviceConfig:
   role: str          # "lead" or "ego"
   iface: str         # PC-side RNDIS interface name
   ip: str            # device-side RNDIS IP
+  pc_ip: str | None = None       # PC-side IP on the same RNDIS link; used as the
+                                 # ZMQ bind address so two devices' bridges don't collide
   hotspot_ip: str | None = None  # only set on the ego entry
 
 
@@ -37,8 +39,10 @@ def load(path: str | Path) -> DevicesConfig:
   with open(path, "rb") as f:
     raw = tomllib.load(f)
   return DevicesConfig(
-    lead=DeviceConfig(role="lead", iface=raw["lead"]["iface"], ip=raw["lead"]["ip"]),
-    ego=DeviceConfig(role="ego", iface=raw["ego"]["iface"], ip=raw["ego"]["ip"], hotspot_ip=raw["ego"].get("hotspot_ip")),
+    lead=DeviceConfig(role="lead", iface=raw["lead"]["iface"], ip=raw["lead"]["ip"],
+                      pc_ip=raw["lead"].get("pc_ip")),
+    ego=DeviceConfig(role="ego", iface=raw["ego"]["iface"], ip=raw["ego"]["ip"],
+                     pc_ip=raw["ego"].get("pc_ip"), hotspot_ip=raw["ego"].get("hotspot_ip")),
   )
 
 

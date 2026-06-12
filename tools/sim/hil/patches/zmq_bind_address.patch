@@ -1,0 +1,15 @@
+--- a/msgq/impl_zmq.cc
++++ b/msgq/impl_zmq.cc
+@@ -119,7 +119,11 @@
+     return -1;
+   }
+ 
+-  full_endpoint = "tcp://*:";
++  // ZMQ_BIND_ADDRESS restricts the pub bind to one interface IP. Used by the
++  // HIL setup to run one msgq->zmq bridge per RNDIS interface without the
++  // per-service ports colliding (see openpilot tools/sim/hil/cereal_bridges.py).
++  const char *bind_address = std::getenv("ZMQ_BIND_ADDRESS");
++  full_endpoint = std::string("tcp://") + (bind_address != nullptr ? bind_address : "*") + ":";
+   if (check_endpoint){
+     full_endpoint += std::to_string(get_port(endpoint));
+   } else {

@@ -57,15 +57,34 @@ cp tools/sim/hil/devices.example.toml tools/sim/hil/devices.toml
 [lead]
 iface = "enx00e04c360001"   # PC-side USB interface name for the lead device
 ip    = "192.168.32.10"     # static IP the lead device will use on usb0
+pc_ip = "192.168.32.1"      # PC's IP on the same link (ZMQ bind address)
 
 [ego]
 iface      = "enx00e04c360002"
 ip         = "192.168.32.11"
+pc_ip      = "192.168.32.2"
 hotspot_ip = "10.42.0.1"   # ego's WiFi hotspot IP (used by the lead for V2V)
 ```
 
 Find the interface name with `ip link show` (Linux) or `ifconfig` (macOS)
-after plugging in each device.
+after plugging in each device. To tell the two `enx...` interfaces apart,
+plug them in one at a time and watch which name appears.
+
+### One-time for two-device runs: patch msgq on the PC
+
+The stock `bridge` binary binds every service's ZMQ port on all interfaces,
+so the second device's bridge dies at startup. Apply the bind-address patch
+and rebuild (PC only — devices don't need it):
+
+```bash
+cd msgq_repo
+git apply ../tools/sim/hil/patches/zmq_bind_address.patch
+cd ..
+scons -j8 cereal
+```
+
+With the patch, each device's bridge binds only its own `pc_ip`, so the two
+pairs coexist. Ego-only runs work without the patch.
 
 ---
 
@@ -111,6 +130,11 @@ sudo /data/openpilot/tools/sim/hil/scripts/setup_v2v_network.sh lead
 
 This joins the ego's hotspot and sets `HCCV2VRelayHost=<ego hotspot IP>`.
 
+> **Note:** the Comma 3X has one WiFi radio, so joining the hotspot drops
+> both devices off your regular WiFi network — SSH over the LAN IPs
+> (e.g. `192.168.86.x`) stops working. Do Step 2 (RNDIS) first and SSH over
+> the USB link (`comma@192.168.32.10` / `comma@192.168.32.11`) from then on.
+
 Verify with:
 
 ```bash
@@ -146,7 +170,17 @@ appearing.
 
 ---
 
-## Step 5 — Launch MetaDrive on the PC
+## Step 5 — Preflight, then launch MetaDrive on the PC
+
+Run the preflight first — it checks every leg (config, binaries, msgq patch,
+RNDIS link, ping, SSH, branch, relay) and prints the exact fix for anything
+that fails:
+
+```bash
+./tools/sim/hil/scripts/check_hil.sh --lead    # or without --lead for ego-only
+```
+
+Then launch:
 
 ```bash
 # Two-device (ego + lead):
@@ -268,20 +302,57 @@ tools/sim/hil/
 ├── device_config.py           — devices.toml loader + RNDIS IP sanity check
 ├── launch_pc.py               — top-level PC orchestrator
 ├── window.py                  — 3-pane pygame composite window
+├── patches/
+│   └── zmq_bind_address.patch — msgq patch for two-device bridge coexistence (PC only)
 └── scripts/
+    ├── check_hil.sh           — PC-side preflight: verifies every leg before launch
     ├── launch_device.sh       — device-side HIL launcher (runs on the Comma 3X)
     ├── setup_rndis.sh         — one-shot static RNDIS IP setup (on device)
     └── setup_v2v_network.sh   — one-shot hotspot + V2V relay setup (on device)
 ```
 
+## Real-world readiness: what HIL must demonstrate before two-car testing
+
+The V2V topology in HIL (ego hotspot + on-ego relay, lead as WiFi client) is
+byte-identical to the planned two-car field setup — the RNDIS/PC leg is
+replaced by real cameras and CAN, but the V2V leg doesn't change. Use HIL to
+sign off on each of these before putting the devices in cars:
+
+1. **Hotspot persistence across reboots.** Reboot both devices; the
+   NetworkManager connections (`hcc-hotspot`, `hcc-hotspot-client`) are
+   `autoconnect yes`, so the link should re-form with no intervention.
+   Verify `ping 10.42.0.1` from the lead after both finish booting.
+2. **Staleness behavior.** With the ego in V2V-only mode (`HCCV2VOnly=1`), a
+   stale signal disengages HC3 rather than falling back to radar. Test by
+   stopping `v2vpublisher` on the lead mid-run (or `systemctl stop
+   hcc-v2v-relay` on the ego) and confirm the ego disengages cleanly within
+   `STALE_THRESHOLD_MS` instead of holding the last acceleration.
+3. **WiFi range/dropout.** In cars the devices will be 20–80 m apart through
+   two windshields. In HIL, characterize link margin by adding distance or
+   attenuation between the devices and watching packet loss in the relay CSV
+   log (`/var/log/` on the ego). The hotspot is created on the 2.4 GHz band
+   (`802-11-wireless.band bg`) for range.
+4. **Latency budget.** The relay CSV logs give per-packet timestamps; confirm
+   end-to-end lead→ego latency stays well under the 100 ms staleness
+   threshold over the real WiFi link (expected: single-digit ms).
+5. **Param persistence.** `setup_v2v_network.sh` writes the `HCCV2V*` params
+   once; verify they survive a reboot (`python3 -c "from openpilot.common.params
+   import Params; print(Params().get('HCCV2VRelayHost'))"`). Note that
+   `EnableHCCC` and `AlphaLongitudinalEnabled` are set by `launch_device.sh`
+   on every HIL launch — for real-car operation they must be set manually
+   once, since the car uses the normal launcher.
+
+The only V2V difference between HIL and the field deployment is *who powers
+the devices and what feeds the cameras* — if items 1–5 pass in HIL, the V2V
+link itself is field-ready. (The later cellular deployment via Lightsail is
+a separate transport and needs its own validation.)
+
 ## Known limitations
 
-- **Two-device cereal bridge port collision (M4 open issue)**: when running
-  `--lead`, the two `msgq→zmq` bridge subprocesses share ZMQ ports per
-  service. This works when services don't overlap (each prefix publishes
-  distinct services) but collides when both publish the same service name.
-  The current workaround is Linux network namespaces or a bind-IP patch to
-  the `bridge` binary. Tracked in `cereal_bridges.py`.
+- **Two-device cereal bridge port collision**: fixed by the msgq
+  `ZMQ_BIND_ADDRESS` patch (see Step 1). Without the patch on the PC, the
+  second `msgq→zmq` bridge fails to bind and the lead device receives
+  nothing. `check_hil.sh --lead` verifies the patch is applied.
 - **VisionIPC is shared-memory only**: it cannot cross the network. The
   `remote_sensor_bridge.py` on-device decoder is mandatory; do not attempt
   to publish VisionIPC from the PC.

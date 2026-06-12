@@ -11,12 +11,13 @@ For each device the PC runs a pair:
 The corresponding pair is spawned on the device by
 tools/sim/hil/scripts/launch_device.sh — see that file for the device side.
 
-OPEN ISSUE (M4 — multi-device): the bridge binary binds ZMQ ports per-service
-without a configurable bind interface, so running two msgq→zmq bridges on
-the same PC will collide on ports. For two devices this needs either Linux
-network namespaces, an msgq_to_zmq patch to honor a bind-IP arg, or two
-separate PC-side Python processes confined by netns. M3 (single ego)
-sidesteps this; M4 must address it before second-device bring-up.
+MULTI-DEVICE PORT COLLISION: the stock bridge binary binds tcp://*:<port>
+per service, so two msgq→zmq bridges on the same PC collide and the second
+one exits at startup. Fix: apply tools/sim/hil/patches/zmq_bind_address.patch
+to the msgq submodule on the PC and rebuild; the patched ZMQPubSocket honors
+ZMQ_BIND_ADDRESS, which spawn() sets to the PC-side RNDIS IP of each device
+(devices.toml `pc_ip`). Each device then connects to its own PC_IP and only
+sees its own bridge. Single-device (ego-only) runs work unpatched.
 """
 from __future__ import annotations
 
@@ -47,7 +48,7 @@ class BridgePair:
   prefix: str
   device_ip: str
   procs: list[subprocess.Popen]
-  _log_files: list = None  # opened log file handles; closed on stop()
+  _log_files: list | None = None  # opened log file handles; closed on stop()
 
   def stop(self) -> None:
     for p in self.procs:
@@ -71,14 +72,21 @@ def _bridge_binary() -> str:
   return os.path.normpath(os.path.join(here, "..", "..", "..", "cereal", "messaging", "bridge"))
 
 
-def spawn(prefix: str, device_ip: str, log_dir: str = "/tmp") -> BridgePair:
-  """Spawn the (msgq→zmq, zmq→msgq) pair for one device."""
+def spawn(prefix: str, device_ip: str, bind_ip: str | None = None, log_dir: str = "/tmp") -> BridgePair:
+  """Spawn the (msgq→zmq, zmq→msgq) pair for one device.
+
+  bind_ip is the PC-side RNDIS IP for this device. With the patched msgq it
+  scopes the msgq→zmq bridge's ZMQ binds to that interface so a second
+  device's bridge can coexist (see module docstring). Ignored by stock msgq.
+  """
   binary = _bridge_binary()
   if not os.path.exists(binary):
     raise FileNotFoundError(f"bridge binary not found at {binary}; build cereal first")
 
   env = os.environ.copy()
   env["OPENPILOT_PREFIX"] = prefix
+  if bind_ip is not None:
+    env["ZMQ_BIND_ADDRESS"] = bind_ip
 
   whitelist = " ".join(SERVICES_FROM_DEVICE)
   log_to_dev = open(os.path.join(log_dir, f"hil_bridge_{prefix}_msgq_to_zmq.log"), "ab")
@@ -97,9 +105,10 @@ def main() -> int:
   parser = argparse.ArgumentParser(description="Spawn cereal-bridge subprocesses for one device.")
   parser.add_argument("--prefix", required=True, help="OPENPILOT_PREFIX (e.g., hccego, hcclead)")
   parser.add_argument("--device", required=True, help="Device RNDIS IP")
+  parser.add_argument("--bind_ip", default=None, help="PC-side RNDIS IP to scope the ZMQ binds to (needs patched msgq)")
   args = parser.parse_args()
 
-  pair = spawn(args.prefix, args.device)
+  pair = spawn(args.prefix, args.device, bind_ip=args.bind_ip)
   print(f"[cereal_bridges] spawned {len(pair.procs)} processes for prefix={args.prefix} device={args.device}")
 
   def _shutdown(*_):

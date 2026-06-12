@@ -95,3 +95,6 @@ Pipfile
 # Ignore all local history of files
 .history
 .ionide
+
+# HIL per-machine config
+tools/sim/hil/devices.toml

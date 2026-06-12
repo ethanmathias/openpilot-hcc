@@ -3,15 +3,20 @@
 # `iface` is the PC-side RNDIS interface name (e.g., from `ip link` on Linux
 # or `ifconfig` on macOS). `ip` is the device-side RNDIS IP — set once on
 # each device by tools/sim/hil/scripts/setup_rndis.sh and persisted via
-# /data/etc/network/interfaces.d/usb0.
+# /data/etc/network/interfaces.d/usb0. `pc_ip` is the PC's IP on the same
+# link (the second argument you passed to setup_rndis.sh); it is used as the
+# ZMQ bind address so the two devices' cereal bridges don't collide on ports
+# (requires the msgq patch — see tools/sim/hil/patches/).
 
 [lead]
 iface = "enx00e04c360001"
-ip = "192.168.32.10"
+ip    = "192.168.32.10"
+pc_ip = "192.168.32.1"
 
 [ego]
 iface = "enx00e04c360002"
-ip = "192.168.32.11"
+ip    = "192.168.32.11"
+pc_ip = "192.168.32.2"
 # IP of the ego's WiFi hotspot, as seen by the lead device. Used by
 # setup_v2v_network.sh on the lead to set HCCV2VRelayHost.
 hotspot_ip = "10.42.0.1"
