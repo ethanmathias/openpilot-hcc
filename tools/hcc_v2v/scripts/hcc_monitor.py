@@ -35,12 +35,8 @@ def main() -> None:
   parser.add_argument("--hz", type=float, default=10.0, help="CSV sample rate (status line stays at 1 Hz)")
   args = parser.parse_args()
 
-  sm = messaging.SubMaster(['carState', 'controlsState', 'selfdriveState'])
-  params = Params()
-  v2v_only = params.get_bool("HCCV2VOnly") if params.check_key("HCCV2VOnly") else False
-  role = "ego" if v2v_only else "?"
-  print(f"hcc_monitor: role guess={role} (HCCV2VOnly={v2v_only}); Ctrl-C to stop")
-
+  # Open the CSV before anything that could block or crash (SubMaster, params),
+  # so a run always leaves at least a header behind for collection.
   csv_file = None
   csv_writer = None
   if args.log_csv:
@@ -48,7 +44,14 @@ def main() -> None:
     csv_file = open(args.log_csv, "w", newline="")
     csv_writer = csv.writer(csv_file)
     csv_writer.writerow(CSV_COLUMNS)
-    print(f"hcc_monitor: logging {args.hz:.0f} Hz samples to {args.log_csv}")
+    csv_file.flush()
+    print(f"hcc_monitor: logging {args.hz:.0f} Hz samples to {args.log_csv}", flush=True)
+
+  sm = messaging.SubMaster(['carState', 'controlsState', 'selfdriveState'])
+  params = Params()
+  v2v_only = params.get_bool("HCCV2VOnly") if params.check_key("HCCV2VOnly") else False
+  role = "ego" if v2v_only else "?"
+  print(f"hcc_monitor: role guess={role} (HCCV2VOnly={v2v_only}); Ctrl-C to stop", flush=True)
 
   interval = 1.0 / max(args.hz, 0.1)
   next_sample = time.monotonic()

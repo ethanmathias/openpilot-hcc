@@ -288,8 +288,8 @@ def run(args) -> int:
     ego_py = remote_python(args.user, args.ego_host, args.remote_dir)
     bench_cmd = (f"cd {args.remote_dir} && mkdir -p {REMOTE_LOG_DIR} && "
                  f"nohup env PYTHONPATH={args.remote_dir} {ego_py} tools/hcc_v2v/bench_ego.py "
-                 f"> {remote_bench_log} 2>&1 & echo $!")
-    bench_pid = ssh_ok(args.user, args.ego_host, bench_cmd)
+                 f"> {remote_bench_log} 2>&1 < /dev/null & echo $!")
+    bench_pid = ssh_ok(args.user, args.ego_host, bench_cmd, timeout=30)
     print(f"ego: BENCH ego subscriber started (pid {bench_pid}) — do not use --bench with a real car")
 
   # Which relay CSV is live right now (newest per-boot file on the ego)?
@@ -305,8 +305,8 @@ def run(args) -> int:
   monitor_cmd = (f"cd {args.remote_dir} && mkdir -p {REMOTE_LOG_DIR} && "
                  f"nohup env PYTHONPATH={args.remote_dir} {ego_py} tools/hcc_v2v/scripts/hcc_monitor.py "
                  f"--log_csv {remote_monitor_csv} --hz {args.monitor_hz} "
-                 f"> {remote_monitor_log} 2>&1 & echo $!")
-  monitor_pid = ssh_ok(args.user, args.ego_host, monitor_cmd)
+                 f"> {remote_monitor_log} 2>&1 < /dev/null & echo $!")
+  monitor_pid = ssh_ok(args.user, args.ego_host, monitor_cmd, timeout=30)
   print(f"ego: monitor started (pid {monitor_pid}) -> {remote_monitor_csv}")
 
   # Start the virtual lead. nohup survives SSH drops; we watch its PID.
@@ -320,11 +320,12 @@ def run(args) -> int:
   lead_py = remote_python(args.user, args.lead_host, args.remote_dir)
   vl_cmd = (f"cd {args.remote_dir} && mkdir -p {REMOTE_LOG_DIR} && "
             f"nohup env PYTHONPATH={args.remote_dir} {lead_py} tools/hcc_v2v/virtual_lead.py {vl_flags} "
-            f"> {remote_vl_log} 2>&1 & echo $!")
+            f"> {remote_vl_log} 2>&1 < /dev/null & echo $!")
   try:
-    vl_pid = ssh_ok(args.user, args.lead_host, vl_cmd)
+    vl_pid = ssh_ok(args.user, args.lead_host, vl_cmd, timeout=30)
   except (CheckFailure, subprocess.TimeoutExpired):
     _kill_remote(args.user, args.ego_host, "hcc_monitor.py")
+    _kill_remote(args.user, args.ego_host, "bench_ego.py")
     raise
   print(f"lead: virtual_lead started (pid {vl_pid}): scn={args.scn} end={args.end} "
         f"start_delay={args.start_delay}s duration={args.duration or 'profile length'}")
