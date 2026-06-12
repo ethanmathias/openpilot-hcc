@@ -37,7 +37,10 @@ fi
 set_param() {
   local key="$1"
   local val="$2"
-  python3 - "$key" "$val" <<'PY'
+  # openpilot's python deps (zmq, ...) live in the comma user's environment,
+  # and this script runs under sudo — so run Params access as that user,
+  # from the repo root so the openpilot package resolves.
+  sudo -u "${SUDO_USER:-comma}" bash -c "cd '$OPENPILOT_DIR' && python3 - '$key' '$val'" <<'PY'
 import sys
 from openpilot.common.params import Params
 key, val = sys.argv[1], sys.argv[2]
