@@ -73,6 +73,7 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory=$OPENPILOT_DIR
+Environment=PYTHONPATH=$OPENPILOT_DIR
 ExecStart=/bin/sh -c 'mkdir -p /data/hcc_v2v_logs && exec python3 $RELAY_PY --host 0.0.0.0 --port 19090 --log_csv /data/hcc_v2v_logs/relay_\$\$(date +%%Y%%m%%d_%%H%%M%%S).csv'
 Restart=always
 RestartSec=3
