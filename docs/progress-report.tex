@@ -1,0 +1,840 @@
+\documentclass[12pt]{article}
+\usepackage[margin=1in, headheight=15pt]{geometry}
+\usepackage{titlesec}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{fancyhdr}
+\usepackage{parskip}
+\usepackage{mdframed}
+\usepackage{graphicx}
+\usepackage{amsmath}
+
+% Colors
+\definecolor{uvablue}{RGB}{35, 45, 75}
+\definecolor{uvaorange}{RGB}{232, 119, 34}
+\definecolor{lightgray}{RGB}{245, 245, 245}
+\definecolor{darkgray}{RGB}{80, 80, 80}
+
+% Header/Footer
+\pagestyle{fancy}
+\fancyhf{}
+\rhead{\textcolor{darkgray}{\small openpilot-HCC Research Project}}
+\lhead{\textcolor{darkgray}{\small University of Virginia}}
+\cfoot{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+% Section formatting
+\titleformat{\section}
+  {\color{uvablue}\large\bfseries}
+  {\thesection}{1em}{}[\color{uvaorange}\rule{\linewidth}{1.5pt}]
+
+\titleformat{\subsection}
+  {\color{uvablue}\normalsize\bfseries}
+  {\thesubsection}{1em}{}
+
+\titleformat{\subsubsection}
+  {\color{darkgray}\normalsize\bfseries\itshape}
+  {}{0em}{}
+
+% Highlight box
+\newmdenv[
+  backgroundcolor=lightgray,
+  linecolor=uvaorange,
+  linewidth=2pt,
+  leftline=true,
+  rightline=false,
+  topline=false,
+  bottomline=false,
+  innerleftmargin=10pt,
+  innerrightmargin=10pt,
+  innertopmargin=6pt,
+  innerbottommargin=6pt,
+]{notebox}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=uvablue,
+  urlcolor=uvaorange,
+  citecolor=uvablue
+}
+
+\begin{document}
+
+% ─────────────────────────── TITLE PAGE ───────────────────────────
+\begin{titlepage}
+  \centering
+  \vspace*{2cm}
+  {\color{uvablue}\Huge\bfseries HC3 Algorithm Integration into\\[0.3em]
+  OpenPilot \& MetaDrive\\[0.5em]}
+  \color{uvaorange}\rule{0.6\linewidth}{2pt}\\[1em]
+  \color{black}
+  {\large\itshape Research Progress Report \& Development Roadmap}\\[2em]
+
+  \begin{tabular}{ll}
+    \textbf{Repository:}   & \href{https://github.com/ethanmathias/openpilot-hcc}{\texttt{github.com/ethanmathias/openpilot-hcc}} \\[0.4em]
+    \textbf{Ego branch:}   & \texttt{hcc-ego} \\[0.4em]
+    \textbf{Lead branch:}  & \texttt{hcc-lead} (same repo) \\[0.4em]
+    \textbf{V2V core:}     & \href{https://github.com/ethanmathias/hcc-v2v-core}{\texttt{github.com/ethanmathias/hcc-v2v-core}} \\[0.4em]
+    \textbf{Institution:}  & University of Virginia \\[0.4em]
+    \textbf{Research Lead:}& Brian Park \quad \href{mailto:bp6v@virginia.edu}{\texttt{bp6v@virginia.edu}} \quad 434-260-0101 \\[0.4em]
+    \textbf{PhD Student:}  & Austin Beigi \quad \href{mailto:grp7dh@virginia.edu}{\texttt{grp7dh@virginia.edu}} \quad 617-794-7080 \\[0.4em]
+    \textbf{Developer:}    & Ethan Mathias \quad \href{mailto:fkm5yp@virginia.edu}{\texttt{fkm5yp@virginia.edu}} \quad 571-338-7797 \\[0.4em]
+    \textbf{Date:}         & June 2026 \\
+  \end{tabular}
+
+  \vfill
+  {\small\color{darkgray} Undergraduate Research - Autonomous Vehicle Control Systems}
+\end{titlepage}
+
+% ─────────────────────────── TABLE OF CONTENTS ───────────────────────────
+\tableofcontents
+\newpage
+
+% ─────────────────────────── 1. PROJECT OVERVIEW ───────────────────────────
+\section{Project Overview}
+
+\subsection{Background and Motivation}
+
+This project bridges academic research in adaptive cruise control with real-world autonomous vehicle deployment. The core contribution is the \textbf{HC3} algorithm, a longitudinal acceleration controller originally developed and validated in the BeamNG driving simulator. HC3 computes ego-vehicle acceleration as a function of the preceding (lead) vehicle's state-primarily its relative speed and acceleration-enabling smooth, physically realistic car-following behavior without relying on openpilot's default ACC stack.
+
+The goal of this project is to move HC3 out of the lab and onto a physical vehicle. This requires three sequential milestones:
+
+\begin{enumerate}[leftmargin=2em]
+  \item \textbf{Simulation parity:} Re-implement HC3 inside the OpenPilot software stack using the MetaDrive simulator bridge, and verify that simulation outputs match BeamNG reference graphs. \textit{(Complete)}
+  \item \textbf{Connected-vehicle simulation:} Split the codebase into two OpenPilot branches (lead and ego) that share a common V2V networking library, with a small relay server between them. The ego runs HC3 in \textbf{V2V-only} mode, driven by the lead's live acceleration. \textit{(Complete)}
+  \item \textbf{Hardware deployment:} Load the two branches onto a pair of \textbf{Comma AI 3X} devices and validate in Hardware-in-the-Loop (HIL) mode with MetaDrive as the simulated world, then progress to on-road testing. \textit{(In Progress --- HIL infrastructure complete, HIL end-to-end test pending)}
+\end{enumerate}
+
+\subsection{The HC3 Algorithm}
+
+HC3 is a car-following acceleration model. At each time step it receives:
+\begin{itemize}
+  \item $v_{\text{lead}}$ - lead vehicle speed (m/s)
+  \item $a_{\text{lead}}$ - lead vehicle acceleration (m/s$^2$), either from radar or from a V2V packet
+  \item $d$ - gap distance to the lead vehicle (m)
+  \item $v_{\text{ego}}$ - ego vehicle speed (m/s)
+\end{itemize}
+and outputs a target acceleration command $a_{\text{cmd}}$ that is forwarded to OpenPilot's longitudinal planner, replacing the default ACC output.
+
+The algorithm was originally validated in BeamNG using Scenario 48 (a lead vehicle that cycles through acceleration, sustained speed, and braking phases). The same scenario has been ported to MetaDrive for cross-simulator validation.
+
+\subsection{Technology Stack}
+
+\begin{center}
+\begin{tabular}{>{\bfseries}p{3.5cm} p{9cm}}
+  \toprule
+  Component & Description \\
+  \midrule
+  OpenPilot & Open-source ADAS operating system by Comma AI; provides the software stack running on the comma 3x device \\
+  MetaDrive & Python-based driving simulator with a built-in OpenPilot bridge (\texttt{tools/sim}); used to validate HC3 in a controlled environment \\
+  BeamNG & Physics-accurate simulator used for the original HC3 validation; serves as the reference for graph comparison \\
+  Comma AI 3X & Edge compute device running AGNOS 16 (Ubuntu-based); runs OpenPilot natively for HIL and on-road operation \\
+  \texttt{longitudinal\_planner.py} & OpenPilot module overridden to inject HC3 acceleration commands \\
+  \texttt{hccc\_controller.py} & Custom Python module implementing the HC3 logic with OpenPilot/MetaDrive parameter bindings \\
+  Logitech Wheel & Manual input hardware integrated for human-in-the-loop simulation testing \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+% ─────────────────────────── 2. HOURS SUMMARY ───────────────────────────
+\section{Hours Summary}
+
+\begin{center}
+\begin{tabular}{lc}
+  \toprule
+  \textbf{Week} & \textbf{Hours} \\
+  \midrule
+  January 25, 2026  & 4.00  \\
+  February 1, 2026  & 16.00 \\
+  February 8, 2026  & 9.75  \\
+  February 22, 2026 & 9.75  \\
+  March 8, 2026     & 8.00  \\
+  March 15, 2026    & 7.00  \\
+  March 22, 2026    & 8.75  \\
+  March 29, 2026    & 4.00  \\
+  April 5--7, 2026  & 8.00  \\
+  May--June 2026    & 20.00 \\
+  \midrule
+  \textbf{Total}    & \textbf{95.25} \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+% ─────────────────────────── 3. ARCHITECTURE ───────────────────────────
+\section{System Architecture}
+
+\subsection{Previous Version: Radar-Based HC3 (\texttt{hcc-radar} branch)}
+
+In the first completed version, HC3 ran on a single OpenPilot instance and used the comma 3x onboard radar as the sole source of lead-vehicle data:
+
+\begin{enumerate}
+  \item \textbf{MetaDrive} generated a synthetic driving scenario (Scenario 48) with a CSV-driven lead vehicle.
+  \item \textbf{OpenPilot's radar pipeline} provided lead-vehicle state (distance, relative speed). A simulation-only guard prevented the pipeline from falling back to vision-based estimates with corrupted values.
+  \item \textbf{\texttt{hccc\_controller.py}} computed $a_{\text{cmd}}$ from radar-derived lead state and ego state.
+  \item \textbf{\texttt{longcontrol.py}} (modified) accepted $a_{\text{cmd}}$ directly, bypassing the default ACC stack.
+  \item Graph output plotted ego velocity vs.\ lead velocity for validation against BeamNG reference data.
+\end{enumerate}
+
+This version is stable and lives on the \texttt{hcc-radar} branch. It remains the baseline for comparison against the V2V implementation.
+
+\subsection{Current Version: V2V HC3 (two-branch split)}
+
+The codebase lives in a single repository (\texttt{openpilot-hcc}) with two active branches:
+
+\begin{itemize}
+  \item \texttt{hcc-lead} --- lead vehicle branch; adds \texttt{v2vpublisher.py} as a managed process and different HCCC/longcontrol code tuned for the lead role.
+  \item \texttt{hcc-ego} --- ego vehicle branch; adds the V2V subscriber path to \texttt{longcontrol.py}, \texttt{hccc\_controller.py}, and \texttt{controlsd.py}.
+\end{itemize}
+
+Both branches share the same V2V networking code vendored from \texttt{hcc-v2v-core}.
+
+Data flow in the current system:
+
+\begin{enumerate}
+  \item \textbf{MetaDrive} runs two simulation instances: one lead, one ego.
+  \item \textbf{Lead fork} reads \texttt{carState.aEgo} and \texttt{carState.vEgo} at 50\,Hz via SubMaster and sends UDP datagrams to the relay through \texttt{v2vpublisher.py}.
+  \item \textbf{Relay service} (\texttt{hcc-v2v-core/relay/service.py}) forwards packets from the registered lead address to the registered ego address, optionally enforcing sequence and timestamp validation. All events are logged to a CSV.
+  \item \textbf{Ego fork} runs \texttt{V2VLeadSubscriber} in a background thread; each received packet is validated (sender address, monotonic sequence, clock skew) and stored in a thread-safe buffer.
+  \item \textbf{\texttt{hccc\_controller.py}} reads the latest \texttt{V2VLeadSignal} and computes $a_{\text{cmd}}$ directly from the V2V lead speed and acceleration.
+  \item \textbf{\texttt{longcontrol.py}} (modified) routes the HC3 output to the longitudinal actuator, forcing \texttt{LongCtrlState.pid} while V2V-only mode is active.
+  \item Steering remains under human control (Logitech wheel) or is disabled; HC3 only controls longitudinal acceleration.
+\end{enumerate}
+
+\paragraph{V2V-only operating mode.} The most recent integration (commit \texttt{e4cad059e}, ``Add V2V-only HC3 transport integration'') makes the ego ignore the onboard radar when \texttt{HCCV2VOnly} is set. The \texttt{hcc-radar} branch remains as the baseline but is no longer used as a live fallback in the current deployment path. A stale V2V signal currently disengages HC3 rather than falling through to radar.
+
+\subsection{HIL Mode: MetaDrive + Two Comma 3X Devices}
+
+The Hardware-in-the-Loop (HIL) configuration replaces the simulated device processes with real Comma 3X hardware. MetaDrive continues to run on the Linux PC as the simulated world; each Comma 3X runs the full openpilot stack natively.
+
+\subsubsection{Physical Setup}
+
+\begin{itemize}
+  \item \textbf{Ego device} (\texttt{hcc-ego} branch) --- Comma 3X, AGNOS 16, connected to PC via USB-C RNDIS.
+  \item \textbf{Lead device} (\texttt{hcc-lead} branch) --- Comma 3X, AGNOS 16, connected to PC via USB-C RNDIS.
+  \item \textbf{V2V link} --- ego device acts as a WiFi hotspot (\texttt{hcc-v2v}); lead device connects to it. PC is not in the V2V path, matching real two-car field deployment.
+\end{itemize}
+
+\subsubsection{Two Transports}
+
+\begin{center}
+\begin{tabular}{>{\bfseries}p{3.5cm} p{8.5cm}}
+  \toprule
+  Transport & Purpose \\
+  \midrule
+  USB-C RNDIS & Camera frames (H.264), CAN/sensor data from PC to device; \texttt{carControl} from device to PC. Static IPs: \texttt{192.168.32.10} (lead), \texttt{192.168.32.11} (ego). \\
+  WiFi hotspot & V2V only. Ego runs the hotspot and the \texttt{hcc-v2v-relay.service}; lead connects and sends UDP packets to \texttt{10.42.0.1:19090}. \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+\subsubsection{Device Launch Sequence}
+
+On each device, \texttt{launch\_device.sh \textlangle{}role\textrangle{} \textlangle{}PC\_IP\textrangle{}} exports:
+
+\begin{verbatim}
+HIL_MODE=1
+HIL_ROLE=<lead|ego>
+HIL_PC_IP=<PC USB-side IP>
+NOBOARD=1
+SIMULATION=1
+BLOCK=camerad,pandad,sensord,loggerd,encoderd,micd,
+      logmessaged,ui,updated
+\end{verbatim}
+
+The \texttt{updated} daemon is blocked to prevent it from detecting the AGNOS version mismatch between the device and the repo's \texttt{agnos.json} and attempting to reflash firmware on every offroad period.
+
+Two \texttt{cereal/messaging/bridge} processes are started per device: one forwarding device-local services to the PC via ZMQ, and one pulling PC-published services (camera, sensors, CAN) into the device's local msgq.
+
+\subsubsection{PC-Side Orchestrator}
+
+\texttt{tools/sim/hil/launch\_pc.py} → \texttt{MetaDriveHILBridge}:
+
+\begin{itemize}
+  \item Loads \texttt{tools/sim/hil/devices.toml} with RNDIS interface names and IPs.
+  \item Manages \texttt{RemoteSensors} instances for each device role (H.264 encoder + ZMQ PUSH).
+  \item Runs MetaDrive with two vehicles; the 3-pane pygame window shows top-down, ego POV, and lead POV.
+  \item Keyboard or Logitech wheel steers the ego; lead trajectory is pure on-device hCCC.
+\end{itemize}
+
+\subsubsection{Key HIL Files}
+
+\begin{center}
+\begin{tabular}{>{\ttfamily}p{7.5cm} p{5cm}}
+  \toprule
+  File & Purpose \\
+  \midrule
+  tools/sim/hil/launch\_pc.py          & PC-side orchestrator \\
+  tools/sim/hil/device\_config.py      & \texttt{devices.toml} loader + RNDIS sanity check \\
+  tools/sim/hil/devices.example.toml  & Template for per-machine IP config \\
+  tools/sim/hil/scripts/launch\_device.sh    & Device-side HIL launcher \\
+  tools/sim/hil/scripts/setup\_rndis.sh      & One-shot RNDIS static IP (on device) \\
+  tools/sim/hil/scripts/setup\_v2v\_network.sh & One-shot WiFi hotspot + V2V relay (on device) \\
+  cereal/messaging/bridge             & Cross-device cereal bridge binary \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Hardware Deployment Path (On-Road)}
+
+For cellular on-road testing, the V2V relay moves from the device WiFi hotspot to \textbf{Amazon Lightsail} using artifacts in \texttt{hcc-v2v-core/deploy/lightsail/}:
+
+\begin{itemize}
+  \item \texttt{bootstrap.sh} --- installs Python and system dependencies on a fresh Ubuntu instance.
+  \item \texttt{install\_relay.sh} --- creates a virtualenv, installs the \texttt{hcc\_v2v\_core} package, writes \texttt{/etc/hcc-v2v/relay.env}, drops in a systemd unit (\texttt{hcc-v2v-relay.service}), and enables auto-restart.
+  \item \texttt{hcc-v2v-relay.service} --- starts \texttt{python -m relay.service} with \texttt{--enforce\_stream\_validation} and a CSV log at \texttt{/var/log/hcc-v2v/}.
+  \item \texttt{healthcheck.sh} --- post-install sanity check.
+\end{itemize}
+
+A Lightsail instance in \texttt{us-east-1} (Northern Virginia) minimizes round-trip latency for UVA-area testing. A static IP plus one inbound UDP rule on port 19090 is the only firewall change required. Both comma 3x devices point at the relay through environment variables (\texttt{HCC\_V2V\_RELAY\_HOST}, \texttt{HCC\_V2V\_RELAY\_PORT}) or the equivalent \texttt{Params} keys.
+
+% ─────────────────────────── 4. V2V CONNECTIVITY DESIGN ───────────────────────────
+\section{Connected Vehicle Architecture: Design and Implementation}
+
+This section describes the vehicle-to-vehicle (V2V) communication system that was designed and implemented to give the HC3 algorithm on the ego vehicle direct access to the lead vehicle's true acceleration $a_{\text{lead}}$, transmitted in real time from a second comma 3x device.
+
+\subsection{Motivation}
+
+The radar-based HC3 implementation estimates $a_{\text{lead}}$ by differentiating the measured relative velocity over time. This introduces noise and a one-step delay-the controller is always reacting to what the lead car \emph{was} doing. Transmitting $a_{\text{lead}}$ directly from the lead vehicle's CAN bus gives HC3 a feedforward signal, enabling more predictive and smoother control.
+
+The deployment constraint is that the two comma 3x devices will be in separate vehicles connected over \textbf{independent 4G/5G cellular connections}. Direct device-to-device communication is blocked by carrier-grade NAT, so a relay server is required.
+
+\subsection{Architecture: UDP Cloud Relay}
+
+After evaluating direct WebSocket (blocked by NAT over cellular) and TCP relay (retransmission delay harmful for real-time control), a \textbf{UDP relay server} was chosen. UDP skips retransmission-if a packet is lost, the next one arrives fresh. Since HC3 has a radar fallback for absent data, occasional dropped packets are safe to ignore.
+
+\subsubsection{Data Flow}
+
+\begin{enumerate}
+  \item \textbf{Lead comma 3x} reads $a_{\text{lead}}$ and $v_{\text{lead}}$ from \texttt{carState} at 50\,Hz via OpenPilot's SubMaster.
+  \item \texttt{v2vpublisher.py} serializes a JSON packet and sends it as a UDP datagram to the relay server.
+  \item \textbf{Relay service} (\texttt{hcc-v2v-core/relay/service.py}) re-transmits to the registered ego peer. A \texttt{RelayRouter} class handles peer registration and validation; an optional \texttt{--enforce\_stream\_validation} flag rejects out-of-order sequence numbers and implausible timestamps. Every event is logged to CSV.
+  \item \textbf{Ego comma 3x} receives the packet, checks the sequence number for ordering, and injects $a_{\text{lead}}$ into the HC3 control path.
+  \item If no packet arrives within \texttt{STALE\_THRESHOLD\_MS} (default 100\,ms), HC3 automatically falls back to the radar estimate.
+\end{enumerate}
+
+\subsubsection{JSON Packet Schema}
+
+\begin{verbatim}
+{
+  "device_id":    "hcc-lead",
+  "timestamp_us": 1743000000000000,
+  "a_lead":       -1.42,
+  "v_lead":       12.30,
+  "seq":          4821
+}
+\end{verbatim}
+
+\begin{center}
+\begin{tabular}{>{\ttfamily}p{3cm} p{8.5cm}}
+  \toprule
+  \textbf{Field} & \textbf{Description} \\
+  \midrule
+  device\_id     & Identifier for the transmitting device; relay uses this to route to the correct ego subscriber \\
+  timestamp\_us  & Wall-clock timestamp in microseconds; ego uses this to detect stale packets and clock skew \\
+  a\_lead        & Lead vehicle acceleration in m/s$^2$ (from \texttt{carState.aEgo}) \\
+  v\_lead        & Lead vehicle speed in m/s; used for sanity-checking against radar \\
+  seq            & Monotonically increasing sequence number; out-of-order packets are discarded \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+\subsubsection{Registration Handshake}
+
+On startup, both devices send a UDP ``hello'' packet containing their \texttt{device\_id} and role (\texttt{lead} or \texttt{ego}). The relay records the source IP/port for each role. Ego re-sends its hello every \texttt{HELLO\_INTERVAL\_S} (1.0s) to keep the cellular NAT binding open; the lead re-registers each time its socket is (re)opened in \texttt{V2VPublisher.start()}.
+
+\subsection{Repository Structure}
+
+\begin{center}
+\begin{tabular}{>{\bfseries}p{3.7cm} p{3.5cm} p{5.5cm}}
+  \toprule
+  Repository / Branch & Role & Description \\
+  \midrule
+  \texttt{hcc-v2v-core} (main) & Shared foundation & Standalone Python package holding the V2V networking code (publisher, subscriber, relay router), plus the cloud deploy scripts. Both branches keep a synced copy of the library so they agree on the packet format. \\
+  \addlinespace
+  \texttt{openpilot-hcc} (\texttt{hcc-lead}) & Lead vehicle & \texttt{v2vpublisher.py} reads \texttt{carState} at 50\,Hz and sends UDP packets to the relay; registered as a managed OpenPilot process in \texttt{process\_config.py}. \\
+  \addlinespace
+  \texttt{openpilot-hcc} (\texttt{hcc-ego}) & Ego vehicle & V2V subscriber path integrated into \texttt{controlsd.py}, \texttt{hccc\_controller.py}, and \texttt{longcontrol.py}; staleness guard; V2V-only mode bypasses radar. \\
+  \addlinespace
+  \texttt{openpilot-hcc} (\texttt{hcc-radar}) & Baseline (retained) & Radar-only HC3 from the earlier milestone; used for comparison graphs. \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Simulation Launcher (UI)}
+
+A unified launcher was implemented that starts the MetaDrive bridge, the relay server, and the lead/ego OpenPilot instances concurrently from a single entry point (\texttt{launch\_openpilot\_lead.sh} / \texttt{launch\_openpilot\_ego.sh}). This eliminates the need to manually coordinate multiple terminals during simulation runs.
+
+\subsection{Staleness Guard and Fallback Logic}
+
+At each HC3 control cycle the ego device applies:
+
+\begin{verbatim}
+age_ms = (now_us - last_packet.timestamp_us) / 1000.0
+
+if V2V_ENABLED and age_ms < STALE_THRESHOLD_MS:
+    a_lead_input = last_packet.a_lead      # V2V signal
+else:
+    a_lead_input = radar_derived_a_lead    # radar fallback
+\end{verbatim}
+
+\texttt{STALE\_THRESHOLD\_MS} is set to 100\,ms (5 missed packets at 50\,Hz) and will be tuned during hardware testing.
+
+\subsection{Latency Budget}
+
+\begin{center}
+\begin{tabular}{lcc}
+  \toprule
+  \textbf{Segment} & \textbf{Expected (4G)} & \textbf{Worst Case} \\
+  \midrule
+  Lead device $\to$ relay server & 15--35\,ms & 60\,ms \\
+  Relay server processing         & $<$1\,ms   & 2\,ms  \\
+  Relay server $\to$ ego device   & 15--35\,ms & 60\,ms \\
+  JSON deserialize + inject       & $<$1\,ms   & 1\,ms  \\
+  \midrule
+  \textbf{Total end-to-end}       & \textbf{31--72\,ms} & \textbf{$\sim$123\,ms} \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+The $<$50\,ms target is achievable under typical 4G conditions. The radar fallback ensures safe operation regardless. Relay CSV logs will be used to characterize actual latency before hardware deployment.
+
+\subsection{Simulation Validation Results}
+
+Scenario 48 was run end-to-end through the full V2V pipeline inside MetaDrive (April 7, 2026). Output was logged to \texttt{tools/sim/data/hccc/Test48.vehicle.honda\_civic\_2022\_ICE.hccc.csv}. The V2V-fed HC3 velocity profile is consistent with the radar-fed baseline from \texttt{hcc-radar}, confirming that the networking stack, packet schema, staleness logic, and fallback behavior are all functioning correctly in simulation.
+
+\subsection{Next Steps}
+
+\begin{enumerate}
+  \item \textbf{HIL end-to-end:} Complete RNDIS static IP setup and V2V WiFi setup on both devices; create \texttt{devices.toml}; run the first HIL test with \texttt{launch\_pc.py --lead}.
+  \item \textbf{Cloud server provisioning:} Move the relay server from the device WiFi hotspot to a cloud VM (AWS \texttt{us-east-1}) for cellular on-road testing.
+  \item \textbf{On-road testing:} Conduct controlled follow-the-leader tests replicating Scenario 48; collect latency logs and compare to simulation baseline.
+\end{enumerate}
+
+
+% ─────────────────────────── CURRENT MILESTONE ───────────────────────────
+\section{Current Milestone Summary}
+
+\begin{notebox}
+\textbf{Current state:} Both Comma 3X devices are fully provisioned for HIL testing. Each device runs AGNOS~16, has \texttt{openpilot-hcc} built natively from the correct branch (\texttt{hcc-ego} / \texttt{hcc-lead}), and has \texttt{updated} blocked in \texttt{launch\_device.sh} to prevent firmware downgrade. The \texttt{cereal/messaging/bridge} binary is built on both devices. Pending: RNDIS static IP assignment, V2V WiFi setup, and the first end-to-end HIL test run.
+\end{notebox}
+
+\subsection{Key Files}
+
+\begin{center}
+\begin{tabular}{>{\ttfamily}p{8.0cm} p{4.5cm}}
+  \toprule
+  File & Purpose \\
+  \midrule
+  \multicolumn{2}{l}{\textit{hcc-v2v-core}} \\
+  v2v\_core/core.py & Transport library: config, packets, buffer, publisher, subscriber \\
+  relay/service.py & UDP relay: router, registration, forwarding, CSV logging \\
+  relay/tests/test\_v2v\_core.py & Unit tests for transport + relay \\
+  deploy/lightsail/install\_relay.sh & One-shot installer for the Lightsail host \\
+  deploy/lightsail/hcc-v2v-relay.service & systemd unit for the relay \\
+  docs/integration\_contract.md & List of pieces the two branches must keep in sync with the core \\
+  \midrule
+  \multicolumn{2}{l}{\textit{openpilot-hcc (hcc-lead branch)}} \\
+  selfdrive/controls/v2vpublisher.py & Managed process: reads carState, publishes UDP \\
+  selfdrive/controls/lib/hcc\_v2v.py & Adapter connecting the shared V2V library to OpenPilot's settings layer \\
+  selfdrive/controls/lib/vendor/hcc\_v2v\_core.py & Synced copy of the shared V2V library \\
+  \midrule
+  \multicolumn{2}{l}{\textit{openpilot-hcc (hcc-ego branch)}} \\
+  selfdrive/controls/lib/hccc\_controller.py & HC3 algorithm implementation \\
+  selfdrive/controls/lib/longcontrol.py & Injects V2V signal into HC3 control path \\
+  selfdrive/controls/controlsd.py & Passes V2V snapshot into \texttt{LongControl.update} \\
+  selfdrive/controls/lib/vendor/hcc\_v2v\_core.py & Synced copy of the shared V2V library \\
+  tools/sim/hil/launch\_pc.py & PC-side HIL orchestrator \\
+  tools/sim/hil/scripts/launch\_device.sh & Device-side HIL launcher \\
+  tools/sim/hil/scripts/setup\_rndis.sh & One-shot RNDIS static IP \\
+  tools/sim/hil/scripts/setup\_v2v\_network.sh & One-shot WiFi hotspot + V2V relay \\
+  tools/sim/data/hccc/ & CSV logs from simulation test runs \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{What Works Right Now}
+\begin{itemize}
+  \item Two MetaDrive instances running concurrently, connected over a local UDP relay --- Scenario 48 validated end-to-end.
+  \item Lead branch publishes acceleration to the relay at 50\,Hz; ego branch subscribes and drives HC3 in V2V-only mode.
+  \item Peer registration, sender-address binding, sequence-number dedup, and clock-skew validation all enforced end-to-end.
+  \item Lightsail deploy artifacts (bootstrap, install, systemd unit, healthcheck) committed in \texttt{hcc-v2v-core}.
+  \item \textbf{Both Comma 3X devices provisioned for HIL:}
+    \begin{itemize}
+      \item AGNOS 16 flashed on both devices (matching the repo's \texttt{system/hardware/tici/agnos.json}).
+      \item \texttt{openpilot-hcc} built natively on each device via \texttt{scons -j4} (no errors).
+      \item Ego device on \texttt{hcc-ego} branch; lead device on \texttt{hcc-lead} branch.
+      \item \texttt{v2vpublisher.py} present on lead; absent on ego (correct).
+      \item \texttt{cereal/messaging/bridge} binary built on both devices.
+      \item \texttt{updated} daemon blocked in \texttt{BLOCK} list to prevent AGNOS downgrade on each offroad cycle.
+      \item \texttt{av} and \texttt{pyzmq} Python wheels installed on both devices.
+    \end{itemize}
+\end{itemize}
+
+\subsection{What is Next}
+\begin{itemize}
+  \item \textbf{RNDIS setup (per device):} Run \texttt{setup\_rndis.sh} on each device to assign static RNDIS IPs (\texttt{192.168.32.10} lead, \texttt{192.168.32.11} ego); verify with \texttt{ping} from PC.
+  \item \textbf{V2V WiFi setup:} Run \texttt{setup\_v2v\_network.sh ego} on the ego device (creates \texttt{hcc-v2v} hotspot + starts relay service); run \texttt{setup\_v2v\_network.sh lead} on the lead device (joins hotspot).
+  \item \textbf{PC configuration:} Create \texttt{tools/sim/hil/devices.toml} from the example template using the real \texttt{enx\ldots} interface names from \texttt{ip link show}.
+  \item \textbf{First HIL test run:} On lead device: \texttt{launch\_device.sh lead <PC\_IP>}; on ego device: \texttt{launch\_device.sh ego <PC\_IP>}; on PC: \texttt{python -m tools.sim.hil.launch\_pc --lead --keyboard}.
+  \item \textbf{Cloud relay provisioning:} Provision Lightsail instance (\texttt{us-east-1}), run \texttt{install\_relay.sh}, verify relay health; reconfigure devices to point at cloud relay for cellular on-road testing.
+\end{itemize}
+
+
+% ─────────────────────────── KNOWN ISSUES ───────────────────────────
+\section{Known Issues and Open Questions}
+
+\begin{center}
+\begin{tabular}{>{\bfseries}p{4cm} p{4cm} p{4.5cm}}
+  \toprule
+  Issue & Status & Notes \\
+  \midrule
+  Jarring velocity spikes in MetaDrive & Resolved & Root cause was inconsistent $\Delta t$ at scene transitions; fixed by enforcing a fixed timestep at the bridge level (March 23) \\
+  IDMPolicy lead car bounding & Closed (not applicable) & Superseded by CSV-driven lead car trajectory; IDMPolicy is no longer used in the simulation pipeline \\
+  Windows portability & Deferred & WSL blocked by NVIDIA OpenGL; native Ubuntu recommended for now \\
+  Logitech wheel default path & Resolved & Set as default in config \\
+  MetaDrive asset version check & Resolved & Patched with hard-coded \texttt{True} return \\
+  out\_of\_road false positive & Resolved & Patched with \texttt{False} override \\
+  Vision fallback lead selection & Resolved & Simulation-only guard implemented \\
+  AGNOS version mismatch (HIL) & Resolved & Both devices flashed to AGNOS~16; \texttt{updated} daemon blocked in \texttt{BLOCK} list to prevent reflash loop \\
+  OpenCL linker error (AGNOS 17) & Resolved & Root cause: Ubuntu-packaged \texttt{libavutil} expected versioned OpenCL symbols not present in AGNOS~17's custom Qualcomm libOpenCL. Resolved by flashing AGNOS~16 (matching the repo), which wiped conflicting apt packages from the system partition \\
+  Two-device cereal bridge port collision & Open & When running \texttt{--lead}, the two \texttt{msgq$\to$zmq} bridge subprocesses share ZMQ ports per service. Workaround: Linux network namespaces or a bind-IP patch to the \texttt{bridge} binary. Tracked in \texttt{cereal\_bridges.py} \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+% ─────────────────────────── METADRIVE TESTING ───────────────────────────
+\section{MetaDrive Testing: Review and Recommendations}
+
+\subsection{How Tests Run Today}
+
+The current flow, when a full V2V scenario is run end-to-end, is:
+
+\begin{enumerate}
+  \item \texttt{launch\_openpilot\_lead.sh} starts the lead branch under a MetaDrive bridge, with \texttt{HCC\_V2V\_ENABLED=1} and \texttt{OPENPILOT\_PREFIX=hcclead}.
+  \item \texttt{launch\_openpilot\_ego.sh} does the same for the ego branch under \texttt{OPENPILOT\_PREFIX=hccego}.
+  \item A separate relay process is started manually (or through the launcher UI) on the same machine.
+  \item The lead bridge either drives the lead vehicle with \texttt{IDMPolicy} or replays a CSV profile (\texttt{tools/sim/lib/Scenarios.csv}, scenario index 48).
+  \item Output CSVs and PNG graphs are written to \texttt{tools/sim/data/hccc/} and \texttt{tools/sim/graphs/hccc/}.
+\end{enumerate}
+
+This works, but a single run spins up two copies of the full OpenPilot stack plus the simulator and the relay. Tests take minutes to set up and are awkward to automate.
+
+\subsection{Pain Points}
+
+\begin{itemize}
+  \item \textbf{Two full OpenPilot stacks} run on every test, even when the only thing we care about is the HC3 controller and the V2V link. Most of the CPU goes to components we are not testing.
+  \item \textbf{MetaDrive startup is slow} (10--20 seconds per instance) and occasionally needs manual fixes when upstream assets change.
+  \item \textbf{Scenario 48 is the only end-to-end test.} Success or failure is judged by looking at a graph rather than by an automated pass/fail.
+  \item \textbf{The relay runs on the local machine} during simulation, so real network effects (latency, jitter, packet loss) are never tested.
+  \item \textbf{No automated regression check.} Changes to the V2V code are validated by eye.
+  \item \textbf{One stale test file} still points at an old path for the relay server; it happens to still work because an old copy is around, but it should be fixed.
+\end{itemize}
+
+\subsection{Recommended Testing Approach}
+
+A three-layer setup, ordered from fastest to most realistic. The first two layers are missing today and would let us check the V2V path in seconds instead of minutes.
+
+\subsubsection*{Layer 1 -- Unit tests (milliseconds)}
+
+Already in place for the packet format and the receive buffer. Extend with:
+
+\begin{itemize}
+  \item HC3 controller step: feed a known lead speed and acceleration in, check the command out against a reference number from the BeamNG baseline.
+  \item Relay router: hello packets, duplicate sequence numbers, wrong-source packets, and malformed input (the relay should not crash).
+  \item Receive buffer: what happens when the lead device restarts and the sequence number resets.
+\end{itemize}
+
+\subsubsection*{Layer 2 -- V2V link in isolation (seconds)}
+
+Start three small processes: a fake publisher that reads a CSV of $(t, a_{\text{lead}}, v_{\text{lead}})$, the real relay, and a fake subscriber that feeds the received signal straight into the HC3 controller and writes the output to CSV. Run Scenario 48 through this setup and compare the output against a saved reference file. This is fast, deterministic, and catches most V2V regressions without MetaDrive.
+
+A small wrapper around the loopback interface can add fake latency, jitter, and packet loss so the system is tested under cellular-like conditions before the first real on-road run.
+
+\subsubsection*{Layer 3 -- MetaDrive end-to-end (minutes)}
+
+Keep the current launcher setup, but:
+
+\begin{itemize}
+  \item Add a headless mode that skips the window and the live plotting.
+  \item Compare the scenario output against a saved reference CSV with a small tolerance band, and fail the test if it does not match.
+  \item Run Layer 3 nightly; run Layers 1 and 2 on every commit.
+\end{itemize}
+
+\subsubsection*{Smaller cleanup items}
+
+\begin{itemize}
+  \item Fix the stale import in the V2V test file so it points at the current shared library.
+  \item Move the Scenario CSV into the shared \texttt{hcc-v2v-core} repo so the simulator rig and the isolated V2V rig read from the same file.
+  \item Save a short reference trace per scenario so the visual graph check can become an automated one.
+\end{itemize}
+
+% ─────────────────────────── WORK LOG ───────────────────────────
+\section{Chronological Work Log}
+
+\subsection{May--June 2026 \hfill \normalfont\small $\sim$20 hours}
+
+\subsubsection{Objective}
+Provision both Comma 3X devices for HIL testing: correct AGNOS version, correct branch, native build, and HIL infrastructure verified.
+
+\subsubsection{Work Completed}
+\begin{itemize}
+  \item \textbf{Consolidated to single repo, two branches.} The separate \texttt{openpilot-hcc-lead} fork was retired; lead functionality now lives on the \texttt{hcc-lead} branch of \texttt{openpilot-hcc}. Both devices clone the same repo and check out their respective branch.
+  \item \textbf{Diagnosed and resolved AGNOS version conflict.} Both devices had started on AGNOS~17.2 (the latest OTA), while the repo targets AGNOS~16. Building on AGNOS~17.2 failed with an OpenCL linker error deep in \texttt{system/loggerd/loggerd} because Ubuntu-packaged \texttt{libavutil} expected versioned OpenCL symbols (\texttt{@OPENCL\_1.0}) not present in AGNOS~17's custom Qualcomm \texttt{libOpenCL}. Resolved by flashing AGNOS~16 to both devices using \texttt{system/hardware/tici/agnos.py --swap system/hardware/tici/agnos.json}.
+  \item \textbf{Blocked \texttt{updated} daemon.} After flashing AGNOS~16, the \texttt{updated} daemon would detect the version mismatch (device is 16, repo's \texttt{agnos.json} checksum differs from what the daemon expects) and attempt to re-flash on every offroad cycle. Fixed by adding \texttt{updated} to the \texttt{BLOCK} environment variable in \texttt{tools/sim/hil/scripts/launch\_device.sh} (commit \texttt{b863fb47c} on \texttt{hcc-ego}; cherry-picked as \texttt{bbefeb199} to \texttt{hcc-lead} and pushed to remote).
+  \item \textbf{Native build on both devices.} Resolved multiple incremental build dependency errors (missing \texttt{capnproto}, \texttt{eigen3}, \texttt{future-fstrings}, \texttt{onnx}, \texttt{gettext}) by installing system and Python packages. After flashing AGNOS~16 the system partition was clean and \texttt{scons -j4} completed without errors on both devices.
+  \item \textbf{Branch verification.} Confirmed: ego device (\texttt{comma-7259cb5e}) on \texttt{hcc-ego}; lead device (\texttt{comma-d382907f}) on \texttt{hcc-lead}. The initial checkout of \texttt{hcc-lead} on the lead device was blocked by a locally modified CSV file; resolved with \texttt{git checkout -- tools/sim/data/hccc/Test13.vehicle.\ldots.csv} then \texttt{git checkout hcc-lead}.
+  \item \textbf{HIL infrastructure verified on both devices:} \texttt{v2vpublisher.py} present on lead only, \texttt{cereal/messaging/bridge} built, \texttt{av} and \texttt{pyzmq} installed, \texttt{updated} in \texttt{BLOCK} list confirmed.
+\end{itemize}
+
+\subsubsection{Current Device State}
+
+\begin{center}
+\begin{tabular}{lllll}
+  \toprule
+  \textbf{Device} & \textbf{Hostname} & \textbf{WiFi IP} & \textbf{Branch} & \textbf{Status} \\
+  \midrule
+  Ego  & \texttt{comma-7259cb5e} & \texttt{192.168.86.53} & \texttt{hcc-ego}  & Built \checkmark \\
+  Lead & \texttt{comma-d382907f} & \texttt{192.168.86.56} & \texttt{hcc-lead} & Built \checkmark \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+\subsubsection{Outcome}
+\begin{notebox}
+\textbf{HIL infrastructure complete.} Both Comma 3X devices are on AGNOS~16, built from the correct branch, and ready for RNDIS / V2V WiFi setup. The next session will complete the network configuration and run the first end-to-end HIL test with MetaDrive.
+\end{notebox}
+
+\hrule\vspace{0.5em}
+
+\subsection{Week of April 5--7, 2026 \hfill \normalfont\small 8 hours}
+
+\subsubsection{Objective}
+Complete the HC3 V2V base layer and validate the two-simulation pipeline end-to-end.
+
+\subsubsection{Work Completed}
+\begin{itemize}
+  \item Extracted the shared V2V code into its own repository, \texttt{hcc-v2v-core}, containing \texttt{v2v\_core/core.py} (transport library), \texttt{relay/service.py} (UDP forwarder with \texttt{RelayRouter}), unit tests, and Lightsail deploy artifacts.
+  \item Copied the shared library into both branches and wrote a small adapter (\texttt{hcc\_v2v.py}) that hooks it into OpenPilot's settings system.
+  \item \texttt{hcc-lead}: implemented \texttt{v2vpublisher.py} which reads \texttt{carState.aEgo} and \texttt{carState.vEgo} at 50\,Hz via OpenPilot's SubMaster and sends UDP datagrams to the relay; registered as a managed process in \texttt{process\_config.py}; added \texttt{launch\_openpilot\_lead.sh}.
+  \item \texttt{hcc-ego}: integrated the V2V subscriber path into \texttt{controlsd.py}, \texttt{hccc\_controller.py}, and \texttt{longcontrol.py}; added V2V-only mode that forces \texttt{LongCtrlState.pid} and bypasses the radar lead; added \texttt{launch\_openpilot\_ego.sh}.
+  \item Wrote Lightsail deploy artifacts: \texttt{bootstrap.sh}, \texttt{install\_relay.sh}, \texttt{hcc-v2v-relay.service}, and \texttt{healthcheck.sh}, plus a runbook.
+  \item Created a UI for launching the MetaDrive bridge and the lead/ego OpenPilot simulations concurrently from a single entry point, simplifying the multi-process test setup.
+  \item Stabilized both branches: resolved a startup race condition in the lead publisher registration and fixed out-of-order packet handling in the ego subscriber using sequence number checking.
+  \item Ran Scenario 48 end-to-end through the full V2V pipeline; results were consistent with the radar-based baseline on \texttt{hcc-radar}.
+\end{itemize}
+
+\subsubsection{Outcome}
+\begin{notebox}
+\textbf{Milestone Reached:} First successful end-to-end V2V simulation run (Scenario 48) completed. The full networking stack-UDP publisher, relay server, subscriber, staleness guard, and radar fallback-has been exercised in MetaDrive. The \texttt{hcc-lead} and \texttt{hcc-ego} branches are stable in simulation and ready for cloud server provisioning and hardware deployment.
+\end{notebox}
+
+\hrule\vspace{0.5em}
+
+\subsection{Week of March 29, 2026 \hfill \normalfont\small 4 hours}
+
+\subsubsection{Objective}
+Design the V2V connectivity plan and begin implementing the framework for connecting two OpenPilot instances.
+
+\subsubsection{Work Completed}
+\begin{itemize}
+  \item Drafted the OpenPilot V2V plan covering the architecture for connecting the lead and ego comma 3x devices, including the UDP relay server design and the two-branch fork strategy.
+  \item Wrote initial code for connecting two OpenPilot simulations together via UDP; framework laid out with packet schema and registration handshake. Work in progress.
+\end{itemize}
+
+\subsubsection{Notes}
+Reduced output week due to multiple concurrent exams.
+
+\subsubsection{Next Steps (identified at week end)}
+\begin{itemize}
+  \item Complete the shared V2V transport library and relay server.
+  \item Create the \texttt{hcc-lead} and \texttt{hcc-ego} branches with full publisher/subscriber implementations.
+\end{itemize}
+
+\hrule\vspace{0.5em}
+
+\subsection{Week of March 22, 2026 \hfill \normalfont\small 8.75 hours}
+
+\subsubsection{Objective}
+Diagnose and fix radar lead-selection bug; milestone: HC3 radar complete.
+
+\subsubsection{Root Cause Analysis}
+
+A critical bug was identified and resolved this week. MetaDrive was generating a correct synthetic lead-vehicle track, but OpenPilot's internal lead-selection pipeline would \textbf{intermittently fall back to a vision-based lead estimate} with corrupted relative-speed values. Because HC3 uses lead acceleration as a primary input, these bad values caused the controller to over-correct, producing the oscillatory acceleration behavior observed in prior weeks-even though the HC3 logic itself was correct.
+
+\subsubsection{Fix Implemented}
+Added a \textbf{simulation-only guard} in the lead-selection path: when running inside MetaDrive, the pipeline is restricted to radar-tracked leads and will not fall back to the vision estimate. This guard is conditionally compiled/flagged so that the real-world comma 3x behavior is completely unaffected.
+
+\subsubsection{Current Status}
+
+\begin{notebox}
+\textbf{Milestone Reached:} HC3 radar integration is complete. Simulation graphs show velocity profiles and acceleration behavior consistent with BeamNG reference data.
+\end{notebox}
+
+\subsubsection{Next Steps (identified at week end)}
+\begin{itemize}
+  \item Create a new branch for V2V connectivity development: lead car equipped with a comma 3x that transmits its current acceleration over a WebSocket back to the ego vehicle.
+  \item Write a summary document for Austin covering HC3 radar completion and the design for connected Comma AI devices.
+\end{itemize}
+
+\hrule\vspace{0.5em}
+
+\subsection{Week of March 15, 2026 \hfill \normalfont\small 7 hours}
+
+\subsubsection{Objective}
+Graph output for cross-simulator validation; scenario testing.
+
+\subsubsection{Work Completed}
+\begin{itemize}
+  \item Added comparative graph output: ego vehicle velocity vs.\ lead vehicle velocity, plotted together for visual validation.
+  \item Set default file paths for the Logitech wheel device and the scenario output CSV file; these are loaded from an external configuration file.
+  \item Ran Scenario 48 in MetaDrive against the BeamNG reference graphs; outputs appear to match. One outstanding issue: brief jarring spikes in simulated ego velocity that require further investigation.
+  \item Awaiting updated HC3 controller code from advisor (Austin) before proceeding with next tuning iteration.
+\end{itemize}
+
+\hrule\vspace{0.5em}
+
+\subsection{Week of March 8, 2026 \hfill \normalfont\small 8 hours}
+
+\subsubsection{Objective}
+Scenario data integration and bug fixes.
+
+\subsubsection{Work Completed}
+\begin{itemize}
+  \item Fixed \texttt{out\_of\_road} bug: a fault inside MetaDrive's own collision-detection code was causing spurious ``out of road'' events. Patched by adding a function override that always returns \texttt{False}, disabling the misfiring check without affecting simulation validity.
+  \item Added support for loading lead-car trajectory data from a \texttt{Scenario.csv} file; the ego vehicle now follows a lead car whose motion is driven by pre-recorded or scripted data rather than an AI policy.
+  \item Confirmed correct units: lead-car velocity data is in m/s, matching OpenPilot's internal representation.
+\end{itemize}
+
+\subsubsection{Next Steps (identified at week end)}
+\begin{itemize}
+  \item Update \texttt{tools/sim} README with setup and usage instructions.
+  \item Set Logitech wheel and scenario output CSV as default paths.
+  \item Add post-run graph display capability (ego vs.\ lead velocity plot rendered automatically after scenario completes).
+\end{itemize}
+
+\hrule\vspace{0.5em}
+
+\subsection{Week of February 22, 2026 \hfill \normalfont\small 9.75 hours}
+
+\subsubsection{Objective}
+Manual input integration and scenario infrastructure.
+
+\subsubsection{Work Completed}
+\begin{itemize}
+  \item Created a shell script to automatically activate the Python virtual environment on launch.
+  \item Investigated building a BeamNG bridge as an alternative to MetaDrive; concluded that while technically feasible, the engineering cost (ROI) does not justify the effort at this stage. Decided to stabilize MetaDrive first.
+  \item Integrated manual input into the HC3 simulation:
+    \begin{itemize}
+      \item Changed the vehicle model used in simulation.
+      \item Keyboard inputs W/S (forward/backward) initially responsive; Logitech wheel and pedal integration not yet complete.
+      \item OpenPilot's default automatic steering still needed to be disabled.
+    \end{itemize}
+  \item Wrote a driver script for the Logitech steering wheel and pedals; removed OpenPilot's built-in steering so that physical inputs are the sole control authority-matching BeamNG HC3 behavior.
+  \item WASD keyboard control and Logitech wheel/pedals both working smoothly.
+\end{itemize}
+
+\subsubsection{Next Steps (identified at week end)}
+\begin{itemize}
+  \item Add custom scenarios to MetaDrive (e.g., Scenario 48).
+  \item Clean up code documentation and readability.
+  \item Fix IDMPolicy bounding issues for the lead car (noted at the time; subsequently superseded by the CSV-driven lead car approach -- IDMPolicy is no longer used).
+  \item Add ego velocity output for comparison with BeamNG reference data.
+  \item Write a script to model the lead car from a \texttt{.csv} trajectory file.
+\end{itemize}
+
+\hrule\vspace{0.5em}
+
+\subsection{Week of February 8, 2026 \hfill \normalfont\small 9.75 hours}
+
+\subsubsection{Objective}
+Integrate HC3 logic into the MetaDrive simulation and achieve a stable baseline.
+
+\subsubsection{Work Completed}
+\begin{itemize}
+  \item Integrated \texttt{hcc\_integration.py} into the OpenPilot codebase within the MetaDrive simulation environment.
+  \item Resolved multiple dependency and environment issues:
+    \begin{itemize}
+      \item Deactivated conflicting Conda environment to prevent stale Qt module from loading.
+      \item Fixed a MetaDrive asset bug: assets must be manually copied from the MetaDrive GitHub into the \texttt{.venv} folder, and the version-check function must be patched to return \texttt{True} to prevent overwriting with a corrupt asset bundle on initialization.
+    \end{itemize}
+  \item Achieved a running MetaDrive simulation; initial behavior was unstable (vehicle swerved off the road).
+  \item Applied Dr.\ Park's design principle: the controller only computes output when a lead vehicle is detected; removed OpenPilot's default acceleration logic from the active path.
+  \item Fixed behavioral instabilities-simulation reached mostly working order.
+  \item Outstanding bugs: simulation lag; manual input not yet routed to the controller.
+\end{itemize}
+
+\subsubsection{Next Steps (identified at week end)}
+\begin{itemize}
+  \item Scope logic to lead-car-present case only.
+  \item Create a looping scenario (accelerate $\to$ sustain $\to$ brake) to validate HC3.
+\end{itemize}
+
+\hrule\vspace{0.5em}
+
+\subsection{Week of February 1, 2026 \hfill \normalfont\small 16 hours}
+
+\subsubsection{Objective}
+Stand up a simulation environment capable of running the modified OpenPilot stack.
+
+\subsubsection{Work Completed}
+\begin{itemize}
+  \item Investigated CARLA integration as an alternative simulator; determined it has been \textbf{deprecated} by the upstream OpenPilot project and is no longer a viable path.
+  \item Attempted MetaDrive + OpenPilot setup via WSL2 on Windows; blocked by OpenGL driver incompatibility with NVIDIA GPUs through WSL.
+  \item Transitioned to native Ubuntu on a research machine; upgraded OS from 18.04 (deprecated) to 24.04, resolving display and driver issues.
+  \item Successfully ran OpenPilot inside the MetaDrive simulation on Ubuntu-first functional simulation environment.
+\end{itemize}
+
+\subsubsection{Notes from Meeting with Advisor (Austin)}
+\begin{notebox}
+  \begin{itemize}
+    \item Automate environment setup and simulation launch via shell scripts.
+    \item Write README documentation covering installation steps.
+    \item Investigate Windows portability (WSL path is blocked; native Ubuntu preferred for now).
+    \item Manual input (steering wheel/pedals) not yet registered-needs investigation.
+    \item Prepare a written summary document of all work completed to date.
+  \end{itemize}
+\end{notebox}
+
+\subsubsection{Next Steps (identified at week end)}
+Integrate \texttt{hcc\_integration.py} into the OpenPilot repository.
+
+\hrule\vspace{0.5em}
+
+\subsection{Week of January 25, 2026 \hfill \normalfont\small 4 hours}
+
+\subsubsection{Objective}
+Initial hardware setup and repository scaffolding.
+
+\subsubsection{Work Completed}
+\begin{itemize}
+  \item Set up a custom fork of the OpenPilot repository on the Comma AI 3X device.
+  \item Created step-by-step instructions for repository cloning, SSH access to the device, and deploying the custom fork.
+  \item Established the GitHub repository \href{https://github.com/ethanmathias/openpilot-hcc}{\texttt{ethanmathias/openpilot-hcc}} as the central codebase.
+\end{itemize}
+
+\subsubsection{Outcome}
+A working custom OpenPilot installation on the comma 3x; SSH-based workflow for iterative development without reflashing the device.
+
+% ─────────────────────────── 7. REFERENCES ───────────────────────────
+\section{References and Resources}
+
+\begin{itemize}
+  \item GitHub Repository: \href{https://github.com/ethanmathias/openpilot-hcc}{\texttt{https://github.com/ethanmathias/openpilot-hcc}}
+  \item OpenPilot (Comma AI): \href{https://github.com/commaai/openpilot}{\texttt{https://github.com/commaai/openpilot}}
+  \item MetaDrive Simulator: \href{https://github.com/metadriverse/metadrive}{\texttt{https://github.com/metadriverse/metadrive}}
+  \item Comma AI Device Documentation: \href{https://docs.comma.ai}{\texttt{https://docs.comma.ai}}
+  \item BeamNG Research: \href{https://www.beamng.com/research/}{\texttt{https://www.beamng.com/research/}}
+\end{itemize}
+
+\vfill
+\begin{center}
+  \color{darkgray}\small
+  \rule{0.4\linewidth}{0.4pt}\\[0.5em]
+  University of Virginia \textbullet{} Department of Engineering\\
+  openpilot-HCC Project \textbullet{} Ethan Mathias \textbullet{} June 2026
+\end{center}
+
+\end{document}
