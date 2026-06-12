@@ -72,6 +72,28 @@ def scp_from(user: str, host: str, remote_path: str, local_path: Path) -> bool:
   return result.returncode == 0
 
 
+_REMOTE_PY_CACHE: dict[str, str] = {}
+
+
+def remote_python(user: str, host: str, remote_dir: str) -> str:
+  """Resolve the python that has openpilot's deps on a device.
+
+  Non-interactive SSH sessions don't run the login profile, so the AGNOS
+  venv (and any repo venv) is not on PATH — find it explicitly."""
+  if host not in _REMOTE_PY_CACHE:
+    probe = (f"for p in {remote_dir}/.venv/bin/python3 /usr/local/venv/bin/python3; do "
+             f"[ -x \"$p\" ] && echo \"$p\" && exit 0; done; echo python3")
+    out = ssh(user, host, probe).stdout.strip().splitlines()
+    _REMOTE_PY_CACHE[host] = out[-1] if out else "python3"
+  return _REMOTE_PY_CACHE[host]
+
+
+def remote_py_prefix(user: str, host: str, remote_dir: str) -> str:
+  """`cd <repo> && PYTHONPATH=<repo> <venv-python>` — prefix for remote python commands."""
+  py = remote_python(user, host, remote_dir)
+  return f"cd {remote_dir} && PYTHONPATH={remote_dir} {py}"
+
+
 def device_time_us(user: str, host: str) -> tuple[float, float]:
   """Return (device_wall_time_us, pc_mid_wall_time_us) sampled around one SSH round trip."""
   t0 = time.time_ns() / 1000.0
@@ -128,7 +150,7 @@ def preflight(args) -> int:
               "v = p.get('HCCV2VRelayHost')\n"
               "v = v.decode() if isinstance(v, (bytes, bytearray)) else (v or '')\n"
               "print('HCCV2VRelayHost=' + v.strip())\n")
-  param_script = f"cd {args.remote_dir} && python3 -c {shlex.quote(param_py)}"
+  param_script = f"{remote_py_prefix(args.user, args.ego_host, args.remote_dir)} -c {shlex.quote(param_py)}"
   try:
     out = ssh_ok(args.user, args.ego_host, param_script, timeout=30)
     values = dict(item.split("=", 1) for line in out.splitlines() for item in line.split(",") if "=" in item)
@@ -152,7 +174,7 @@ def preflight(args) -> int:
                "v = Params().get('HCCV2VRelayHost')\n"
                "print((v.decode() if isinstance(v, (bytes, bytearray)) else (v or '')).strip())\n")
     out = ssh_ok(args.user, args.lead_host,
-                 f"cd {args.remote_dir} && python3 -c {shlex.quote(lead_py)}", timeout=30)
+                 f"{remote_py_prefix(args.user, args.lead_host, args.remote_dir)} -c {shlex.quote(lead_py)}", timeout=30)
     if out == args.ego_host:
       report("PASS", f"lead: HCCV2VRelayHost={out}")
     else:
@@ -263,8 +285,10 @@ def run(args) -> int:
   if args.bench:
     # No car: the real ego subscriber (inside controlsd) is not running, so
     # register a stand-in ego with the relay to exercise the forwarding path.
+    ego_py = remote_python(args.user, args.ego_host, args.remote_dir)
     bench_cmd = (f"cd {args.remote_dir} && mkdir -p {REMOTE_LOG_DIR} && "
-                 f"nohup python3 tools/hcc_v2v/bench_ego.py > {remote_bench_log} 2>&1 & echo $!")
+                 f"nohup env PYTHONPATH={args.remote_dir} {ego_py} tools/hcc_v2v/bench_ego.py "
+                 f"> {remote_bench_log} 2>&1 & echo $!")
     bench_pid = ssh_ok(args.user, args.ego_host, bench_cmd)
     print(f"ego: BENCH ego subscriber started (pid {bench_pid}) — do not use --bench with a real car")
 
@@ -277,8 +301,10 @@ def run(args) -> int:
   t_start_us = int(ssh_ok(args.user, args.ego_host, "date +%s%N")) // 1000
 
   # Start the ego-side monitor (records engaged/vEgo/accel contributions).
+  ego_py = remote_python(args.user, args.ego_host, args.remote_dir)
   monitor_cmd = (f"cd {args.remote_dir} && mkdir -p {REMOTE_LOG_DIR} && "
-                 f"nohup python3 tools/hcc_v2v/scripts/hcc_monitor.py --log_csv {remote_monitor_csv} --hz {args.monitor_hz} "
+                 f"nohup env PYTHONPATH={args.remote_dir} {ego_py} tools/hcc_v2v/scripts/hcc_monitor.py "
+                 f"--log_csv {remote_monitor_csv} --hz {args.monitor_hz} "
                  f"> {remote_monitor_log} 2>&1 & echo $!")
   monitor_pid = ssh_ok(args.user, args.ego_host, monitor_cmd)
   print(f"ego: monitor started (pid {monitor_pid}) -> {remote_monitor_csv}")
@@ -291,8 +317,10 @@ def run(args) -> int:
     vl_flags += f" --duration {args.duration}"
   if args.loop:
     vl_flags += " --loop"
+  lead_py = remote_python(args.user, args.lead_host, args.remote_dir)
   vl_cmd = (f"cd {args.remote_dir} && mkdir -p {REMOTE_LOG_DIR} && "
-            f"nohup python3 tools/hcc_v2v/virtual_lead.py {vl_flags} > {remote_vl_log} 2>&1 & echo $!")
+            f"nohup env PYTHONPATH={args.remote_dir} {lead_py} tools/hcc_v2v/virtual_lead.py {vl_flags} "
+            f"> {remote_vl_log} 2>&1 & echo $!")
   try:
     vl_pid = ssh_ok(args.user, args.lead_host, vl_cmd)
   except (CheckFailure, subprocess.TimeoutExpired):
