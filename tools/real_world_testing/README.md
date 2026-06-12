@@ -222,16 +222,24 @@ Still open (be aware):
   `ssh_launch()`: read the echoed PID, then close the local ssh client
   ourselves. No device-side update needed (ego already has the
   `hcc_monitor.py` fix via scp; both devices have the `hcc_v2v.py` fix).
-  **Next: take 4** —
+  Take 4: launch fix confirmed (virtual_lead started, ran, finished; takes
+  2/3 leftovers on the lead show 1751-row sent CSVs — those "failures" were
+  phantom). But all 1750 packets were rejected `missing_ego_peer`:
+  `/data/hcc_v2v_logs` on the ego was created **root-owned by the relay
+  service**, so the comma-user log redirections failed and bench_ego +
+  hcc_monitor died at launch while still echoing plausible PIDs. Fixed:
+  launches now verify the process survived 1 s (`DEAD` + stderr otherwise),
+  preflight checks log-dir writability on both devices, and the relay unit
+  chowns the dir to comma. **Next: take 5** — first the one-time ownership
+  fix on the ego, then the run:
   ```bash
-  python3 tools/real_world_testing/field_test.py abort --lead_host 10.42.0.60   # clear strays (safe if none)
+  ssh comma@10.42.0.1 'sudo chown comma:comma /data/hcc_v2v_logs'
+  python3 tools/real_world_testing/field_test.py abort --lead_host 10.42.0.60
   python3 tools/real_world_testing/field_test.py run --scn 48 --duration 30 \
-      --lead_host 10.42.0.60 --bench --notes "bench take 4"
+      --lead_host 10.42.0.60 --bench --notes "bench take 5"
   ```
-  Open questions for take 4: confirm `ego_monitor.csv` gets created (take 1
-  produced none; the CSV-open was moved ahead of SubMaster init to fix it),
-  and check `/data/hcc_v2v_logs/vl_run_*.log` + `sent_*.csv` from takes 2/3
-  on the lead — if they have data, the publisher really was running all along.
+  Open question for take 5: confirm `ego_monitor.csv` gets created (the
+  monitor has never actually run yet — every prior take died before it).
 
 ## Safety checklist (before every session)
 

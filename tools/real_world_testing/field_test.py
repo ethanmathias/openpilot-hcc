@@ -67,15 +67,26 @@ def ssh_ok(user: str, host: str, command: str, timeout: float = 20.0) -> str:
   return result.stdout.strip()
 
 
-def ssh_launch(user: str, host: str, command: str, timeout: float = 30.0) -> str:
-  """Start a remote background process; return the PID it echoes.
+def launch_cmd(remote_dir: str, py: str, script_and_flags: str, log_path: str) -> str:
+  """Remote command that starts a nohup'd background python and prints its
+  PID — or DEAD if it didn't survive its first second (e.g. the log
+  redirection failed, which the shell reports only on stderr while still
+  forking a child whose PID looks legitimate)."""
+  return (f"cd {remote_dir} && mkdir -p {REMOTE_LOG_DIR} && "
+          f"{{ nohup env PYTHONPATH={remote_dir} {py} {script_and_flags} "
+          f"> {log_path} 2>&1 < /dev/null & pid=$!; sleep 1; "
+          f"kill -0 $pid 2>/dev/null && echo $pid || echo DEAD; }}")
 
-  `command` must end with `& echo $!`. On some devices sshd holds the
-  session open until the nohup'd child exits even with every fd redirected,
-  so subprocess.run() blocks for the child's whole lifetime (this is what
-  timed out bench takes 2 and 3 — the launch itself succeeded). Read the
-  one PID line ourselves and tear down the local ssh client; the remote
-  process is under nohup and keeps running."""
+
+def ssh_launch(user: str, host: str, command: str, timeout: float = 30.0) -> str:
+  """Start a remote background process via launch_cmd(); return its PID.
+
+  On some devices sshd holds the session open until the nohup'd child
+  exits even with every fd redirected, so subprocess.run() blocks for the
+  child's whole lifetime (this is what timed out bench takes 2 and 3 — the
+  launch itself succeeded). Read the one PID/DEAD line ourselves and tear
+  down the local ssh client; the remote process is under nohup and keeps
+  running."""
   proc = subprocess.Popen(["ssh", *SSH_OPTS, f"{user}@{host}", command],
                           stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
   try:
@@ -87,7 +98,8 @@ def ssh_launch(user: str, host: str, command: str, timeout: float = 30.0) -> str
     proc.kill()
     proc.wait()
   if not line.isdigit():
-    raise CheckFailure(f"ssh {host}: launch did not return a PID (got {line!r}): `{command}`")
+    err = (proc.stderr.read() or "").strip()
+    raise CheckFailure(f"ssh {host}: process died at launch ({err or line!r}): `{command}`")
   return line
 
 
@@ -167,6 +179,17 @@ def preflight(args) -> int:
     report("PASS", "ego: hcc-v2v-relay service active")
   else:
     report("FAIL", "ego: relay not running — sudo tools/hcc_v2v/scripts/setup_v2v_network.sh ego (on the ego)")
+
+  # Log dir writable as the ssh user on both devices. The relay runs as root
+  # and creates /data/hcc_v2v_logs root-owned if it gets there first — then
+  # every comma-user launch dies instantly on the log redirection (bench take 4).
+  for role, host in (("ego", args.ego_host), ("lead", args.lead_host)):
+    result = ssh(args.user, host,
+                 f"mkdir -p {REMOTE_LOG_DIR} 2>/dev/null; touch {REMOTE_LOG_DIR}/.wtest && rm {REMOTE_LOG_DIR}/.wtest")
+    report("PASS" if result.returncode == 0 else "FAIL",
+           f"{role}: {REMOTE_LOG_DIR} writable as {args.user}" if result.returncode == 0
+           else f"{role}: {REMOTE_LOG_DIR} not writable as {args.user} — "
+                f"ssh in and `sudo chown {args.user}:{args.user} {REMOTE_LOG_DIR}`")
 
   # Params on ego
   param_py = ("from openpilot.common.params import Params; p = Params()\n"
@@ -311,9 +334,7 @@ def run(args) -> int:
     # No car: the real ego subscriber (inside controlsd) is not running, so
     # register a stand-in ego with the relay to exercise the forwarding path.
     ego_py = remote_python(args.user, args.ego_host, args.remote_dir)
-    bench_cmd = (f"cd {args.remote_dir} && mkdir -p {REMOTE_LOG_DIR} && "
-                 f"{{ nohup env PYTHONPATH={args.remote_dir} {ego_py} tools/hcc_v2v/bench_ego.py "
-                 f"> {remote_bench_log} 2>&1 < /dev/null & echo $!; }}")
+    bench_cmd = launch_cmd(args.remote_dir, ego_py, "tools/hcc_v2v/bench_ego.py", remote_bench_log)
     bench_pid = ssh_launch(args.user, args.ego_host, bench_cmd, timeout=30)
     print(f"ego: BENCH ego subscriber started (pid {bench_pid}) — do not use --bench with a real car")
 
@@ -327,10 +348,9 @@ def run(args) -> int:
 
   # Start the ego-side monitor (records engaged/vEgo/accel contributions).
   ego_py = remote_python(args.user, args.ego_host, args.remote_dir)
-  monitor_cmd = (f"cd {args.remote_dir} && mkdir -p {REMOTE_LOG_DIR} && "
-                 f"{{ nohup env PYTHONPATH={args.remote_dir} {ego_py} tools/hcc_v2v/scripts/hcc_monitor.py "
-                 f"--log_csv {remote_monitor_csv} --hz {args.monitor_hz} "
-                 f"> {remote_monitor_log} 2>&1 < /dev/null & echo $!; }}")
+  monitor_cmd = launch_cmd(args.remote_dir, ego_py,
+                           f"tools/hcc_v2v/scripts/hcc_monitor.py --log_csv {remote_monitor_csv} --hz {args.monitor_hz}",
+                           remote_monitor_log)
   monitor_pid = ssh_launch(args.user, args.ego_host, monitor_cmd, timeout=30)
   print(f"ego: monitor started (pid {monitor_pid}) -> {remote_monitor_csv}")
 
@@ -343,9 +363,7 @@ def run(args) -> int:
   if args.loop:
     vl_flags += " --loop"
   lead_py = remote_python(args.user, args.lead_host, args.remote_dir)
-  vl_cmd = (f"cd {args.remote_dir} && mkdir -p {REMOTE_LOG_DIR} && "
-            f"{{ nohup env PYTHONPATH={args.remote_dir} {lead_py} tools/hcc_v2v/virtual_lead.py {vl_flags} "
-            f"> {remote_vl_log} 2>&1 < /dev/null & echo $!; }}")
+  vl_cmd = launch_cmd(args.remote_dir, lead_py, f"tools/hcc_v2v/virtual_lead.py {vl_flags}", remote_vl_log)
   try:
     vl_pid = ssh_launch(args.user, args.lead_host, vl_cmd, timeout=30)
   except (CheckFailure, subprocess.TimeoutExpired):
