@@ -47,8 +47,11 @@ import sys
 from openpilot.common.params import Params
 key, val = sys.argv[1], sys.argv[2]
 p = Params()
+# Params are typed (bool/int/string); write with the type the registry expects.
 if val in ("0", "1"):
   p.put_bool(key, val == "1")
+elif val.lstrip("-").isdigit():
+  p.put(key, int(val))
 else:
   p.put(key, val)
 PY
