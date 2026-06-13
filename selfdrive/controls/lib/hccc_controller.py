@@ -4,10 +4,17 @@ from openpilot.selfdrive.controls.lib.hcc_v2v import V2VLeadSignal
 
 # Final acceleration command is scaled by this factor after the beta * speed_error +
 # feedforward computation.  Empirically tuned to avoid overshoot in the sim.
+# NOTE: this is an OpenPilot-specific addition; the BeamNG reference has no such
+# scale.  Set to 1.0 to reproduce pure BeamNG output magnitude.
 _ACCEL_OUTPUT_SCALE = 0.6
 
-# Time constant (seconds) for the first-order feedforward low-pass filter.
-_FEEDFORWARD_TIME_CONSTANT_S = 1.0
+# Feedforward lead-lag compensator F(s) = (tau*s + (1 - beta*th_bar)) / (th_bar*s + 1),
+# matching the BeamNG reference (tools/sim heritage).  tau is the lead-vehicle
+# actuation-lag time constant (numerator zero); th_bar is the nominal headway time
+# (denominator pole).  These are the "given" constants from the reference design and
+# are independent of the spacing-controller t_h.
+_FEEDFORWARD_TAU_S = 0.12
+_FEEDFORWARD_TH_BAR_S = 1.0
 
 
 class HCCC:
@@ -21,9 +28,16 @@ class HCCC:
     self._max_decel = max_deceleration
     self._max_accl = max_acceleration
 
-    # Scalar state for the feedforward filter (avoids needing full history).
+    # Bilinear (Tustin) discretization of the lead-lag feedforward F(s), computed
+    # once in closed form so we avoid a scipy dependency in controlsd.  The
+    # difference equation is y[n] = b0*x[n] + b1*x[n-1] - a1*y[n-1].
+    self._ff_b0, self._ff_b1, self._ff_a1 = self._feedforward_coeffs()
+
+    # Scalar state for the feedforward filter (avoids needing full history):
+    # previous filter input (lead accel) and previous filter output.
     self._prev_lead_speed = None
-    self._feedforward_state = 0.0
+    self._ff_prev_in = 0.0
+    self._ff_prev_out = 0.0
     # Debug fields exported through the simulator logging path for comparing
     # live controller inputs/outputs against replay traces.
     self.debug_lead_speed = 0.0
@@ -39,7 +53,8 @@ class HCCC:
 
   def reset(self):
     self._prev_lead_speed = None
-    self._feedforward_state = 0.0
+    self._ff_prev_in = 0.0
+    self._ff_prev_out = 0.0
     self._reset_debug_state()
 
   def set_accel_limits(self, max_decel: float, max_accel: float):
@@ -47,13 +62,31 @@ class HCCC:
     self._max_decel = max_decel
     self._max_accl = max_accel
 
+  def _feedforward_coeffs(self):
+    """Closed-form bilinear (Tustin) discretization of the lead-lag feedforward
+    F(s) = (tau*s + c0) / (th_bar*s + 1), with c0 = 1 - beta*th_bar.
+
+    Bilinear substitution s = (2/dt)*(1 - z^-1)/(1 + z^-1) and normalization by the
+    leading denominator coefficient yields the difference equation
+      y[n] = b0*x[n] + b1*x[n-1] - a1*y[n-1].
+    This reproduces scipy.signal's TransferFunction(...).to_discrete(dt, 'tustin').
+    """
+    tau = _FEEDFORWARD_TAU_S
+    th_bar = _FEEDFORWARD_TH_BAR_S
+    c0 = 1.0 - self._beta * th_bar
+    k = 2.0 / self._dt
+    a0 = th_bar * k + 1.0
+    b0 = (tau * k + c0) / a0
+    b1 = (c0 - tau * k) / a0
+    a1 = (1.0 - th_bar * k) / a0
+    return b0, b1, a1
+
   def _feedforward_no_delay(self, a_lead: float) -> float:
-    """First-order low-pass feedforward filter (matches the BeamNG version)."""
-    tau = _FEEDFORWARD_TIME_CONSTANT_S
-    self._feedforward_state += (self._dt / tau) * (
-      (1 - tau * self._beta) * a_lead - self._feedforward_state
-    )
-    return self._feedforward_state
+    """Lead-lag feedforward filter (matches the BeamNG version's discretized F(s))."""
+    out = self._ff_b0 * a_lead + self._ff_b1 * self._ff_prev_in - self._ff_a1 * self._ff_prev_out
+    self._ff_prev_in = a_lead
+    self._ff_prev_out = out
+    return out
 
   # Keep a small amount of internal state so replay logging can reconstruct the
   # lead-speed and feedforward terms that drive the HC3 command.
