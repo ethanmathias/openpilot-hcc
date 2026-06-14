@@ -32,6 +32,21 @@ CONFIG_PATH = Path.home() / ".openpilot_hcc_v2v_launcher.json"
 PROCESS_STOP_TIMEOUT_S = 5.0
 
 
+def sanitized_environment() -> dict[str, str]:
+  """Environment copy with library-path contamination stripped.
+
+  An active Anaconda ``(base)`` env leaks ``LD_LIBRARY_PATH``/``LD_PRELOAD`` that
+  breaks the snap-packaged gnome-terminal we open the bridge in (symbol lookup
+  error in libpthread: ``__libc_pthread_init … GLIBC_PRIVATE``) and can perturb
+  the sim processes. Each spawned command re-activates the project venv itself,
+  so these vars are never needed here.
+  """
+  env = dict(os.environ)
+  for key in ("LD_LIBRARY_PATH", "LD_PRELOAD"):
+    env.pop(key, None)
+  return env
+
+
 class ManagedProcess:
   def __init__(self, name: str, log_queue: "queue.Queue[tuple[str, str]]", status_callback):
     self.name = name
@@ -55,6 +70,7 @@ class ManagedProcess:
       text=True,
       bufsize=1,
       preexec_fn=os.setsid,
+      env=sanitized_environment(),
     )
     self.status_callback(self.name, True)
     self.log_queue.put((self.name, f"$ {command}"))
@@ -312,7 +328,7 @@ class LauncherUI:
       return
     try:
       terminal_cmd = build_terminal_command("HCC V2V Bridge", build_bridge_command(config))
-      subprocess.Popen(terminal_cmd, cwd=config.ego_repo)
+      subprocess.Popen(terminal_cmd, cwd=config.ego_repo, env=sanitized_environment())
       self.status_vars["bridge"].set("Opened terminal")
       self.log_queue.put(("bridge", f"$ {' '.join(terminal_cmd)}"))
     except Exception as err:
