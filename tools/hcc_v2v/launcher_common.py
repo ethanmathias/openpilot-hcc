@@ -121,7 +121,7 @@ def build_bridge_command(config: LauncherConfig) -> str:
 
 
 def command_shell_lines(title: str, command: str) -> str:
-  return f'clear; echo "{title}"; echo; {command}; status=$?; echo; echo "Process exited with code ${status}."; exec $SHELL -l'
+  return f'clear; echo "{title}"; echo; {command}; status=$?; echo; echo "Process exited with code ${{status}}."; exec $SHELL -l'
 
 
 def build_terminal_command(title: str, command: str) -> list[str]:

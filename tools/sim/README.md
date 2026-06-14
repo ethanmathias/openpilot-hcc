@@ -53,9 +53,14 @@ so the PC↔device link it depends on isn't available. In-car testing replaced i
 From the repo root:
 
 ```bash
-tools/op.sh setup          # clones submodules, creates .venv, installs deps
-scons -u -j$(nproc)        # build openpilot
+tools/op.sh setup            # clones submodules, creates .venv, installs deps
+scons -u -j$(nproc) --minimal  # build openpilot (skips cabana/replay — the sim doesn't need them)
 ```
+
+`--minimal` builds only what the sim needs. The default build also compiles
+`tools/cabana`, which fails if an Anaconda `(base)` env is active (it injects
+Anaconda's old Qt — errors like `horizontalAdvance` / `QRandomGenerator not
+found`). Either use `--minimal`, or `conda deactivate` before a full build.
 
 Every command below is run from the repo root. `uv run python …` runs a
 command inside the project's virtualenv; `source .venv/bin/activate` once
