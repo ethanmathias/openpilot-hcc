@@ -130,6 +130,49 @@ bench — openpilot is offroad — that's expected.
 peer, and the stand-in would steal the registration from the real
 subscriber.
 
+## ⚠️ Switching test vehicles — undo the Sportage device hacks FIRST
+
+The 2026-06-14 test (2023 Kia Sportage) required four **device-only** workarounds
+to force openpilot to accept an unsupported camera-SCC car. They are **not** in
+git — they live only on the ego at `/data/openpilot`. **Before testing any other
+car, revert all four**, or they will sabotage the new vehicle (the forced
+`FINGERPRINT` would make openpilot treat, e.g., a Tucson as a Sportage). See
+[`field_report_20260614.md`](field_report_20260614.md) for the full story.
+
+Run these on the laptop, then reboot the ego:
+
+```bash
+# 1. Remove the forced fingerprint (lets the new car fingerprint itself)
+ssh comma@10.42.0.1 "sed -i '/FINGERPRINT/d; /SKIP_FW_QUERY/d' /data/openpilot/launch_env.sh"
+
+# 2. Revert the opendbc CAMERA_SCC flag added to the Sportage platform
+ssh comma@10.42.0.1 'F=/data/openpilot/opendbc_repo/opendbc/car/hyundai/values.py; cp $F.bak $F'
+
+# 3. Revert the joystick offroad-guard bypass
+ssh comma@10.42.0.1 'cd /data/openpilot && git checkout -- tools/joystick/joystick_control.py'
+
+# 4. Turn off joystick debug mode (so controlsd/hCCC runs, not joystickd)
+ssh comma@10.42.0.1 'PYTHONPATH=/data/openpilot /usr/local/venv/bin/python3 -c "from openpilot.common.params import Params; Params().put_bool(\"JoystickDebugMode\", False)"'
+
+# 5. Reboot so the new env/fingerprint takes effect
+ssh comma@10.42.0.1 'sudo reboot'
+```
+
+Then confirm the new car fingerprints **natively** (no forcing) — you want a real
+fingerprint, `dashcam=False`, `opLong=True`, and an `fwdRadar` (0x7d0) ECU in the
+firmware list (its absence is what broke the Sportage):
+
+```bash
+ssh comma@10.42.0.1 'PYTHONPATH=/data/openpilot /usr/local/venv/bin/python3 -c "from openpilot.common.params import Params; from cereal import car; d=Params().get(\"CarParamsPersistent\") or Params().get(\"CarParams\"); cp=car.CarParams.from_bytes(d).__enter__(); print(cp.carFingerprint, \"dashcam=\", cp.dashcamOnly, \"opLong=\", cp.openpilotLongitudinalControl); [print(fw.ecu, hex(fw.address)) for fw in cp.carFw]"'
+```
+
+**Lesson from the Sportage:** it lacked the SCC (adaptive cruise) hardware
+openpilot needs to inject acceleration, so it engaged but never actuated. For the
+next car, pick a **radar-SCC, fully-supported** vehicle (e.g. a **2022–2024
+Hyundai Tucson 4th gen** — radar-SCC, no minimum engage speed, so it engages from
+a standstill). Confirm the specific car has factory **Smart Cruise Control** before
+relying on it.
+
 ## In-car test day (phase 1) — step by step
 
 The bench test (2026-06-12) validated everything except the driving:
