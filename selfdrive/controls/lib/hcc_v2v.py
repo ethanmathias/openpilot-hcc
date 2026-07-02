@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from typing import Any
 
 from openpilot.common.params import Params
 from openpilot.selfdrive.controls.lib.vendor.hcc_v2v_core import (
