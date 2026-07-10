@@ -176,6 +176,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
   p.add_argument("--device_id", default=None, help="Lead device id (default: HCCV2VDeviceId param or hcc-lead)")
   p.add_argument("--hz", type=float, default=None, help="Publish rate (default: HCC_V2V_SEND_HZ or 50)")
   p.add_argument("--start_delay", type=float, default=0.0, help="Seconds to publish the initial speed before the profile starts")
+  p.add_argument("--speed_scale", type=float, default=1.0,
+                 help="Multiply the whole profile's speeds (and hence accelerations) by this factor")
+  p.add_argument("--max_speed_mph", type=float, default=None,
+                 help="Scale the whole profile down so its top speed is at most this many mph "
+                      "(proportional scale, not a clip; no effect if the profile already stays below)")
   p.add_argument("--end", choices=("hold", "stop"), default="hold",
                  help="After the profile ends: 'hold' final speed forever, or 'stop' publishing (ego disengages via staleness)")
   p.add_argument("--loop", action="store_true", help="Restart the profile from t=0 when it ends")
@@ -184,13 +189,41 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
   return p.parse_args(argv)
 
 
+MPH_TO_MPS = 0.44704
+
+
+def resolve_speed_scale(speeds: list[float], speed_scale: float, max_speed_mph: float | None) -> float:
+  """Combine an explicit scale with an optional top-speed cap into one factor.
+
+  The cap scales the whole profile proportionally (speeds AND the accelerations
+  derived from them) so the scaled peak lands exactly on the cap; it never
+  scales up a profile that is already slower.
+  """
+  if speed_scale <= 0.0:
+    raise ValueError(f"--speed_scale must be > 0, got {speed_scale}")
+  scale = float(speed_scale)
+  if max_speed_mph is not None:
+    if max_speed_mph <= 0.0:
+      raise ValueError(f"--max_speed_mph must be > 0, got {max_speed_mph}")
+    peak = max(speeds) * scale
+    cap_mps = max_speed_mph * MPH_TO_MPS
+    if peak > cap_mps:
+      scale *= cap_mps / peak
+  return scale
+
+
 def main(argv: list[str] | None = None) -> int:
   args = parse_args(argv)
 
   times, speeds = load_speed_profile(args.csv, args.scn)
+  scale = resolve_speed_scale(speeds, args.speed_scale, args.max_speed_mph)
+  if scale != 1.0:
+    speeds = [v * scale for v in speeds]
+    print(f"[virtual_lead] speed scale {scale:.4f} applied to the whole profile")
   profile_len = times[-1] - times[0]
   print(f"[virtual_lead] scenario {args.scn}: {len(times)} samples, "
-        f"{profile_len:.1f} s, v in [{min(speeds):.2f}, {max(speeds):.2f}] m/s")
+        f"{profile_len:.1f} s, v in [{min(speeds):.2f}, {max(speeds):.2f}] m/s "
+        f"(top {max(speeds) / MPH_TO_MPS:.1f} mph)")
 
   try:
     from openpilot.selfdrive.controls.lib.hcc_v2v import load_v2v_config

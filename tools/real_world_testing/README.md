@@ -105,7 +105,11 @@ python3 tools/real_world_testing/field_test.py collect run_20260612_153000_scn48
 `run` flags: `--start_delay` (default 5 s of initial speed before the
 profile moves — gives the driver time to engage), `--end stop|hold`
 (default `stop`: when the profile ends the publisher exits and the ego
-coasts/disengages via staleness), `--loop`, `--monitor_hz`, `--skip_checks`.
+coasts/disengages via staleness), `--max_speed_mph` (scale the whole
+profile down so its top speed is capped — e.g. `--max_speed_mph 20`
+turns scenario 48's 32 mph peak into 20; accelerations scale
+proportionally), `--speed_scale`, `--loop`, `--monitor_hz`,
+`--skip_checks`.
 
 ## Bench test first (no car needed)
 

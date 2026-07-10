@@ -1,6 +1,6 @@
 import pytest
 
-from tools.hcc_v2v.virtual_lead import load_speed_profile, sample_profile
+from tools.hcc_v2v.virtual_lead import MPH_TO_MPS, load_speed_profile, resolve_speed_scale, sample_profile
 
 
 def _write_csv(tmp_path, rows):
@@ -69,3 +69,31 @@ def test_sample_profile_clamps_to_endpoints():
   speeds = [3.0, 5.0]
   assert sample_profile(times, speeds, 0.0) == (3.0, 0.0)
   assert sample_profile(times, speeds, 99.0) == (5.0, 0.0)
+
+
+def test_resolve_speed_scale_caps_peak_to_mph():
+  speeds = [0.0, 7.0, 14.0]
+  scale = resolve_speed_scale(speeds, 1.0, 20.0)
+  assert max(v * scale for v in speeds) == pytest.approx(20.0 * MPH_TO_MPS)
+
+
+def test_resolve_speed_scale_never_scales_up():
+  speeds = [0.0, 4.0]  # peak ~8.9 mph, well under the cap
+  assert resolve_speed_scale(speeds, 1.0, 20.0) == 1.0
+
+
+def test_resolve_speed_scale_composes_with_explicit_scale():
+  speeds = [0.0, 14.0]
+  scale = resolve_speed_scale(speeds, 0.9, 20.0)
+  assert max(v * scale for v in speeds) == pytest.approx(20.0 * MPH_TO_MPS)
+  assert resolve_speed_scale(speeds, 0.5, None) == pytest.approx(0.5)
+
+
+def test_resolve_speed_scale_rejects_nonpositive():
+  speeds = [0.0, 10.0]
+  with pytest.raises(ValueError):
+    resolve_speed_scale(speeds, 0.0, None)
+  with pytest.raises(ValueError):
+    resolve_speed_scale(speeds, -1.0, None)
+  with pytest.raises(ValueError):
+    resolve_speed_scale(speeds, 1.0, 0.0)

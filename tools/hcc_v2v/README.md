@@ -162,6 +162,9 @@ Useful `virtual_lead.py` options:
 --end hold|stop    after the profile: keep final speed forever, or stop publishing
 --loop             wrap around to t=0 at the end of the profile
 --duration S       hard time limit for the whole run
+--max_speed_mph M  scale the whole profile down so its top speed is at most M mph
+                   (proportional, accelerations scale too — e.g. 20 for a first run)
+--speed_scale F    multiply the profile's speeds/accelerations by F directly
 --log_csv PATH     record every sent packet (pairs with plot_v2v_run.py --sent)
 --relay_host/--relay_port/--device_id/--hz   override the params/defaults
 ```

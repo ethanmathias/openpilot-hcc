@@ -362,6 +362,10 @@ def run(args) -> int:
     vl_flags += f" --duration {args.duration}"
   if args.loop:
     vl_flags += " --loop"
+  if args.speed_scale != 1.0:
+    vl_flags += f" --speed_scale {args.speed_scale}"
+  if args.max_speed_mph is not None:
+    vl_flags += f" --max_speed_mph {args.max_speed_mph}"
   lead_py = remote_python(args.user, args.lead_host, args.remote_dir)
   vl_cmd = launch_cmd(args.remote_dir, lead_py, f"tools/hcc_v2v/virtual_lead.py {vl_flags}", remote_vl_log)
   try:
@@ -371,7 +375,9 @@ def run(args) -> int:
     _kill_remote(args.user, args.ego_host, "bench_ego.py")
     raise
   print(f"lead: virtual_lead started (pid {vl_pid}): scn={args.scn} end={args.end} "
-        f"start_delay={args.start_delay}s duration={args.duration or 'profile length'}")
+        f"start_delay={args.start_delay}s duration={args.duration or 'profile length'}"
+        + (f" max_speed={args.max_speed_mph}mph" if args.max_speed_mph is not None else "")
+        + (f" speed_scale={args.speed_scale}" if args.speed_scale != 1.0 else ""))
   print("\n>>> scenario is LIVE — drive/engage now. Ctrl-C ends the run and collects data. <<<\n")
 
   # Wait for the lead process to exit (duration/end=stop) or Ctrl-C/SIGTERM.
@@ -526,6 +532,10 @@ def main(argv: list[str] | None = None) -> int:
   p_run.add_argument("--start_delay", type=float, default=5.0, help="Seconds at initial speed before the profile moves (default 5)")
   p_run.add_argument("--end", choices=("hold", "stop"), default="stop", help="After the profile (default stop: ego disengages via staleness)")
   p_run.add_argument("--loop", action="store_true", help="Loop the profile until Ctrl-C")
+  p_run.add_argument("--speed_scale", type=float, default=1.0,
+                     help="Scale the whole speed profile (and its accelerations) by this factor")
+  p_run.add_argument("--max_speed_mph", type=float, default=None,
+                     help="Scale the profile down so its top speed is at most this many mph (e.g. 20 for a first run)")
   p_run.add_argument("--monitor_hz", type=float, default=10.0, help="Ego response sample rate")
   p_run.add_argument("--notes", default="", help="Free-form run notes saved in metadata.json (conditions, location, ...)")
   p_run.add_argument("--skip_checks", action="store_true", help="Skip the preflight")
