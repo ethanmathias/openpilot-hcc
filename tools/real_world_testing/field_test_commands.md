@@ -10,7 +10,9 @@ blocks — explanations are in the prose). Run everything from the laptop.
 | Lab WiFi | `192.168.86.38` | `192.168.86.22` |
 | Hotspot (`hcc-v2v` / password `hcc-v2v-research`) | `10.42.0.1` | `10.42.0.60` (verify with find-lead) |
 
-Expected git tip on both devices and the laptop: `129f18d7a`.
+Expected git state: both devices and the laptop print the SAME commit from
+`git log --oneline -1`, and it is `129f18d7a` (the commit adding
+`--max_speed_mph`) or newer.
 
 **Remember:** once you join the hotspot there is NO internet (no Claude, no
 docs). Read this whole file before leaving lab WiFi.
