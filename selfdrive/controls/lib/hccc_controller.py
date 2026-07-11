@@ -2,19 +2,79 @@ import numpy as np
 
 from openpilot.selfdrive.controls.lib.hcc_v2v import V2VLeadSignal
 
-# Final acceleration command is scaled by this factor after the beta * speed_error +
-# feedforward computation.  Empirically tuned to avoid overshoot in the sim.
-# NOTE: this is an OpenPilot-specific addition; the BeamNG reference has no such
-# scale.  Set to 1.0 to reproduce pure BeamNG output magnitude.
-_ACCEL_OUTPUT_SCALE = 0.6
-
 # Feedforward lead-lag compensator F(s) = (tau*s + (1 - beta*th_bar)) / (th_bar*s + 1),
-# matching the BeamNG reference (tools/sim heritage).  tau is the lead-vehicle
-# actuation-lag time constant (numerator zero); th_bar is the nominal headway time
-# (denominator pole).  These are the "given" constants from the reference design and
-# are independent of the spacing-controller t_h.
+# matching the BeamNG reference (hccintegration/hCCC_controller_latest.py).  tau is
+# the lead-vehicle actuation-lag time constant (numerator zero); th_bar is the
+# nominal headway time (denominator pole).  th_bar=1.5 makes the feedforward
+# consistent with the 1.5 s headway: DC gain = 1 - 0.65*1.5 = 0.025, i.e. the
+# feedforward is essentially transient-only.
 _FEEDFORWARD_TAU_S = 0.12
-_FEEDFORWARD_TH_BAR_S = 1.0
+_FEEDFORWARD_TH_BAR_S = 1.5
+
+# PID speed-tracking stage (BeamNG reference gains, tuned there at dt=0.1).
+# K_I integrates error*dt, so it is dt-invariant as-is.  The reference derivative
+# is PER-STEP (K_D * (e[k]-e[k-1]) with no /dt) at dt=0.1; the dt-invariant
+# equivalent is a continuous gain of K_D * 0.1 = 0.02 s applied to de/dt.
+_PID_KP = 0.35
+_PID_KI = 0.05           # 1/s
+_PID_KD_S = 0.02         # s (= reference K_D 0.2 per-step at its dt of 0.1 s)
+# Anti-windup clamp (absent in the reference, required in a long-running real-car
+# process): the integral's authority is capped at the full normalized output, so
+# a saturated phase can never bank more than one full command of recovery lag.
+_PID_I_LIMIT = 1.0 / _PID_KI
+# Low-speed attenuation band from the reference: commands are scaled by
+# v_des/10 when the desired speed is inside this band.
+_PID_LOW_SPEED_LO_MPS = 0.5
+_PID_LOW_SPEED_HI_MPS = 10.0
+
+# The PID emits a normalized command in [-1, 1] (a pedal fraction in BeamNG).
+# On the road, +/-1 maps to the reference design's own +/-3 m/s^2 authority
+# envelope (its max_acceleration/max_deceleration constructor bounds); the
+# planner's per-tick accel limits still clamp on top of this.
+_OUTPUT_ACCEL_SCALE = 3.0
+
+
+class PIDLongitudinal:
+  """Speed-tracking PID from the BeamNG reference, made safe for controlsd.
+
+  Differences from the reference implementation (behavior-preserving at the
+  reference's dt, correct at any dt):
+  - scalar running integral instead of an unbounded, re-summed error buffer;
+  - integral clamped for anti-windup;
+  - derivative computed per-second (see _PID_KD_S) instead of per-step;
+  - first step after reset is pure P, matching the reference's len<2 branch.
+  """
+
+  def __init__(self, k_p: float, k_i: float, k_d_s: float, dt: float, i_limit: float):
+    self._k_p = k_p
+    self._k_i = k_i
+    self._k_d_s = k_d_s
+    self._dt = dt
+    self._i_limit = i_limit
+    self._integral = 0.0
+    self._prev_error = None
+
+  def reset(self):
+    self._integral = 0.0
+    self._prev_error = None
+
+  def run_step(self, target_speed: float, current_speed: float) -> float:
+    error = target_speed - current_speed
+    self._integral = float(np.clip(self._integral + error * self._dt, -self._i_limit, self._i_limit))
+
+    if self._prev_error is not None:
+      i_term = self._k_i * self._integral
+      d_term = self._k_d_s * (error - self._prev_error) / self._dt
+    else:
+      i_term = 0.0
+      d_term = 0.0
+    self._prev_error = error
+
+    accel_cmd = self._k_p * error + d_term + i_term
+
+    if _PID_LOW_SPEED_LO_MPS < target_speed < _PID_LOW_SPEED_HI_MPS:
+      accel_cmd = accel_cmd * target_speed / _PID_LOW_SPEED_HI_MPS
+    return float(np.clip(accel_cmd, -1.0, 1.0))
 
 
 class HCCC:
@@ -33,6 +93,10 @@ class HCCC:
     # difference equation is y[n] = b0*x[n] + b1*x[n-1] - a1*y[n-1].
     self._ff_b0, self._ff_b1, self._ff_a1 = self._feedforward_coeffs()
 
+    # Speed-tracking PID: the law produces a desired speed; the PID converts the
+    # desired-speed error into a normalized accel command.
+    self._pid = PIDLongitudinal(_PID_KP, _PID_KI, _PID_KD_S, dt, _PID_I_LIMIT)
+
     # Scalar state for the feedforward filter (avoids needing full history):
     # previous filter input (lead accel) and previous filter output.
     self._prev_lead_speed = None
@@ -43,18 +107,23 @@ class HCCC:
     self.debug_lead_speed = 0.0
     self.debug_lead_accel = 0.0
     self.debug_feedforward = 0.0
+    self.debug_v_des = 0.0
+    self.debug_pid_i = 0.0
     self.debug_output = 0.0
 
   def _reset_debug_state(self):
     self.debug_lead_speed = 0.0
     self.debug_lead_accel = 0.0
     self.debug_feedforward = 0.0
+    self.debug_v_des = 0.0
+    self.debug_pid_i = 0.0
     self.debug_output = 0.0
 
   def reset(self):
     self._prev_lead_speed = None
     self._ff_prev_in = 0.0
     self._ff_prev_out = 0.0
+    self._pid.reset()
     self._reset_debug_state()
 
   def set_accel_limits(self, max_decel: float, max_accel: float):
@@ -118,10 +187,20 @@ class HCCC:
 
     feedforward = self._feedforward_no_delay(pre_accl_current)
     speed_error = lead_speed - ego_speed
-    accl_command = (self._beta * speed_error + feedforward) * _ACCEL_OUTPUT_SCALE
+
+    # Cascade: the law produces a desired speed; the PID tracks it.  The
+    # BeamNG reference's spacing term is intentionally absent (its gap input
+    # does not exist on the V2V signal); this matches the reference's active
+    # (non-spacing) variant.
+    v_des = max(ego_speed + self._beta * speed_error + feedforward, 0.0)
+    normalized_cmd = self._pid.run_step(v_des, ego_speed)
+    accl_command = normalized_cmd * _OUTPUT_ACCEL_SCALE
+
     self.debug_lead_speed = float(lead_speed)
     self.debug_lead_accel = float(pre_accl_current)
     self.debug_feedforward = float(feedforward)
+    self.debug_v_des = float(v_des)
+    self.debug_pid_i = float(self._pid._integral)
     self.debug_output = float(accl_command)
 
     accl_command = np.clip(accl_command, self._max_decel, self._max_accl)
