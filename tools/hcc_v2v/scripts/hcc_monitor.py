@@ -24,8 +24,10 @@ import time
 import cereal.messaging as messaging
 from openpilot.common.params import Params
 
-CSV_COLUMNS = ["wall_time_us", "v_ego_mps", "engaged", "long_state",
+CSV_COLUMNS = ["wall_time_us", "v_ego_mps", "a_ego_mps2", "engaged", "long_state",
                "hccc_accel", "manual_accel", "planner_accel",
+               "cmd_accel", "out_accel",
+               "gas_pressed", "brake_pressed", "standstill",
                "carstate_valid", "controlsstate_valid", "selfdrivestate_valid"]
 
 
@@ -47,7 +49,7 @@ def main() -> None:
     csv_file.flush()
     print(f"hcc_monitor: logging {args.hz:.0f} Hz samples to {args.log_csv}", flush=True)
 
-  sm = messaging.SubMaster(['carState', 'controlsState', 'selfdriveState'])
+  sm = messaging.SubMaster(['carState', 'controlsState', 'selfdriveState', 'carControl', 'carOutput'])
   params = Params()
   v2v_only = params.get_bool("HCCV2VOnly") if params.check_key("HCCV2VOnly") else False
   role = "ego" if v2v_only else "?"
@@ -71,16 +73,25 @@ def main() -> None:
       ctrl_ok = sm.valid['controlsState']
       sds_ok = sm.valid['selfdriveState']
 
-      v_ego = sm['carState'].vEgo if cs_ok else float("nan")
+      cs = sm['carState']
+      v_ego = cs.vEgo if cs_ok else float("nan")
+      a_ego = cs.aEgo if cs_ok else float("nan")
+      gas_pressed = bool(cs.gasPressed) if cs_ok else False
+      brake_pressed = bool(cs.brakePressed) if cs_ok else False
+      standstill = bool(cs.standstill) if cs_ok else False
       engaged = sm['selfdriveState'].active if sds_ok else False
       state = sm['controlsState'].longControlState if ctrl_ok else "?"
       planner = sm['controlsState'].upAccelCmd if ctrl_ok else float("nan")
       hccc = sm['controlsState'].uiAccelCmd if ctrl_ok else float("nan")
       manual = sm['controlsState'].ufAccelCmd if ctrl_ok else float("nan")
+      cmd_accel = sm['carControl'].actuators.accel
+      out_accel = sm['carOutput'].actuatorsOutput.accel
 
       if csv_writer is not None:
-        csv_writer.writerow([time.time_ns() // 1000, f"{v_ego:.4f}", int(bool(engaged)), state,
+        csv_writer.writerow([time.time_ns() // 1000, f"{v_ego:.4f}", f"{a_ego:.4f}", int(bool(engaged)), state,
                              f"{hccc:.4f}", f"{manual:.4f}", f"{planner:.4f}",
+                             f"{cmd_accel:.4f}", f"{out_accel:.4f}",
+                             int(gas_pressed), int(brake_pressed), int(standstill),
                              int(cs_ok), int(ctrl_ok), int(sds_ok)])
         csv_file.flush()
 
@@ -88,7 +99,8 @@ def main() -> None:
         last_print = now
         alive = "".join("+" if ok else "-" for ok in (cs_ok, ctrl_ok, sds_ok))
         print(f"[{time.strftime('%H:%M:%S')}] alive={alive} engaged={engaged!s:5} "
-              f"v={v_ego:5.2f} m/s  long={state}  accel: hccc={hccc:+.2f} manual={manual:+.2f} planner={planner:+.2f}",
+              f"v={v_ego:5.2f} m/s aEgo={a_ego:+.2f}  long={state}  "
+              f"accel: hccc={hccc:+.2f} cmd={cmd_accel:+.2f} out={out_accel:+.2f} planner={planner:+.2f}",
               flush=True)
   finally:
     if csv_file is not None:
