@@ -15,6 +15,10 @@ DEFAULT_SENDER_ADDRESS_POLICY = "relay_host"
 MAX_TIMESTAMP_SKEW_MS = 500.0
 HELLO_INTERVAL_S = 1.0
 RECV_BUFFER_BYTES = 4096
+# A seq that regresses by more than this is a publisher restart (every
+# publisher session numbers from 0), not a replayed packet: adopt the new
+# session. Regressions within the window are dropped as replays/reorders.
+SESSION_RESET_SEQ_GAP = 50
 
 ROLE_LEAD = "lead"
 ROLE_EGO = "ego"
@@ -219,8 +223,11 @@ class V2VLeadBuffer:
       return False
 
     with self._lock:
-      if packet.seq <= self._last_seq:
+      if packet.seq <= self._last_seq and (self._last_seq - packet.seq) <= SESSION_RESET_SEQ_GAP:
+        # Duplicate or nearby replay within the current publisher session.
         return False
+      # Forward progress, or a large backward jump = the publisher restarted
+      # (a new session always numbers from 0) — adopt the new session.
       self._last_seq = packet.seq
       self._latest = ReceivedLeadPacket(
         packet=packet,

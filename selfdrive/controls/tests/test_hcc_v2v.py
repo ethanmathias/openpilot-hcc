@@ -54,6 +54,38 @@ def test_lead_buffer_rejects_duplicate_and_stale_packets():
   assert stale_signal.local_receive_valid is False
 
 
+def test_lead_buffer_adopts_new_publisher_session_after_seq_reset():
+  # A publisher restart renumbers from 0; a large backward seq jump must be
+  # adopted as a new session, not dropped as a replay (field bug 2026-07-11:
+  # every second run of a controlsd session was silently deaf).
+  buffer = V2VLeadBuffer(stale_threshold_ms=100.0, max_clock_skew_ms=500.0)
+  base_wall_us = 1_743_000_000_000_000
+  old_session_end = V2VLeadPacket(device_id="lead-1", timestamp_us=base_wall_us, a_lead=0.0, v_lead=10.0, seq=3572)
+  assert buffer.ingest(old_session_end, recv_monotonic_ns=1_000_000_000, recv_wall_time_us=base_wall_us)
+
+  new_session_start = V2VLeadPacket(device_id="lead-1", timestamp_us=base_wall_us + 5_000_000, a_lead=0.5, v_lead=0.0, seq=0)
+  assert buffer.ingest(new_session_start, recv_monotonic_ns=6_000_000_000, recv_wall_time_us=base_wall_us + 5_000_000)
+  signal = buffer.snapshot(now_monotonic_ns=6_010_000_000)
+  assert signal.status is True
+  assert signal.seq == 0
+
+  follow = V2VLeadPacket(device_id="lead-1", timestamp_us=base_wall_us + 5_020_000, a_lead=0.5, v_lead=0.01, seq=1)
+  assert buffer.ingest(follow, recv_monotonic_ns=6_020_000_000, recv_wall_time_us=base_wall_us + 5_020_000)
+
+
+def test_lead_buffer_still_rejects_nearby_replays():
+  buffer = V2VLeadBuffer(stale_threshold_ms=100.0, max_clock_skew_ms=500.0)
+  base_wall_us = 1_743_000_000_000_000
+  head = V2VLeadPacket(device_id="lead-1", timestamp_us=base_wall_us, a_lead=0.0, v_lead=10.0, seq=100)
+  assert buffer.ingest(head, recv_monotonic_ns=1_000_000_000, recv_wall_time_us=base_wall_us)
+
+  replay = V2VLeadPacket(device_id="lead-1", timestamp_us=base_wall_us, a_lead=0.9, v_lead=99.0, seq=90)
+  assert not buffer.ingest(replay, recv_monotonic_ns=1_010_000_000, recv_wall_time_us=base_wall_us)
+  signal = buffer.snapshot(now_monotonic_ns=1_020_000_000)
+  assert signal.seq == 100
+  assert abs(signal.lead_speed_mps - 10.0) < 1e-6
+
+
 def test_lead_buffer_rejects_implausible_sender_timestamp():
   buffer = V2VLeadBuffer(stale_threshold_ms=100.0, max_clock_skew_ms=500.0)
   packet = V2VLeadPacket(
