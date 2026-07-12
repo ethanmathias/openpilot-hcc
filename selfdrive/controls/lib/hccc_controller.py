@@ -33,6 +33,13 @@ _PID_LOW_SPEED_HI_MPS = 10.0
 # planner's per-tick accel limits still clamp on top of this.
 _OUTPUT_ACCEL_SCALE = 3.0
 
+# A briefly-invalid lead signal zeroes the output (run_step returns None) but
+# must NOT wipe the controller state: field bug 3 (2026-07-11) — scheduling
+# jitter tripped staleness ~1x/s and the per-blip reset() erased the PID
+# integral and feedforward before they could build authority. Full reset only
+# after the signal has been continuously invalid for this long.
+_RESET_AFTER_INVALID_S = 1.0
+
 
 class PIDLongitudinal:
   """Speed-tracking PID from the BeamNG reference, made safe for controlsd.
@@ -102,6 +109,8 @@ class HCCC:
     self._prev_lead_speed = None
     self._ff_prev_in = 0.0
     self._ff_prev_out = 0.0
+    # Continuous invalid-signal time; drives the grace-before-reset behavior.
+    self._invalid_time_s = 0.0
     # Debug fields exported through the simulator logging path for comparing
     # live controller inputs/outputs against replay traces.
     self.debug_lead_speed = 0.0
@@ -130,6 +139,14 @@ class HCCC:
     """Update the acceleration clamp bounds (called by longcontrol each tick)."""
     self._max_decel = max_decel
     self._max_accl = max_accel
+
+  def _register_invalid_signal(self):
+    """Zero the output for a briefly-invalid signal; hard-reset only when the
+    signal has been continuously invalid for _RESET_AFTER_INVALID_S."""
+    self._invalid_time_s += self._dt
+    if self._invalid_time_s >= _RESET_AFTER_INVALID_S:
+      self.reset()
+    return None
 
   def _feedforward_coeffs(self):
     """Closed-form bilinear (Tustin) discretization of the lead-lag feedforward
@@ -164,14 +181,12 @@ class HCCC:
 
     if v2v_lead is not None:
       if not v2v_lead.status:
-        self.reset()
-        return None
+        return self._register_invalid_signal()
       lead_speed = float(v2v_lead.lead_speed_mps)
       pre_accl_current = float(v2v_lead.lead_accel_mps2)
     else:
       if lead is None or not lead.status:
-        self.reset()
-        return None
+        return self._register_invalid_signal()
 
       lead_speed = ego_speed + lead.vRel
 
@@ -184,6 +199,7 @@ class HCCC:
         pre_accl_current = 0.0
 
     self._prev_lead_speed = lead_speed
+    self._invalid_time_s = 0.0
 
     feedforward = self._feedforward_no_delay(pre_accl_current)
     speed_error = lead_speed - ego_speed

@@ -124,3 +124,33 @@ def test_hccc_reset_clears_pid_state():
   controller.reset()
   assert controller._pid._integral == 0.0
   assert controller._pid._prev_error is None
+
+
+def test_hccc_brief_signal_dropout_preserves_controller_state():
+  # Field bug 3 (2026-07-11): per-blip reset() erased the integral/feedforward
+  # once per second under scheduling jitter. Brief dropouts must zero the
+  # output but keep state.
+  controller = HCCC(dt=0.1)
+  for _ in range(20):
+    controller.run_step(_cs(20.0), None, v2v_lead=_v2v(22.0, 0.0))
+  integral_before = controller._pid._integral
+  assert integral_before > 0.0
+
+  for _ in range(3):  # 0.3 s of invalid signal, under the 1.0 s grace
+    assert controller.run_step(_cs(20.0), None, v2v_lead=V2VLeadSignal(status=False)) is None
+  assert controller._pid._integral == integral_before
+
+  out = controller.run_step(_cs(20.0), None, v2v_lead=_v2v(22.0, 0.0))
+  assert out is not None and out > 0.0
+
+
+def test_hccc_sustained_signal_loss_resets_controller():
+  controller = HCCC(dt=0.1)
+  for _ in range(20):
+    controller.run_step(_cs(20.0), None, v2v_lead=_v2v(22.0, 0.0))
+  assert controller._pid._integral > 0.0
+
+  for _ in range(11):  # 1.1 s of invalid signal, past the 1.0 s grace
+    assert controller.run_step(_cs(20.0), None, v2v_lead=V2VLeadSignal(status=False)) is None
+  assert controller._pid._integral == 0.0
+  assert controller._pid._prev_error is None

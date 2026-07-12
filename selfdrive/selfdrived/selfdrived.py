@@ -405,6 +405,15 @@ class SelfdriveD:
     # HCCC_CHANGE_NOTE: Disable FCW/AEB-family alerts at the openpilot layer.
     self.events.events = [e for e in self.events.events if e not in COLLISION_ALERT_EVENTS]
 
+    # HCCC_CHANGE_NOTE: the 2024 Tucson's TCS reports ACCEnable!=0 (-> accFaulted,
+    # an IMMEDIATE_DISABLE) while the driver's gas pedal overrides SCC. Gas
+    # blending on top of HC3 is intended, so suppress that event while the pedal
+    # is pressed; a real persistent ACC fault still disables the moment the
+    # pedal is released. (Field bug 6, 2026-07-11: gas rising edge at 19.65s ->
+    # disengage at 20.15s with brake untouched.)
+    if CS.gasPressed:
+      self.events.events = [e for e in self.events.events if e != EventName.accFaulted]
+
   def data_sample(self):
     _car_state = messaging.recv_one(self.car_state_sock)
     CS = _car_state.carState if _car_state else self.CS_prev

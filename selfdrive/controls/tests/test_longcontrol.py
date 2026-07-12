@@ -73,6 +73,7 @@ def _test_cp(enable_hccc=False):
     startAccel=1.6,
     startingState=False,
     vEgoStarting=0.5,
+    vEgoStopping=0.25,
     stoppingDecelRate=0.8,
   )
 
@@ -214,3 +215,49 @@ def test_update_v2v_only_uses_manual_pedal_when_signal_is_stale():
 
   assert abs(output - _manual_longitudinal_input(cs, simulation_mode=False)) < 1e-6
   assert controller.debug_v2v_mode == V2V_MODE_FAULT_STALE
+
+
+def _v2v_only_controller(v_lead):
+  controller = LongControl(_test_cp(enable_hccc=True))
+  controller._v2v_only_enabled = lambda: True
+  controller.v2v_config = SimpleNamespace(enabled=True)
+  controller.v2v_subscriber = SimpleNamespace(snapshot=lambda: _test_v2v(status=True, v_lead=v_lead, a_lead=0.0),
+                                              transport_ok=lambda: True, last_error=lambda: "")
+  return controller
+
+
+def test_update_v2v_only_enters_stopping_at_standstill_with_stopped_lead():
+  # Field bug 5 (2026-07-11): the forced-pid path never sent stopReq, so the
+  # HKG drivetrain latched its standstill hold and ignored positive accel.
+  # A stopped lead target at ego standstill must drive the stopping state.
+  controller = _v2v_only_controller(v_lead=0.0)
+  cs = _test_cs(v_ego=0.0)
+  signal = _test_v2v(status=True, v_lead=0.0, a_lead=0.0)
+  output = controller.update(True, cs, a_target=0.0, should_stop=False,
+                             accel_limits=(-3.0, 2.0), lead=None, v2v_lead=signal)
+  assert controller.long_control_state == LongCtrlState.stopping
+  assert output <= 0.0
+
+
+def test_update_v2v_only_releases_stop_when_lead_target_moves():
+  controller = _v2v_only_controller(v_lead=0.0)
+  stopped = _test_v2v(status=True, v_lead=0.0, a_lead=0.0)
+  cs = _test_cs(v_ego=0.0)
+  controller.update(True, cs, a_target=0.0, should_stop=False,
+                    accel_limits=(-3.0, 2.0), lead=None, v2v_lead=stopped)
+  assert controller.long_control_state == LongCtrlState.stopping
+
+  moving = _test_v2v(status=True, v_lead=2.0, a_lead=0.5)
+  output = controller.update(True, cs, a_target=0.0, should_stop=False,
+                             accel_limits=(-3.0, 2.0), lead=None, v2v_lead=moving)
+  assert controller.long_control_state == LongCtrlState.pid
+  assert output > 0.0
+
+
+def test_update_v2v_only_stays_pid_at_speed():
+  controller = _v2v_only_controller(v_lead=8.0)
+  signal = _test_v2v(status=True, v_lead=8.0, a_lead=0.0)
+  output = controller.update(True, _test_cs(v_ego=6.0), a_target=0.0, should_stop=False,
+                             accel_limits=(-3.0, 2.0), lead=None, v2v_lead=signal)
+  assert controller.long_control_state == LongCtrlState.pid
+  assert output > 0.0

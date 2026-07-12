@@ -27,6 +27,13 @@ V2V_MODE_ACTIVE = "v2v_active"
 V2V_MODE_FAULT_STALE = "v2v_fault_stale"
 V2V_MODE_FAULT_TRANSPORT = "v2v_fault_transport"
 
+# In V2V-only mode, treat the (virtual) lead as stopped below this speed so the
+# standard stopping/starting state machine runs. Field bug 5 (2026-07-11): the
+# HKG drivetrain latches its standstill hold after a full stop while engaged
+# and ignores positive accel until the stopReq handshake releases it — which
+# the previous forced-pid path never performed.
+_V2V_STOP_SPEED_MPS = 0.5
+
 
 def _parse_bool_env(value: str | None) -> bool | None:
   if value is None:
@@ -231,8 +238,18 @@ class LongControl:
     if hccc_output is not None:
       should_stop = False
 
-    if self._v2v_only_enabled() and active:
-      self.long_control_state = LongCtrlState.pid
+    if self._v2v_only_enabled():
+      # Run the standard state machine with should_stop derived from the V2V
+      # target: stopping sends the car stopReq (holds it properly at a stop),
+      # and leaving stopping performs the standstill release the HKG
+      # drivetrain requires before it accepts positive accel again. A stale
+      # signal at speed behaves like before (pid, manual-only output); a stale
+      # signal at standstill now holds the stop instead of creeping.
+      v_target = float(active_v2v_lead.lead_speed_mps) if hccc_output is not None else 0.0
+      v2v_should_stop = (v_target < _V2V_STOP_SPEED_MPS) and (CS.vEgo < getattr(self.CP, "vEgoStopping", 0.25))
+      self.long_control_state = long_control_state_trans(self.CP, active, self.long_control_state, CS.vEgo,
+                                                         v2v_should_stop, CS.brakePressed,
+                                                         CS.cruiseState.standstill)
     else:
       self.long_control_state = long_control_state_trans(self.CP, active, self.long_control_state, CS.vEgo,
                                                          should_stop, CS.brakePressed,

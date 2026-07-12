@@ -10,7 +10,12 @@ from typing import Any
 DEFAULT_RELAY_HOST = "127.0.0.1"
 DEFAULT_RELAY_PORT = 19090
 DEFAULT_SEND_HZ = 50.0
-DEFAULT_STALE_THRESHOLD_MS = 100.0
+# Field-calibrated (2026-07-11): the subscriber thread inside controlsd gets
+# starved ~100 ms about once a second by OS scheduling, so a 100 ms threshold
+# flapped once per second on a perfectly healthy 50 Hz stream. 300 ms clears
+# the observed jitter with margin while still zeroing the command within a
+# third of a second of a true dropout. Overridable via HCC_V2V_STALE_THRESHOLD_MS.
+DEFAULT_STALE_THRESHOLD_MS = 300.0
 DEFAULT_SENDER_ADDRESS_POLICY = "relay_host"
 MAX_TIMESTAMP_SKEW_MS = 500.0
 HELLO_INTERVAL_S = 1.0
