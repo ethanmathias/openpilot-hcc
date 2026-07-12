@@ -1,0 +1,44 @@
+[bench_ego] registered, waiting for forwarded packets...
+[bench_ego] registered, waiting for forwarded packets...
+[bench_ego] registered, waiting for forwarded packets...
+[bench_ego] registered, waiting for forwarded packets...
+[bench_ego] registered, waiting for forwarded packets...
+[bench_ego] received=38 last: seq=37 v=0.00 m/s a=+0.00 m/s²
+[bench_ego] received=89 last: seq=88 v=0.00 m/s a=+0.00 m/s²
+[bench_ego] received=139 last: seq=138 v=0.00 m/s a=+0.00 m/s²
+[bench_ego] received=189 last: seq=188 v=0.00 m/s a=+0.00 m/s²
+[bench_ego] received=240 last: seq=239 v=0.00 m/s a=+0.00 m/s²
+[bench_ego] received=291 last: seq=290 v=0.40 m/s a=+0.50 m/s²
+[bench_ego] received=341 last: seq=340 v=0.90 m/s a=+0.50 m/s²
+[bench_ego] received=391 last: seq=390 v=1.40 m/s a=+0.50 m/s²
+[bench_ego] received=442 last: seq=441 v=1.91 m/s a=+0.50 m/s²
+[bench_ego] received=492 last: seq=491 v=2.41 m/s a=+0.50 m/s²
+[bench_ego] received=543 last: seq=542 v=2.92 m/s a=+0.50 m/s²
+[bench_ego] received=593 last: seq=592 v=3.42 m/s a=+0.50 m/s²
+[bench_ego] received=643 last: seq=642 v=3.92 m/s a=+0.50 m/s²
+[bench_ego] received=694 last: seq=693 v=4.43 m/s a=+0.50 m/s²
+[bench_ego] received=744 last: seq=743 v=4.93 m/s a=+0.50 m/s²
+[bench_ego] received=795 last: seq=794 v=5.44 m/s a=+0.50 m/s²
+[bench_ego] received=846 last: seq=845 v=5.95 m/s a=+0.50 m/s²
+[bench_ego] received=896 last: seq=895 v=6.45 m/s a=+0.50 m/s²
+[bench_ego] received=946 last: seq=945 v=6.95 m/s a=+0.50 m/s²
+[bench_ego] received=997 last: seq=996 v=7.46 m/s a=+0.50 m/s²
+[bench_ego] received=1048 last: seq=1047 v=7.97 m/s a=+0.50 m/s²
+[bench_ego] received=1098 last: seq=1097 v=8.47 m/s a=+0.50 m/s²
+[bench_ego] received=1148 last: seq=1147 v=8.74 m/s a=-0.20 m/s²
+[bench_ego] received=1199 last: seq=1198 v=8.10 m/s a=-0.77 m/s²
+[bench_ego] received=1250 last: seq=1249 v=7.61 m/s a=-0.25 m/s²
+[bench_ego] received=1301 last: seq=1300 v=6.95 m/s a=-1.18 m/s²
+[bench_ego] received=1351 last: seq=1350 v=5.98 m/s a=-0.42 m/s²
+[bench_ego] received=1402 last: seq=1401 v=5.82 m/s a=-0.19 m/s²
+[bench_ego] received=1452 last: seq=1451 v=5.12 m/s a=-1.24 m/s²
+[bench_ego] received=1503 last: seq=1502 v=4.13 m/s a=-0.42 m/s²
+[bench_ego] received=1553 last: seq=1552 v=4.04 m/s a=+0.12 m/s²
+[bench_ego] received=1604 last: seq=1603 v=4.53 m/s a=+0.82 m/s²
+[bench_ego] received=1655 last: seq=1654 v=5.15 m/s a=+0.26 m/s²
+[bench_ego] received=1705 last: seq=1704 v=5.21 m/s a=-0.12 m/s²
+[bench_ego] received=1750 last: seq=1749 v=4.63 m/s a=-1.13 m/s²
+[bench_ego] received=1750 last: seq=1749 v=4.63 m/s a=-1.13 m/s²
+[bench_ego] received=1750 last: seq=1749 v=4.63 m/s a=-1.13 m/s²
+[bench_ego] received=1750 last: seq=1749 v=4.63 m/s a=-1.13 m/s²
+[bench_ego] received=1750 last: seq=1749 v=4.63 m/s a=-1.13 m/s²

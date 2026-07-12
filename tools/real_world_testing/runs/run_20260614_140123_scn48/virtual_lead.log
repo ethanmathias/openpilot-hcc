@@ -1,0 +1,44 @@
+[virtual_lead] scenario 48: 922 samples, 92.1 s, v in [0.00, 14.43] m/s
+[virtual_lead] publishing as 'hcc-lead' -> 10.42.0.1:19090 at 50 Hz (end=stop)
+[virtual_lead] t=    0.0s  v=  0.00 m/s  a=+0.00 m/s²  seq=0
+[virtual_lead] t=    0.0s  v=  0.00 m/s  a=+0.00 m/s²  seq=50
+[virtual_lead] t=    0.0s  v=  0.00 m/s  a=+0.00 m/s²  seq=100
+[virtual_lead] t=    0.0s  v=  0.00 m/s  a=+0.00 m/s²  seq=150
+[virtual_lead] t=    0.0s  v=  0.00 m/s  a=+0.00 m/s²  seq=201
+[virtual_lead] t=    0.0s  v=  0.00 m/s  a=+0.00 m/s²  seq=252
+[virtual_lead] t=    0.0s  v=  0.00 m/s  a=+0.00 m/s²  seq=302
+[virtual_lead] t=    0.0s  v=  0.00 m/s  a=+0.00 m/s²  seq=353
+[virtual_lead] t=    0.0s  v=  0.00 m/s  a=+0.00 m/s²  seq=403
+[virtual_lead] t=    0.0s  v=  0.00 m/s  a=+0.00 m/s²  seq=453
+[virtual_lead] t=    0.2s  v=  0.03 m/s  a=+0.50 m/s²  seq=503
+[virtual_lead] t=    1.2s  v=  0.54 m/s  a=+0.50 m/s²  seq=554
+[virtual_lead] t=    2.2s  v=  1.05 m/s  a=+0.50 m/s²  seq=605
+[virtual_lead] t=    3.2s  v=  1.56 m/s  a=+0.50 m/s²  seq=656
+[virtual_lead] t=    4.2s  v=  2.06 m/s  a=+0.50 m/s²  seq=706
+[virtual_lead] t=    5.2s  v=  2.57 m/s  a=+0.50 m/s²  seq=757
+[virtual_lead] t=    6.2s  v=  3.07 m/s  a=+0.50 m/s²  seq=807
+[virtual_lead] t=    7.3s  v=  3.58 m/s  a=+0.50 m/s²  seq=858
+[virtual_lead] t=    8.3s  v=  4.08 m/s  a=+0.50 m/s²  seq=908
+[virtual_lead] t=    9.3s  v=  4.59 m/s  a=+0.50 m/s²  seq=959
+[virtual_lead] t=   10.3s  v=  5.09 m/s  a=+0.50 m/s²  seq=1009
+[virtual_lead] t=   11.3s  v=  5.59 m/s  a=+0.50 m/s²  seq=1059
+[virtual_lead] t=   12.3s  v=  6.09 m/s  a=+0.50 m/s²  seq=1109
+[virtual_lead] t=   13.3s  v=  6.60 m/s  a=+0.50 m/s²  seq=1160
+[virtual_lead] t=   14.3s  v=  7.11 m/s  a=+0.50 m/s²  seq=1211
+[virtual_lead] t=   15.3s  v=  7.61 m/s  a=+0.50 m/s²  seq=1261
+[virtual_lead] t=   16.3s  v=  8.11 m/s  a=+0.50 m/s²  seq=1311
+[virtual_lead] t=   17.3s  v=  8.61 m/s  a=+0.45 m/s²  seq=1361
+[virtual_lead] t=   18.3s  v=  8.63 m/s  a=-0.53 m/s²  seq=1412
+[virtual_lead] t=   19.3s  v=  7.90 m/s  a=-0.61 m/s²  seq=1462
+[virtual_lead] t=   20.3s  v=  7.54 m/s  a=-0.38 m/s²  seq=1512
+[virtual_lead] t=   21.4s  v=  6.64 m/s  a=-1.20 m/s²  seq=1563
+[virtual_lead] t=   22.4s  v=  5.89 m/s  a=-0.23 m/s²  seq=1613
+[virtual_lead] t=   23.4s  v=  5.74 m/s  a=-0.38 m/s²  seq=1664
+[virtual_lead] t=   24.4s  v=  4.77 m/s  a=-1.20 m/s²  seq=1715
+[virtual_lead] t=   25.4s  v=  4.05 m/s  a=-0.14 m/s²  seq=1765
+[virtual_lead] t=   26.4s  v=  4.09 m/s  a=+0.32 m/s²  seq=1816
+[virtual_lead] t=   27.4s  v=  4.74 m/s  a=+0.78 m/s²  seq=1866
+[virtual_lead] t=   28.4s  v=  5.19 m/s  a=+0.12 m/s²  seq=1916
+[virtual_lead] t=   29.4s  v=  5.14 m/s  a=-0.41 m/s²  seq=1967
+[virtual_lead] --duration reached, stopping
+[virtual_lead] sent-packet log written to /data/hcc_v2v_logs/sent_run_20260614_140123_scn48.csv

@@ -1,0 +1,20 @@
+{
+  "run_id": "run_20260711_142656_scn48",
+  "scenario": 48,
+  "ego_host": "10.42.0.1",
+  "lead_host": "10.42.0.60",
+  "start_ego_wall_time_us": 1783794416433535,
+  "end_ego_wall_time_us": 1783794464617486,
+  "duration_s": 48.18,
+  "virtual_lead_flags": "--scn 48 --end stop --log_csv /data/hcc_v2v_logs/sent_run_20260711_142656_scn48.csv --start_delay 10.0 --duration 30.0 --max_speed_mph 20.0",
+  "monitor_hz": 10.0,
+  "relay_csv_on_ego": "/data/hcc_v2v_logs/relay_20250711_185309.csv",
+  "bench_mode": false,
+  "collected": {
+    "sent.csv": true,
+    "virtual_lead.log": true,
+    "ego_monitor.csv": true,
+    "relay.csv": true
+  },
+  "notes": "first tucson run, 20mph cap, cascade controller"
+}

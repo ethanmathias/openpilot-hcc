@@ -1,0 +1,6 @@
+forwarded packets : 4376
+duration          : 87.5 s (50.0 Hz)
+seq range         : 0 .. 4375
+lost in transit   : 0 (0.00%)
+inter-arrival gap : median 19.7 ms, max 49.5 ms
+plot written to /Users/ethanmathias/Desktop/UVA/LinkLab/openpilot-hcc/tools/real_world_testing/runs/run_20260711_171310_scn48/plot.png

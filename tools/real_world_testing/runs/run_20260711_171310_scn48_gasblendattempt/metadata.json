@@ -1,0 +1,20 @@
+{
+  "run_id": "run_20260711_171310_scn48",
+  "scenario": 48,
+  "ego_host": "10.42.0.1",
+  "lead_host": "10.42.0.60",
+  "start_ego_wall_time_us": 1783804390729673,
+  "end_ego_wall_time_us": 1783804483482537,
+  "duration_s": 92.75,
+  "virtual_lead_flags": "--scn 48 --end stop --log_csv /data/hcc_v2v_logs/sent_run_20260711_171310_scn48.csv --start_delay 5.0",
+  "monitor_hz": 20.0,
+  "relay_csv_on_ego": "/data/hcc_v2v_logs/relay_20250711_185308.csv",
+  "bench_mode": false,
+  "collected": {
+    "sent.csv": true,
+    "virtual_lead.log": true,
+    "ego_monitor.csv": true,
+    "relay.csv": true
+  },
+  "notes": "proper run, full scn48, research columns, tucson, gas pressed by human"
+}

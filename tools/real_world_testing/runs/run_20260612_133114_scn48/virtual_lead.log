@@ -1,0 +1,18 @@
+[virtual_lead] scenario 48: 922 samples, 92.1 s, v in [0.00, 14.43] m/s
+Traceback (most recent call last):
+  File "/data/openpilot/tools/hcc_v2v/virtual_lead.py", line 272, in <module>
+    raise SystemExit(main())
+                     ^^^^^^
+  File "/data/openpilot/tools/hcc_v2v/virtual_lead.py", line 197, in main
+    cfg = load_v2v_config(ROLE_LEAD, default_enabled=True, default_device_id="hcc-lead")
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data/openpilot/openpilot/selfdrive/controls/lib/hcc_v2v.py", line 94, in load_v2v_config
+    relay_port = int(env_map.get("HCC_V2V_RELAY_PORT") or _read_int_param(params_reader, "HCCV2VRelayPort") or DEFAULT_RELAY_PORT)
+                                                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data/openpilot/openpilot/selfdrive/controls/lib/hcc_v2v.py", line 68, in _read_int_param
+    raw_value = _read_str_param(params, key)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data/openpilot/openpilot/selfdrive/controls/lib/hcc_v2v.py", line 63, in _read_str_param
+    stripped = raw_value.strip()
+               ^^^^^^^^^^^^^^^
+AttributeError: 'int' object has no attribute 'strip'

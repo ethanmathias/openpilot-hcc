@@ -1,0 +1,20 @@
+{
+  "run_id": "run_20260711_172644_scn49",
+  "scenario": 49,
+  "ego_host": "10.42.0.1",
+  "lead_host": "10.42.0.60",
+  "start_ego_wall_time_us": 1783805204907817,
+  "end_ego_wall_time_us": 1783805288224710,
+  "duration_s": 83.32,
+  "virtual_lead_flags": "--scn 49 --end stop --log_csv /data/hcc_v2v_logs/sent_run_20260711_172644_scn49.csv --start_delay 5.0",
+  "monitor_hz": 20.0,
+  "relay_csv_on_ego": "/data/hcc_v2v_logs/relay_20250711_185308.csv",
+  "bench_mode": false,
+  "collected": {
+    "sent.csv": true,
+    "virtual_lead.log": true,
+    "ego_monitor.csv": true,
+    "relay.csv": true
+  },
+  "notes": "proper run, full scn49, research columns, tucson"
+}

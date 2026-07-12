@@ -1,0 +1,21 @@
+{
+  "run_id": "run_20260612_133114_scn48",
+  "scenario": 48,
+  "ego_host": "10.42.0.1",
+  "lead_host": "10.42.0.60",
+  "start_ego_wall_time_us": 1781285476299912,
+  "end_ego_wall_time_us": 1781285485753442,
+  "duration_s": 9.45,
+  "virtual_lead_flags": "--scn 48 --end stop --log_csv /data/hcc_v2v_logs/sent_run_20260612_133114_scn48.csv --start_delay 5.0 --duration 30.0",
+  "monitor_hz": 10.0,
+  "relay_csv_on_ego": "/data/hcc_v2v_logs/relay_20260612_171407.csv",
+  "bench_mode": true,
+  "collected": {
+    "sent.csv": false,
+    "virtual_lead.log": true,
+    "ego_monitor.csv": false,
+    "relay.csv": false,
+    "bench_ego.log": false
+  },
+  "notes": "first bench run"
+}
