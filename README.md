@@ -167,7 +167,7 @@ git submodule update --init --recursive
 git lfs pull
 ```
 
-The `git lfs pull` step downloads neural network models, shared libraries, fonts, and boot binaries — it will take a few minutes. Do not skip it. Running `GIT_LFS_SKIP_SMUDGE=1` as a workaround leaves critical binaries (`updater_magic`, `third_party/*.so`, `*.onnx`) as empty stubs and will prevent openpilot from starting.
+The `git lfs pull` step downloads neural network models, shared libraries, fonts, and boot binaries, and takes a few minutes. Do not skip it. Running `GIT_LFS_SKIP_SMUDGE=1` as a workaround leaves critical binaries (`updater_magic`, `third_party/*.so`, `*.onnx`) as empty stubs and will prevent openpilot from starting.
 
 ## 12. Configure the HCC V2V Relay
 
@@ -234,7 +234,7 @@ Also clear any lingering update failure alert from a previous boot:
 rm -f /data/params/d/Offroad_UpdateFailed
 ```
 
-**Critically**, clear the update staging directory. On every boot, `launch_chffrplus.sh` checks for a finalized staged update at `/data/safe_staging/finalized/.overlay_consistent`. If that file exists from a previous updater run — even one that fetched upstream comma.ai code — the boot script will swap that staged update back over your custom fork before openpilot starts. That upstream code expects a different AGNOS version, which triggers an AGNOS flash and a reboot loop. Removing the staging directory prevents this.
+**Critically**, clear the update staging directory. On every boot, `launch_chffrplus.sh` checks for a finalized staged update at `/data/safe_staging/finalized/.overlay_consistent`. If that file exists from a previous updater run (even one that fetched upstream comma.ai code), the boot script will swap that staged update back over your custom fork before openpilot starts. That upstream code expects a different AGNOS version, which triggers an AGNOS flash and a reboot loop. Removing the staging directory prevents this.
 
 The `merged` subdirectory is an active OverlayFS mount and must be unmounted before the directory can be removed:
 
