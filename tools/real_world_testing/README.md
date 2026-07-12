@@ -225,6 +225,20 @@ the sent profile:
 python3 tools/hcc_v2v/plot_v2v_run.py runs/<id>/relay.csv --sent runs/<id>/sent.csv
 ```
 
+To compare the lead's transmitted acceleration against the ego's actual measured
+acceleration (one `accel_comparison.png` per run, plus a combined
+`runs/accel_comparison_all.png` montage):
+
+```bash
+python3 tools/real_world_testing/plot_run_comparison.py            # all runs
+python3 tools/real_world_testing/plot_run_comparison.py runs/<id>  # one run
+python3 tools/real_world_testing/plot_run_comparison.py --with_cmd # also show commanded accel
+```
+
+It reads `a_lead` from `relay.csv` and `a_ego_mps2` from `ego_monitor.csv` (both
+on the ego clock, so they align on time) and reports the lead-vs-ego correlation
+per run.
+
 `ego_monitor.csv` holds the ego's actual response (10 Hz): wall-clock timestamp,
 `v_ego_mps`, `engaged`, longitudinal state, and the three accel contributions
 (`hccc_accel`, `manual_accel`, `planner_accel`). Its timestamps and `relay.csv`'s
