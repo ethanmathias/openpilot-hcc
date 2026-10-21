@@ -1,0 +1,43 @@
+# Who is who on the HCC V2V network, and the defaults for a run.
+#
+# This file replaces the --ego_host / --user / --remote_dir / --relay_port /
+# --device_id flags that had to be retyped on every command, and the
+# ~/.openpilot_hcc_field_test.json the GUI used to stash them in. Every `hcc`
+# subcommand reads it, and every value can still be overridden by a flag.
+#
+# Keep it in version control: the addresses ARE the test setup, and a run that
+# cannot be reproduced from the repo is not reproducible.
+
+[network]
+# The relay binds on the ego device. Peers send here; the ego's hotspot is the
+# network, so this is the ego's own hotspot address.
+relay_host = "10.42.0.1"
+relay_port = 19090
+send_hz = 50.0
+
+[ego]
+host = "10.42.0.1"
+user = "comma"
+repo = "/data/openpilot"
+device_id = "hcc-ego"
+
+[lead]
+# The lead comma 3X, joined to the ego's hotspot. Its address comes from the
+# hotspot's DHCP range, so `hcc find-lead` will scan for it if this is wrong.
+host = "10.42.0.50"
+user = "comma"
+repo = "/data/openpilot"
+device_id = "hcc-lead"
+
+[pedal]
+# The laptop reading the pedal rig. It has no SSH role -- it runs the publisher
+# locally -- so only its identity on the wire is configured here.
+device_id = "hcc-pedals"
+stale_ms = 150
+
+[run]
+# Defaults for `hcc run`; override per run with flags.
+scenario = 48
+max_speed_mph = 35.0
+monitor_hz = 10.0
+remote_log_dir = "/data/hcc_v2v_logs"
