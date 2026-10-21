@@ -38,7 +38,7 @@ class Controls:
 
     self.sm = messaging.SubMaster(['liveDelay', 'liveParameters', 'liveTorqueParameters', 'modelV2', 'selfdriveState',
                                    'liveCalibration', 'livePose', 'longitudinalPlan', 'carState', 'carOutput',
-                                   'driverMonitoringState', 'onroadEvents', 'driverAssistance'], poll='selfdriveState')
+                                   'radarState', 'driverMonitoringState', 'onroadEvents', 'driverAssistance'], poll='selfdriveState')
     self.pm = messaging.PubMaster(['carControl', 'controlsState'])
 
     self.steer_limited_by_safety = False
@@ -93,9 +93,15 @@ class Controls:
 
     # Check which actuators can be enabled
     standstill = abs(CS.vEgo) <= max(self.CP.minSteerSpeed, 0.3) or CS.standstill
-    CC.latActive = self.sm['selfdriveState'].active and not CS.steerFaultTemporary and not CS.steerFaultPermanent and \
-                   (not standstill or self.CP.steerAtStandstill)
-    CC.longActive = CC.enabled and not any(e.overrideLongitudinal for e in self.sm['onroadEvents']) and self.CP.openpilotLongitudinalControl
+    # HCC: the safety driver steers throughout the study; openpilot commands
+    # longitudinal only. Lateral actuation is disabled outright, not tuned down.
+    CC.latActive = False
+    # HCC: with the V2V link in use, a stale or faulted lead stream withdraws
+    # longitudinal authority too. longitudinal_ok() is always True when the
+    # link is not in use, so this is safe to AND in unconditionally.
+    v2v_lead = self.LoC.hcc.lead_snapshot() if self.LoC.hcc.v2v_enabled() else None
+    CC.longActive = CC.enabled and not any(e.overrideLongitudinal for e in self.sm['onroadEvents']) and \
+                    self.CP.openpilotLongitudinalControl and self.LoC.hcc.longitudinal_ok(v2v_lead)
 
     actuators = CC.actuators
     actuators.longControlState = self.LoC.long_control_state
@@ -112,7 +118,8 @@ class Controls:
 
     # accel PID loop
     pid_accel_limits = self.CI.get_pid_accel_limits(self.CP, CS.vEgo, CS.vCruise * CV.KPH_TO_MS)
-    actuators.accel = float(self.LoC.update(CC.longActive, CS, long_plan.aTarget, long_plan.shouldStop, pid_accel_limits))
+    actuators.accel = float(self.LoC.update(CC.longActive, CS, long_plan.aTarget, long_plan.shouldStop,
+                                            pid_accel_limits, self.sm['radarState'].leadOne, v2v_lead=v2v_lead))
 
     # Steering PID loop and lateral MPC
     # Reset desired curvature to current to avoid violating the limits on engage
@@ -187,9 +194,18 @@ class Controls:
     cs.lateralPlanMonoTime = self.sm.logMonoTime['modelV2']
     cs.desiredCurvature = self.desired_curvature
     cs.longControlState = self.LoC.long_control_state
-    cs.upAccelCmd = float(self.LoC.pid.p)
-    cs.uiAccelCmd = float(self.LoC.pid.i)
-    cs.ufAccelCmd = float(self.LoC.pid.f)
+    # HCC: when the hCCC controller is driving there is no PID to report, so
+    # these three carry the planner / hCCC / manual accel terms instead. The
+    # monitor reads ufAccelCmd as the human-in-the-loop blend value.
+    if self.LoC.hcc.enabled:
+      hcc_debug = self.LoC.hcc.debug_fields()
+      cs.upAccelCmd = float(long_plan.aTarget)
+      cs.uiAccelCmd = float(hcc_debug['hccc_accel'])
+      cs.ufAccelCmd = float(hcc_debug['manual_accel'])
+    else:
+      cs.upAccelCmd = float(self.LoC.pid.p)
+      cs.uiAccelCmd = float(self.LoC.pid.i)
+      cs.ufAccelCmd = float(self.LoC.pid.f)
     cs.forceDecel = bool((self.sm['driverMonitoringState'].awarenessStatus < 0.) or
                          (self.sm['selfdriveState'].state == State.softDisabling))
 

@@ -54,6 +54,10 @@ class DeveloperLayoutMici(NavWidget):
     self._alpha_long_toggle = BigToggle("alpha longitudinal",
                                         initial_state=ui_state.params.get_bool("AlphaLongitudinalEnabled"),
                                         toggle_callback=self._on_alpha_long_enabled)
+    self._hccc_toggle = BigParamControl("enable HCCC onroad", "EnableHCCC")
+    self._hcc_v2v_enabled_toggle = BigParamControl("enable HCC V2V subscriber", "HCCV2VEnabled")
+    self._hcc_v2v_only_toggle = BigParamControl("HCC V2V-only mode", "HCCV2VOnly")
+    self._hcc_pedal_toggle = BigParamControl("HCC pedal input over V2V", "HCCPedalEnabled")
     self._debug_mode_toggle = BigParamControl("ui debug mode", "ShowDebugInfo",
                                               toggle_callback=lambda checked: (gui_app.set_show_touches(checked),
                                                                                gui_app.set_show_fps(checked)))
@@ -65,6 +69,10 @@ class DeveloperLayoutMici(NavWidget):
       self._joystick_toggle,
       self._long_maneuver_toggle,
       self._alpha_long_toggle,
+      self._hccc_toggle,
+      self._hcc_v2v_enabled_toggle,
+      self._hcc_v2v_only_toggle,
+      self._hcc_pedal_toggle,
       self._debug_mode_toggle,
     ], snap_items=False)
 
@@ -75,6 +83,10 @@ class DeveloperLayoutMici(NavWidget):
       ("JoystickDebugMode", self._joystick_toggle),
       ("LongitudinalManeuverMode", self._long_maneuver_toggle),
       ("AlphaLongitudinalEnabled", self._alpha_long_toggle),
+      ("EnableHCCC", self._hccc_toggle),
+      ("HCCV2VEnabled", self._hcc_v2v_enabled_toggle),
+      ("HCCV2VOnly", self._hcc_v2v_only_toggle),
+      ("HCCPedalEnabled", self._hcc_pedal_toggle),
       ("ShowDebugInfo", self._debug_mode_toggle),
     )
     onroad_blocked_toggles = (self._adb_toggle, self._joystick_toggle)

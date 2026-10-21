@@ -25,6 +25,21 @@ DESCRIPTIONS = {
     "Enable this to switch to openpilot longitudinal control. Enabling Experimental mode is recommended when enabling openpilot longitudinal control alpha. " +
     "Changing this setting will restart openpilot if the car is powered on."
   ),
+  'hccc_onroad': tr_noop(
+    "Enable Human-in-the-Loop Cooperative Cruise Control (hCCC) logic for on-road longitudinal control."
+  ),
+  'hcc_v2v_enabled': tr_noop(
+    "Subscribe to V2V lead-vehicle packets from the HCC relay. Required on the ego comma 3x. "
+    "Set HCCV2VRelayHost / HCCV2VRelayPort to point at the relay server."
+  ),
+  'hcc_v2v_only': tr_noop(
+    "Drive hCCC purely from V2V packets and ignore the onboard lead. "
+    "When V2V goes stale, longitudinal authority is withdrawn rather than falling through to the vision lead."
+  ),
+  'hcc_pedal_enabled': tr_noop(
+    "Take the human longitudinal input from the pedal rig published over the V2V link instead of the car's "
+    "own pedals. While this is on and the pedal link is unhealthy, positive acceleration is not permitted."
+  ),
 }
 
 
@@ -75,6 +90,34 @@ class DeveloperLayout(Widget):
       enabled=lambda: not ui_state.engaged,
     )
 
+    self._hccc_toggle = toggle_item(
+      lambda: tr("Enable HCCC Onroad"),
+      description=lambda: tr(DESCRIPTIONS["hccc_onroad"]),
+      initial_state=self._params.get_bool("EnableHCCC"),
+      callback=lambda state: self._params.put_bool("EnableHCCC", state),
+    )
+
+    self._hcc_v2v_enabled_toggle = toggle_item(
+      lambda: tr("Enable HCC V2V Subscriber"),
+      description=lambda: tr(DESCRIPTIONS["hcc_v2v_enabled"]),
+      initial_state=self._params.get_bool("HCCV2VEnabled"),
+      callback=lambda state: self._params.put_bool("HCCV2VEnabled", state),
+    )
+
+    self._hcc_v2v_only_toggle = toggle_item(
+      lambda: tr("HCC V2V-Only Mode"),
+      description=lambda: tr(DESCRIPTIONS["hcc_v2v_only"]),
+      initial_state=self._params.get_bool("HCCV2VOnly"),
+      callback=lambda state: self._params.put_bool("HCCV2VOnly", state),
+    )
+
+    self._hcc_pedal_toggle = toggle_item(
+      lambda: tr("HCC Pedal Input Over V2V"),
+      description=lambda: tr(DESCRIPTIONS["hcc_pedal_enabled"]),
+      initial_state=self._params.get_bool("HCCPedalEnabled"),
+      callback=lambda state: self._params.put_bool("HCCPedalEnabled", state),
+    )
+
     self._ui_debug_toggle = toggle_item(
       lambda: tr("UI Debug Mode"),
       description="",
@@ -90,6 +133,10 @@ class DeveloperLayout(Widget):
       self._joystick_toggle,
       self._long_maneuver_toggle,
       self._alpha_long_toggle,
+      self._hccc_toggle,
+      self._hcc_v2v_enabled_toggle,
+      self._hcc_v2v_only_toggle,
+      self._hcc_pedal_toggle,
       self._ui_debug_toggle,
     ], line_separator=True, spacing=0)
 
@@ -137,6 +184,10 @@ class DeveloperLayout(Widget):
       ("JoystickDebugMode", self._joystick_toggle),
       ("LongitudinalManeuverMode", self._long_maneuver_toggle),
       ("AlphaLongitudinalEnabled", self._alpha_long_toggle),
+      ("EnableHCCC", self._hccc_toggle),
+      ("HCCV2VEnabled", self._hcc_v2v_enabled_toggle),
+      ("HCCV2VOnly", self._hcc_v2v_only_toggle),
+      ("HCCPedalEnabled", self._hcc_pedal_toggle),
       ("ShowDebugInfo", self._ui_debug_toggle),
     ):
       item.action_item.set_state(self._params.get_bool(key))

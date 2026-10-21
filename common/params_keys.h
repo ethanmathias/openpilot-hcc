@@ -38,6 +38,8 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"DoUninstall", {CLEAR_ON_MANAGER_START, BOOL}},
     {"DriverTooDistracted", {CLEAR_ON_MANAGER_START | CLEAR_ON_IGNITION_ON, BOOL}},
     {"AlphaLongitudinalEnabled", {PERSISTENT | DEVELOPMENT_ONLY, BOOL}},
+    // HCC: master switch for the hCCC cooperative longitudinal controller.
+    {"EnableHCCC", {PERSISTENT, BOOL, "0"}},
     {"ExperimentalMode", {PERSISTENT, BOOL}},
     {"ExperimentalModeConfirmed", {PERSISTENT, BOOL}},
     {"FirmwareQueryDone", {CLEAR_ON_MANAGER_START | CLEAR_ON_ONROAD_TRANSITION, BOOL}},
@@ -52,6 +54,16 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"GsmApn", {PERSISTENT, STRING}},
     {"GsmMetered", {PERSISTENT, BOOL, "1"}},
     {"GsmRoaming", {PERSISTENT, BOOL}},
+    // HCC: pedal rig published over the V2V link (the human-in-the-loop term).
+    {"HCCPedalDeviceId", {PERSISTENT, STRING}},
+    {"HCCPedalEnabled", {PERSISTENT, BOOL, "0"}},
+    {"HCCPedalStaleMs", {PERSISTENT, INT}},
+    // HCC: V2V lead stream.
+    {"HCCV2VDeviceId", {PERSISTENT, STRING}},
+    {"HCCV2VEnabled", {PERSISTENT, BOOL, "0"}},
+    {"HCCV2VOnly", {PERSISTENT, BOOL, "0"}},
+    {"HCCV2VRelayHost", {PERSISTENT, STRING}},
+    {"HCCV2VRelayPort", {PERSISTENT, INT}},
     {"HardwareSerial", {PERSISTENT, STRING}},
     {"HasAcceptedTerms", {PERSISTENT, STRING, "0"}},
     {"InstallDate", {PERSISTENT, TIME}},
