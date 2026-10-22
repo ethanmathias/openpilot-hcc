@@ -96,12 +96,15 @@ class Controls:
     # HCC: the safety driver steers throughout the study; openpilot commands
     # longitudinal only. Lateral actuation is disabled outright, not tuned down.
     CC.latActive = False
-    # HCC: with the V2V link in use, a stale or faulted lead stream withdraws
-    # longitudinal authority too. longitudinal_ok() is always True when the
-    # link is not in use, so this is safe to AND in unconditionally.
+    # HCC: a stale lead withdraws longitudinal authority -- EXCEPT in V2V-only
+    # mode, where staleness is handled inside the long state machine instead.
+    # There, a stale signal at speed degrades to manual-only output and a stale
+    # signal at a standstill holds the stop; dropping longActive would reset the
+    # controller and skip the standstill release handshake (field bug 5).
     v2v_lead = self.LoC.hcc.lead_snapshot() if self.LoC.hcc.v2v_enabled() else None
+    longitudinal_input_ok = True if self.LoC.hcc.v2v_only() else self.LoC.hcc.longitudinal_ok(v2v_lead)
     CC.longActive = CC.enabled and not any(e.overrideLongitudinal for e in self.sm['onroadEvents']) and \
-                    self.CP.openpilotLongitudinalControl and self.LoC.hcc.longitudinal_ok(v2v_lead)
+                    self.CP.openpilotLongitudinalControl and longitudinal_input_ok
 
     actuators = CC.actuators
     actuators.longControlState = self.LoC.long_control_state

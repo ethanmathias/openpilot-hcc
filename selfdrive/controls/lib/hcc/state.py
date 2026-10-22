@@ -66,6 +66,17 @@ class HCCResult:
   def output_accel(self) -> float:
     return self.controller_accel + self.manual_accel
 
+  def force_pid(self, active: bool) -> bool:
+    """Whether the long state machine should be forced into pid this tick.
+
+    Outside V2V-only mode a live controller command means we are driving, so
+    the state machine is overridden rather than allowed to sit in
+    starting/stopping. `active` is load-bearing: without it a DISENGAGED
+    controller forces pid and emits its command instead of 0. Verified against
+    hcc-ego over 6144 states -- see test_hcc_equivalence.py.
+    """
+    return bool(active and self.enabled and self.controller_active and not self.v2v_only)
+
   def resolve_should_stop(self, upstream_should_stop: bool, v_ego: float, v_ego_stopping: float) -> bool:
     """The should_stop the long state machine should use this tick."""
     if not self.v2v_only:

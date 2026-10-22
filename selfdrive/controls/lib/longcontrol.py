@@ -72,7 +72,7 @@ class LongControl:
     self.long_control_state = long_control_state_trans(self.CP, active, self.long_control_state, CS.vEgo,
                                                        should_stop, CS.brakePressed,
                                                        CS.cruiseState.standstill)
-    if hcc.enabled and hcc.controller_active and not hcc.v2v_only:
+    if hcc.force_pid(active):
       self.long_control_state = LongCtrlState.pid
 
     if self.long_control_state == LongCtrlState.off:
