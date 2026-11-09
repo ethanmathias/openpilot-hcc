@@ -12,10 +12,15 @@ data.
 
   python3 tools/hcc/publishers/virtual_lead.py --scn 48
 
-Everything defaults from config/devices.toml, so no flags are needed on a
-configured setup. Playback end behavior: 'hold' keeps publishing the final
-speed forever (the ego keeps cruising), 'stop' exits and lets the ego withdraw
-longitudinal authority through V2V staleness.
+Run from a full checkout, defaults come from config/devices.toml. Run from a
+deployed lead bundle (see device/deploy_lead.sh) there is no devices.toml and
+possibly no tomllib, so the built-in defaults below apply and `hcc run` passes
+every value explicitly. The laptop's devices.toml stays the single source of
+truth either way.
+
+Playback end behavior: 'hold' keeps publishing the final speed forever (the
+ego keeps cruising), 'stop' exits and lets the ego withdraw longitudinal
+authority through V2V staleness.
 """
 from __future__ import annotations
 
@@ -25,7 +30,6 @@ import os
 import time
 from pathlib import Path
 
-from openpilot.tools.hcc.common import SCENARIOS_CSV, load_settings
 from openpilot.tools.hcc.publishers.profile import (
   MPH_TO_MPS,
   SENT_CSV_COLUMNS,
@@ -53,19 +57,55 @@ class VirtualLeadPublisher(Publisher):
     return packet
 
 
+# Used only when devices.toml is unavailable, i.e. on a deployed lead bundle.
+# 10.42.0.1 is where NetworkManager's shared mode always puts the hotspot host.
+STANDALONE_DEFAULTS = {
+  "scn": 48,
+  "relay_host": "10.42.0.1",
+  "relay_port": 19090,
+  "device_id": "hcc-lead",
+  "hz": 50.0,
+  "max_speed_mph": None,
+}
+
+
+def _defaults() -> dict:
+  """devices.toml values where available, built-in defaults otherwise.
+
+  A deployed lead carries only the publisher and the scenario table, so
+  importing common (which needs tomllib and the config file) has to be
+  allowed to fail. `hcc run` passes every value as a flag, so these defaults
+  only decide what a hand-run on the device does.
+  """
+  values = dict(STANDALONE_DEFAULTS)
+  values["csv"] = str(Path(__file__).resolve().parents[1] / "config" / "scenarios.csv")
+  try:
+    from openpilot.tools.hcc.common import SCENARIOS_CSV, load_settings
+  except Exception:
+    return values
+  try:
+    settings = load_settings()
+  except Exception:
+    return values
+  values.update(scn=settings.scenario, csv=str(SCENARIOS_CSV), relay_host=settings.relay_host,
+                relay_port=settings.relay_port, device_id=settings.lead.device_id,
+                hz=settings.send_hz, max_speed_mph=settings.max_speed_mph)
+  return values
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-  settings = load_settings()
+  d = _defaults()
   p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-  p.add_argument("--scn", type=int, default=settings.scenario, help="Scenario column (default from devices.toml)")
-  p.add_argument("--csv", default=str(SCENARIOS_CSV), help="Scenario CSV path")
-  p.add_argument("--relay_host", default=settings.relay_host)
-  p.add_argument("--relay_port", type=int, default=settings.relay_port)
-  p.add_argument("--device_id", default=settings.lead.device_id)
-  p.add_argument("--hz", type=float, default=settings.send_hz)
+  p.add_argument("--scn", type=int, default=d["scn"], help="Scenario column")
+  p.add_argument("--csv", default=d["csv"], help="Scenario CSV path")
+  p.add_argument("--relay_host", default=d["relay_host"])
+  p.add_argument("--relay_port", type=int, default=d["relay_port"])
+  p.add_argument("--device_id", default=d["device_id"])
+  p.add_argument("--hz", type=float, default=d["hz"])
   p.add_argument("--start_delay", type=float, default=0.0,
                  help="Seconds to publish the initial speed before the profile starts")
   p.add_argument("--speed_scale", type=float, default=1.0, help="Multiply the whole profile's speeds")
-  p.add_argument("--max_speed_mph", type=float, default=settings.max_speed_mph,
+  p.add_argument("--max_speed_mph", type=float, default=d["max_speed_mph"],
                  help="Scale the profile down so its top speed is at most this (proportional, not a clip)")
   p.add_argument("--end", choices=("hold", "stop"), default="hold")
   p.add_argument("--loop", action="store_true", help="Restart the profile from t=0 when it ends")

@@ -32,17 +32,38 @@ Everything a run produces lands in one folder under `runs/<run_id>/`:
 `relay.csv`, `sent.csv`, `pedal_sent.csv`, `ego_monitor.csv`, `metadata.json`,
 `stats.txt` and `plot.png`.
 
-## One-time device setup
+## One-time setup
 
-On each comma 3X, from its openpilot checkout:
+### Ego (comma 3X)
+
+From its openpilot checkout:
 
 ```bash
-sudo tools/hcc/device/setup_network.sh ego          # ego: hotspot + relay service + params
-sudo tools/hcc/device/setup_network.sh lead <SSID> <PSK>
+sudo tools/hcc/device/setup_network.sh ego   # hotspot + relay service + params
 ```
 
-Both will drop your SSH session when the network switches. That is expected and
-means setup finished.
+Your SSH session drops when the network switches. That is expected and means
+setup finished. Re-run it after an AGNOS update, which removes the relay unit.
+
+### Lead (Raspberry Pi)
+
+The lead does not run openpilot. Join the Pi to the ego's hotspot, then from
+the laptop:
+
+```bash
+./tools/hcc/device/deploy_lead.sh pi@10.42.0.50
+```
+
+That ships ~100 KB -- four pure-stdlib modules and the scenario table -- and
+then proves it imports and loads scenario 48 on the device. It runs on any
+Python 3.8+, so Pi OS Bullseye or Bookworm are both fine.
+
+Re-run it after changing anything in the publisher. `hcc preflight` checks the
+bundle is present and importable.
+
+The Pi carries no config of its own: `config/devices.toml` on the laptop is the
+single source of truth, and `hcc run` passes the relay address, port, device id
+and rate to the Pi as flags.
 
 ## Layout
 
@@ -51,7 +72,7 @@ means setup finished.
 | `hcc` | the single entry point |
 | `config/` | `devices.toml` and `scenarios.csv` |
 | `publishers/` | things that put data on the wire: `virtual_lead.py`, `pedal.py` |
-| `device/` | things that run on a comma 3X: `relay.py`, `monitor.py`, `bench_ego.py`, `setup_network.sh` |
+| `device/` | things that run on a device: `relay.py`, `monitor.py`, `bench_ego.py`, `setup_network.sh` (ego), `deploy_lead.sh` (lead) |
 | `fieldtest/` | laptop-side orchestration: `remote.py`, `preflight.py`, `session.py`, `cli.py` |
 | `analysis/` | `load.py`, `plot_run.py` (link health), `plot_accel.py` (lead vs ego) |
 

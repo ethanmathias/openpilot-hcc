@@ -78,13 +78,20 @@ def scp_from(user: str, host: str, remote_path: str, local_path: Path) -> bool:
 _REMOTE_PY_CACHE: dict[str, str] = {}
 
 
-def remote_python(user: str, host: str, remote_dir: str) -> str:
-  """Resolve the python that has openpilot's deps on a device.
+def remote_python(user: str, host: str, remote_dir: str, override: str = "") -> str:
+  """Resolve the python to use on a device.
 
-  Non-interactive SSH does not run the login profile, so neither the AGNOS
-  venv nor a repo venv is on PATH. Probing for it explicitly is what fixed the
-  zmq import failures on the first bench attempt.
+  An explicit `override` from devices.toml wins and costs no round trip: a
+  Raspberry Pi lead just has `python3`, and it needs no openpilot deps because
+  the deployed publisher is pure stdlib.
+
+  Without one, probe. A comma device needs that, because non-interactive SSH
+  does not run the login profile, so neither the AGNOS venv nor a repo venv is
+  on PATH. Probing explicitly is what fixed the zmq import failures on the
+  first bench attempt.
   """
+  if override:
+    return override
   if host not in _REMOTE_PY_CACHE:
     probe = (f"for p in {remote_dir}/.venv/bin/python3 /usr/local/venv/bin/python3; do "
              f"[ -x \"$p\" ] && echo \"$p\" && exit 0; done; echo python3")
@@ -93,12 +100,12 @@ def remote_python(user: str, host: str, remote_dir: str) -> str:
   return _REMOTE_PY_CACHE[host]
 
 
-def remote_py_prefix(user: str, host: str, remote_dir: str) -> str:
-  """`cd <repo> && PYTHONPATH=<repo> <venv-python>` for remote python commands.
+def remote_py_prefix(user: str, host: str, remote_dir: str, override: str = "") -> str:
+  """`cd <repo> && PYTHONPATH=<repo> <python>` for remote python commands.
 
   PYTHONPATH matters: running a script by path leaves `openpilot` unimportable.
   """
-  py = remote_python(user, host, remote_dir)
+  py = remote_python(user, host, remote_dir, override)
   return f"cd {remote_dir} && PYTHONPATH={remote_dir} {py}"
 
 

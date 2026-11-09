@@ -22,12 +22,20 @@ repo = "/data/openpilot"
 device_id = "hcc-ego"
 
 [lead]
-# The lead comma 3X, joined to the ego's hotspot. Its address comes from the
-# hotspot's DHCP range, so `hcc find-lead` will scan for it if this is wrong.
+# The lead-vehicle publisher: a Raspberry Pi, joined to the ego's hotspot. Its
+# address comes from the hotspot's DHCP range, so `hcc find-lead` will list it
+# if this is wrong.
+#
+# The Pi does NOT run openpilot. `repo` is the bundle directory created by
+# device/deploy_lead.sh -- about 100 KB of pure-stdlib Python, which runs on
+# any Python 3.8+ and needs no devices.toml of its own. This file stays the
+# single source of truth; `hcc run` passes every value to the Pi as a flag.
 host = "10.42.0.50"
-user = "comma"
-repo = "/data/openpilot"
+user = "pi"
+repo = "/home/pi/hcc-lead"
 device_id = "hcc-lead"
+python = "python3"
+log_dir = "/home/pi/hcc-logs"
 
 [pedal]
 # The laptop reading the pedal rig. It has no SSH role -- it runs the publisher

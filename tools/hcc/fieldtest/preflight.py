@@ -108,12 +108,13 @@ def preflight(settings: Settings, lead_host: str, check_pedal: bool = False) -> 
   # --- log directory ownership. The relay runs as root and creates the
   # directory root-owned if it gets there first; every later comma-user launch
   # then dies instantly on its log redirection (bench take 4).
-  for role, host, user in (("ego", ego.host, ego.user), ("lead", lead_host, lead.user)):
-    writable = ssh(user, host, f"mkdir -p {log_dir} 2>/dev/null; "
-                               f"touch {log_dir}/.wtest && rm {log_dir}/.wtest").returncode == 0
-    report.ok(writable, f"{role}: {log_dir} writable as {user}",
-              f"{role}: {log_dir} not writable as {user} — "
-              f"ssh in and `sudo chown {user}:{user} {log_dir}`")
+  for role, host, user, peer_log_dir in (("ego", ego.host, ego.user, ego.log_dir or log_dir),
+                                         ("lead", lead_host, lead.user, lead.log_dir or log_dir)):
+    writable = ssh(user, host, f"mkdir -p {peer_log_dir} 2>/dev/null; "
+                               f"touch {peer_log_dir}/.wtest && rm {peer_log_dir}/.wtest").returncode == 0
+    report.ok(writable, f"{role}: {peer_log_dir} writable as {user}",
+              f"{role}: {peer_log_dir} not writable as {user} — "
+              f"ssh in and `sudo chown {user}:{user} {peer_log_dir}`")
 
   # --- ego params
   bool_keys = [k for k, _ in EGO_PARAM_EXPECTATIONS] + ["HCCPedalEnabled"]
@@ -148,20 +149,27 @@ def preflight(settings: Settings, lead_host: str, check_pedal: bool = False) -> 
   except (CheckFailure, subprocess.TimeoutExpired) as exc:
     report("FAIL", f"ego: could not read params ({exc})")
 
-  # --- lead params and reachability
-  try:
-    values = read_remote_params(settings, lead_host, lead.user, lead.repo, [], ["HCCV2VRelayHost"])
-    lead_relay = values.get("HCCV2VRelayHost", "")
-    report.ok(lead_relay == ego.host, f"lead: HCCV2VRelayHost={lead_relay}",
-              f"lead: HCCV2VRelayHost={lead_relay!r} != ego host {ego.host} — "
-              f"virtual_lead takes its relay from devices.toml, so this is informational",
-              fail_status="WARN")
-  except (CheckFailure, subprocess.TimeoutExpired) as exc:
-    report("WARN", f"lead: could not read HCCV2VRelayHost ({exc})")
+  # --- lead: the deployed publisher bundle
+  #
+  # The lead does not run openpilot, so there are no params to read here. What
+  # matters is that the bundle is deployed, that its interpreter exists, and
+  # that the publisher actually imports -- a half-finished rsync looks fine
+  # until the launch dies a second in.
+  lead_py = lead.python or "python3"
+  version = ssh(lead.user, lead_host, f"{lead_py} --version 2>&1").stdout.strip()
+  report.ok(version.startswith("Python"), f"lead: {version}",
+            f"lead: {lead_py} not found — set [lead] python in devices.toml")
 
   has_csv = ssh(lead.user, lead_host, f"test -f {lead.repo}/tools/hcc/config/scenarios.csv").returncode == 0
-  report.ok(has_csv, "lead: scenarios.csv present",
-            "lead: tools/hcc/config/scenarios.csv missing — git pull on the lead device")
+  report.ok(has_csv, "lead: scenario table present",
+            f"lead: {lead.repo}/tools/hcc/config/scenarios.csv missing — "
+            f"run `./tools/hcc/device/deploy_lead.sh {lead.user}@{lead_host}`")
+
+  imports = ssh(lead.user, lead_host,
+                f"cd {lead.repo} && PYTHONPATH={lead.repo} {lead_py} -c "
+                f"'import openpilot.tools.hcc.publishers.virtual_lead'").returncode == 0
+  report.ok(imports, "lead: publisher imports",
+            f"lead: publisher will not import from {lead.repo} — re-run deploy_lead.sh")
 
   can_ping = ssh(lead.user, lead_host, f"ping -c 1 -W 2 {ego.host}").returncode == 0
   report.ok(can_ping, f"lead: can reach ego at {ego.host}",
@@ -214,6 +222,6 @@ def find_lead(settings: Settings) -> int:
     return 1
   print("Devices on the ego's hotspot:")
   print(leases.stdout.strip() or "  (none — has the lead joined? This laptop should appear here too.)")
-  print(f"\nThe lead is usually the entry named comma-<serial>. Put it in "
-        f"config/devices.toml as [lead] host, or pass --lead_host.")
+  print("\nThe lead publisher (Raspberry Pi) and this laptop should both appear.")
+  print("Put the lead's address in config/devices.toml as [lead] host, or pass --lead_host.")
   return 0

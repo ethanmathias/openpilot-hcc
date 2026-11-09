@@ -77,8 +77,16 @@ def abort(settings: Settings, lead_host: str) -> int:
   return 0
 
 
-def _virtual_lead_flags(options: RunOptions, remote_sent_csv: str) -> str:
-  flags = f"--scn {options.scenario} --end {options.end} --log_csv {remote_sent_csv}"
+def _virtual_lead_flags(settings: Settings, options: RunOptions, remote_sent_csv: str) -> str:
+  """Flags for the lead publisher.
+
+  The relay address, port, device id and rate are passed explicitly rather
+  than left to the device's own config: a deployed Raspberry Pi lead has no
+  devices.toml, so the laptop's copy is the single source of truth.
+  """
+  flags = (f"--scn {options.scenario} --end {options.end} --log_csv {remote_sent_csv}"
+           f" --relay_host {settings.relay_host} --relay_port {settings.relay_port}"
+           f" --device_id {settings.lead.device_id} --hz {settings.send_hz}")
   if options.start_delay:
     flags += f" --start_delay {options.start_delay}"
   if options.duration:
@@ -134,9 +142,10 @@ def run(settings: Settings, options: RunOptions) -> int:
   print(f"run id:  {run_id}")
   print(f"run dir: {run_dir}")
 
+  lead_log_dir = lead.log_dir or log_dir
   remote = {
-    "sent_csv": f"{log_dir}/sent_{run_id}.csv",
-    "vl_log": f"{log_dir}/vl_{run_id}.log",
+    "sent_csv": f"{lead_log_dir}/sent_{run_id}.csv",
+    "vl_log": f"{lead_log_dir}/vl_{run_id}.log",
     "monitor_csv": f"{log_dir}/monitor_{run_id}.csv",
     "monitor_log": f"{log_dir}/monitor_{run_id}.log",
     "bench_log": f"{log_dir}/bench_{run_id}.log",
@@ -147,7 +156,7 @@ def run(settings: Settings, options: RunOptions) -> int:
   if options.bench:
     # No car: the real ego subscriber lives inside controlsd and never starts
     # offroad, so the relay would have no ego peer to forward to.
-    ego_py = remote_python(ego.user, ego.host, ego.repo)
+    ego_py = remote_python(ego.user, ego.host, ego.repo, ego.python)
     bench_pid = ssh_launch(ego.user, ego.host,
                            launch_cmd(ego.repo, log_dir, ego_py, BENCH_EGO, remote["bench_log"]),
                            timeout=30)
@@ -161,7 +170,7 @@ def run(settings: Settings, options: RunOptions) -> int:
   # Run bounds on the EGO's clock, because relay rows are stamped with it.
   t_start_us = int(ssh_ok(ego.user, ego.host, "date +%s%N")) // 1000
 
-  ego_py = remote_python(ego.user, ego.host, ego.repo)
+  ego_py = remote_python(ego.user, ego.host, ego.repo, ego.python)
   monitor_flags = f"{MONITOR} --log_csv {remote['monitor_csv']} --hz {options.monitor_hz}"
   if relay_remote:
     monitor_flags += f" --relay_csv {relay_remote}"
@@ -170,11 +179,11 @@ def run(settings: Settings, options: RunOptions) -> int:
                            timeout=30)
   print(f"ego: monitor started (pid {monitor_pid}) -> {remote['monitor_csv']}")
 
-  vl_flags = _virtual_lead_flags(options, remote["sent_csv"])
-  lead_py = remote_python(lead.user, lead_host, lead.repo)
+  vl_flags = _virtual_lead_flags(settings, options, remote["sent_csv"])
+  lead_py = remote_python(lead.user, lead_host, lead.repo, lead.python)
   try:
     vl_pid = ssh_launch(lead.user, lead_host,
-                        launch_cmd(lead.repo, log_dir, lead_py, f"{VIRTUAL_LEAD} {vl_flags}", remote["vl_log"]),
+                        launch_cmd(lead.repo, lead_log_dir, lead_py, f"{VIRTUAL_LEAD} {vl_flags}", remote["vl_log"]),
                         timeout=30)
   except (CheckFailure, subprocess.TimeoutExpired):
     _teardown(settings, lead_host, pedal_proc)
@@ -332,9 +341,10 @@ def collect(settings: Settings, lead_host: str, run_id: str) -> int:
   log_dir = settings.remote_log_dir
   relay_remote = ssh(settings.ego.user, settings.ego.host,
                      f"ls -t {log_dir}/relay_*.csv 2>/dev/null | head -1").stdout.strip()
+  lead_log_dir = settings.lead.log_dir or log_dir
   collected = collect_artifacts(settings, lead_host, run_dir, relay_remote, t_start_us, t_end_us, {
-    "sent_csv": f"{log_dir}/sent_{run_id}.csv",
-    "vl_log": f"{log_dir}/vl_{run_id}.log",
+    "sent_csv": f"{lead_log_dir}/sent_{run_id}.csv",
+    "vl_log": f"{lead_log_dir}/vl_{run_id}.log",
     "monitor_csv": f"{log_dir}/monitor_{run_id}.csv",
   })
   analyze(run_dir)
