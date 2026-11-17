@@ -46,10 +46,12 @@ log_dir = "/home/pi/hcc-logs"
 # mapping with `hcc pedal --identify` and record it here.
 device_id = "hcc-pedals"
 stale_ms = 150
-# PROVISIONAL, from the 2026-11-17 bring-up: the throttle reached a clean
-# +1.000 on axis 0, and axis 1 moved to roughly +0.664 during the brake press
-# (a load cell under normal foot force). Confirm with `hcc pedal --identify`
-# before any run that matters -- a reversed mapping is invisible in the data.
+# Measured with `hcc pedal --identify` on 2026-11-17: the throttle holds a
+# clean +1.000 on axis 0, and the load-cell brake holds about +0.507 on axis 1,
+# which is ~75% of travel and normal for a load cell under foot force.
+# Re-measure if the rig is swapped or re-flashed -- a reversed mapping produces
+# a perfectly plausible trace and is only found when the car accelerates into
+# a brake press.
 throttle_axis = 0
 brake_axis = 1
 

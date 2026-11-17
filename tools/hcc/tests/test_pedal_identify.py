@@ -13,6 +13,7 @@ from __future__ import annotations
 import pytest
 
 from openpilot.selfdrive.controls.lib.hcc.blend import pedal_to_accel
+from openpilot.tools.hcc.publishers.pedal import report_identification
 from openpilot.tools.hcc.publishers.pedal_source import AxisCalibration, identify_axes
 
 REST = -1.0
@@ -178,3 +179,67 @@ def test_a_swapped_mapping_inverts_the_commanded_accel():
   braking = (cal.normalize(REST), cal.normalize(FULL))   # throttle rest, brake full
   assert pedal_to_accel(*braking) < 0.0
   assert pedal_to_accel(*reversed(braking)) > 0.0
+
+
+# ---- reporting the result ------------------------------------------------
+#
+# This path had no coverage and shipped a KeyError: it read a dict key that an
+# earlier version of identify_axes produced, and only the real rig found it.
+
+def _report(result: dict) -> tuple[int, str]:
+  lines: list[str] = []
+  code = report_identification(result, out=lines.append)
+  return code, "\n".join(lines)
+
+
+def _good(**overrides) -> dict:
+  """The real 2026-11-17 bring-up result."""
+  result = {
+    "rest": [REST] * 4,
+    "throttle": 0,
+    "brake": 1,
+    "held": {"throttle": 1.000, "brake": 0.507},
+    "deviations": {"throttle": {0: 2.0}, "brake": {1: 1.507}},
+  }
+  result.update(overrides)
+  return result
+
+
+def test_report_prints_the_config_lines_and_succeeds():
+  code, text = _report(_good())
+  assert code == 0
+  assert "throttle_axis = 0" in text
+  assert "brake_axis    = 1" in text
+
+
+def test_report_handles_a_result_with_no_optional_keys():
+  # Whatever identify_axes returns, reporting must not raise. The crash this
+  # replaces was exactly a missing optional key.
+  code, text = _report({"throttle": 0, "brake": 1})
+  assert code == 0
+  assert "throttle_axis = 0" in text
+
+
+def test_report_fails_when_a_pedal_was_not_found():
+  for missing in ("throttle", "brake"):
+    code, text = _report(_good(**{missing: None}))
+    assert code == 1
+    assert "incomplete" in text.lower()
+
+
+def test_report_fails_when_both_are_the_same_axis():
+  code, text = _report(_good(brake=0))
+  assert code == 1
+  assert "same axis" in text.lower() or "resolved to axis" in text.lower()
+
+
+def test_report_explains_a_part_travel_load_cell_brake():
+  # 0.507 against a -1..+1 span is 75% of travel — expected, not a fault.
+  _, text = _report(_good())
+  assert "load cell" in text.lower()
+  assert "75%" in text
+
+
+def test_report_stays_quiet_when_the_brake_reaches_full_travel():
+  _, text = _report(_good(held={"throttle": 1.0, "brake": 1.0}))
+  assert "load cell" not in text.lower()

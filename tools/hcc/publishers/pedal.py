@@ -63,6 +63,41 @@ class PedalPublisher(Publisher):
     return packet
 
 
+def report_identification(result: dict, out=print) -> int:
+  """Turn an identify_axes() result into operator instructions and an exit code.
+
+  Separated from the device handling so it can be tested without a rig.
+  """
+  throttle, brake = result.get("throttle"), result.get("brake")
+
+  if throttle is None or brake is None:
+    out("\nIdentification incomplete — re-run and hold each pedal until it reads.")
+    return 1
+  if throttle == brake:
+    out("\nBoth pedals resolved to axis "
+        f"{throttle} — re-run, releasing fully between steps.")
+    return 1
+
+  out("\nRecord this in tools/hcc/config/devices.toml under [pedal]:\n")
+  out(f"  throttle_axis = {throttle}")
+  out(f"  brake_axis    = {brake}")
+
+  held = result.get("held", {})
+  if held:
+    out("\nHeld: " + ",  ".join(f"{name} {value:+.3f}" for name, value in held.items()))
+
+  rest = result.get("rest") or []
+  brake_held = held.get("brake")
+  if brake_held is not None and brake < len(rest):
+    travel = abs(brake_held - rest[brake])
+    full_travel = 2.0  # the rig spans -1..+1
+    if travel < 0.85 * full_travel:
+      out(f"\nThe brake held at {travel / full_travel:.0%} of full travel. That is normal "
+          "for a load cell:\ncalibration captures whatever maximum you actually apply, so "
+          "press it as hard\nas you would in the car when the publisher calibrates.")
+  return 0
+
+
 def identify(args) -> int:
   """Guided axis identification; prints the devices.toml lines to record."""
   source = JoystickPedalSource(throttle_axis=0, brake_axis=0)
@@ -70,17 +105,7 @@ def identify(args) -> int:
     result = identify_axes(source, timeout_s=args.identify_timeout)
   finally:
     source.close()
-
-  print("\nRecord this in tools/hcc/config/devices.toml under [pedal]:\n")
-  print(f"  throttle_axis = {result['throttle']}")
-  print(f"  brake_axis    = {result['brake']}")
-  if any(len(moved) > 1 for moved in result["moved"].values()):
-    print("\nNote: more than one axis moved during a capture —")
-    for name, moved in result["moved"].items():
-      if len(moved) > 1:
-        print(f"  {name}: {moved}")
-    print("A 3-pedal rig can register the clutch too. Re-run if the result looks wrong.")
-  return 0
+  return report_identification(result)
 
 
 def list_axes(args) -> int:
