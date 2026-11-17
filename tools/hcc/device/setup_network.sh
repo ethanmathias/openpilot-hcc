@@ -1,50 +1,43 @@
 #!/usr/bin/env bash
-# One-shot V2V network setup for the two Comma 3X devices.
+# One-shot V2V setup for the EGO comma 3X.
 #
-# Usage:
-#   On the EGO device:    sudo setup_network.sh ego  [<SSID> <PSK>]
-#   On the LEAD device:   sudo setup_network.sh lead <SSID> <PSK>
+#   sudo tools/hcc/device/setup_network.sh [<SSID> [<PSK> [<RELAY_HOST>]]]
 #
-# The pedal laptop needs no role here: it is a third peer that simply joins
-# the same hotspot and runs tools/hcc/publishers/pedal.py.
+# The ego is a CLIENT now, not an access point. Since 2026-11-18 the hotspot
+# is served by the Linux VM in LinkLab/wn722n-ap, which drives a USB radio on
+# the Mac and also runs the relay. That change means:
 #
-# Ego: enables the device's WiFi hotspot and installs+enables a systemd
-# unit that runs tools/hcc/device/relay.py on 0.0.0.0:19090, logging
-# every packet to a per-boot CSV under /data/hcc_v2v_logs/. Lead joins the
-# same hotspot. No other machine is in the V2V path; this is the same
-# topology as the real two-car field deployment.
+#   - the ego joins an SSID instead of creating one, so bringing up the
+#     network no longer costs it its own route (and no longer kills the SSH
+#     session running this script, though the switch is still last for safety)
+#   - the relay no longer runs here; HCCV2VRelayHost points at the VM
+#   - the ego gets INTERNET, so its clock can track NTP. Packets whose sender
+#     timestamp is more than 500 ms from the receiver's are dropped silently,
+#     and hand-set clocks drifting apart was the most expensive recurring
+#     failure in this project.
 #
-# Both roles also get their HCCV2V* params set: ego → 127.0.0.1, lead →
-# the ego's hotspot IP (printed at the end of the ego setup).
-
+# The lead is a Raspberry Pi and does not use this script -- see
+# device/deploy_lead.sh. The pedal laptop is simply a third peer.
 set -euo pipefail
 
-ROLE="${1:-}"
-SSID="${2:-hcc-v2v}"
-PSK="${3:-hcc-v2v-research}"
-
-if [ "$ROLE" != "ego" ] && [ "$ROLE" != "lead" ]; then
-  echo "usage: $0 <ego|lead> [SSID] [PSK]" >&2
-  exit 1
-fi
+SSID="${1:-hcc-v2v-internet}"
+PSK="${2:-}"
+RELAY_HOST="${3:-10.42.0.1}"
+RELAY_PORT="${RELAY_PORT:-19090}"
+CONN_NAME="hcc-v2v-client"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null && pwd)"
 OPENPILOT_DIR="$(readlink -f "$SCRIPT_DIR/../../..")"
-RELAY_PY="$OPENPILOT_DIR/tools/hcc/device/relay.py"
-
-if [ ! -f "$RELAY_PY" ]; then
-  echo "relay.py not found at $RELAY_PY" >&2
-  exit 1
-fi
 
 set_param() {
   local key="$1"
   local val="$2"
-  # openpilot's python deps (zmq, ...) live in the repo venv, which only an
-  # interactive comma shell puts on PATH — use the venv python directly.
-  # Run as the invoking user so params files keep their normal ownership.
-  local py="$OPENPILOT_DIR/.venv/bin/python3"
-  [ -x "$py" ] || py="python3"
+  # openpilot's python deps live in /usr/local/venv, which only an interactive
+  # comma shell puts on PATH. Run as the invoking user so params files keep
+  # their normal ownership.
+  local py=/usr/local/venv/bin/python3
+  [ -x "$py" ] || py="$OPENPILOT_DIR/.venv/bin/python3"
+  [ -x "$py" ] || py=python3
   sudo -u "${SUDO_USER:-comma}" bash -lc "cd '$OPENPILOT_DIR' && '$py' - '$key' '$val'" <<'PY'
 import sys
 from openpilot.common.params import Params
@@ -60,114 +53,91 @@ else:
 PY
 }
 
-if [ "$ROLE" = "ego" ]; then
-  # IMPORTANT ORDERING: bringing the hotspot up swaps wlan0 out of the LAN,
-  # which kills a WiFi SSH session — and with it, this script. Everything
-  # that must complete (relay unit, params) therefore happens BEFORE the
-  # network switch, which is the very last step.
-  echo "[ego] installing systemd unit hcc-v2v-relay.service"
-  UNIT_PATH=/etc/systemd/system/hcc-v2v-relay.service
-  TMP_UNIT="$(mktemp)"
-  cat > "$TMP_UNIT" <<EOF
-[Unit]
-Description=HCC V2V relay (ego device, on-device)
-After=network.target
-
-[Service]
-Type=simple
-WorkingDirectory=$OPENPILOT_DIR
-Environment=PYTHONPATH=$OPENPILOT_DIR
-ExecStart=/bin/sh -c 'mkdir -p /data/hcc_v2v_logs && chown comma:comma /data/hcc_v2v_logs && exec python3 $RELAY_PY --host 0.0.0.0 --port 19090 --log_csv /data/hcc_v2v_logs/relay_\$\$(date +%%Y%%m%%d_%%H%%M%%S).csv'
-Restart=always
-RestartSec=3
-
-[Install]
-WantedBy=multi-user.target
-EOF
-  if cmp -s "$TMP_UNIT" "$UNIT_PATH" 2>/dev/null; then
-    echo "[ego] relay unit already up to date — skipping install"
-  else
-    # AGNOS keeps the system partition read-only; remount rw just for the
-    # unit install. Note: the unit lives on the system partition, so an
-    # AGNOS update/reflash removes it — re-run this script afterwards.
+# --- retire the old on-device relay -----------------------------------------
+#
+# The ego used to run the relay itself. Leaving it enabled would put two
+# relays on the network, and both would try to own the ego peer registration.
+if systemctl list-unit-files 2>/dev/null | grep -q '^hcc-v2v-relay\.service'; then
+  echo "[ego] disabling the old on-device relay (it runs on the VM now)"
+  systemctl disable --now hcc-v2v-relay.service 2>/dev/null || true
+  # AGNOS keeps the system partition read-only; only remount if the unit file
+  # is actually there to remove.
+  if [ -f /etc/systemd/system/hcc-v2v-relay.service ]; then
     REMOUNTED=0
     if ! touch /etc/systemd/system/.hcc_rw_test 2>/dev/null; then
-      mount -o remount,rw /
-      REMOUNTED=1
+      mount -o remount,rw / && REMOUNTED=1
     else
       rm -f /etc/systemd/system/.hcc_rw_test
     fi
-    cp "$TMP_UNIT" "$UNIT_PATH"
+    rm -f /etc/systemd/system/hcc-v2v-relay.service
     systemctl daemon-reload
-    if [ "$REMOUNTED" = "1" ]; then
-      mount -o remount,ro / || echo "[ego] WARN: could not remount / read-only; a reboot will restore it" >&2
-    fi
+    [ "$REMOUNTED" = "1" ] && { mount -o remount,ro / || echo "[ego] WARN: could not remount / read-only; a reboot will restore it" >&2; }
   fi
-  rm -f "$TMP_UNIT"
-  systemctl enable --now hcc-v2v-relay.service
-  systemctl status --no-pager hcc-v2v-relay.service | head -8 || true
+fi
 
-  echo "[ego] setting V2V + HC3 params"
-  set_param HCCV2VEnabled 1
-  set_param HCCV2VOnly 1
-  set_param HCCV2VDeviceId hcc-ego
-  set_param HCCV2VRelayHost 127.0.0.1
-  set_param HCCV2VRelayPort 19090
-  set_param EnableHCCC 1
-  set_param AlphaLongitudinalEnabled 1
-  # Pedal stream (the human-in-the-loop term). Left DISABLED here on purpose:
-  # with it on, an unhealthy pedal link denies the car positive accel, so it
-  # should only be switched on once the rig is actually publishing.
-  set_param HCCPedalEnabled 0
-  set_param HCCPedalDeviceId hcc-pedals
-  set_param HCCPedalStaleMs 150
+# --- params ------------------------------------------------------------------
+#
+# Set before the network switch: if the WiFi move drops this SSH session, the
+# configuration is already complete.
+echo "[ego] setting V2V + HC3 params (relay at $RELAY_HOST:$RELAY_PORT)"
+set_param HCCV2VEnabled 1
+set_param HCCV2VOnly 1
+set_param HCCV2VDeviceId hcc-ego
+set_param HCCV2VRelayHost "$RELAY_HOST"
+set_param HCCV2VRelayPort "$RELAY_PORT"
+set_param EnableHCCC 1
+set_param AlphaLongitudinalEnabled 1
+# The pedal stream is left DISABLED on purpose: while it is on, an unhealthy
+# pedal link denies the car positive acceleration. Turn it on once the rig is
+# actually publishing.
+set_param HCCPedalEnabled 0
+set_param HCCPedalDeviceId hcc-pedals
+set_param HCCPedalStaleMs 150
 
-  echo "[ego] enabling hotspot SSID=$SSID — if you are SSHed in over WiFi,"
-  echo "[ego] your session will drop NOW. That is fine: setup is complete."
-  echo "[ego] Reconnect by joining the '$SSID' network and: ssh comma@10.42.0.1"
-  # Comma 3X uses NetworkManager. Reuse an existing hotspot connection if
-  # present, otherwise create one. ifname=wlan0 is the standard radio on AGNOS.
-  if ! nmcli -t -f NAME connection show | grep -qx "hcc-hotspot"; then
-    nmcli connection add type wifi ifname wlan0 con-name hcc-hotspot autoconnect yes ssid "$SSID" \
-      mode ap ipv4.method shared 802-11-wireless.band bg
-    nmcli connection modify hcc-hotspot wifi-sec.key-mgmt wpa-psk wifi-sec.psk "$PSK"
-  fi
-  nmcli connection up hcc-hotspot
-  HOTSPOT_IP="$(ip -4 -o addr show wlan0 | awk '{print $4}' | cut -d/ -f1 | head -n1)"
-  echo "[ego] hotspot up at $HOTSPOT_IP — lead should run: sudo $0 lead $SSID $PSK"
+# --- join the hotspot --------------------------------------------------------
+echo "[ego] joining SSID '$SSID'"
+echo "[ego] if you are SSHed in over the old network this session may drop;"
+echo "[ego] that is fine, the configuration above is already written."
 
-elif [ "$ROLE" = "lead" ]; then
-  if [ "$SSID" = "hcc-v2v" ] && [ "$PSK" = "hcc-v2v-research" ]; then
-    echo "[lead] using default SSID/PSK; pass real values if you changed them on the ego" >&2
-  fi
-
-  # Params first: joining the hotspot swaps wlan0 off the LAN, which kills a
-  # WiFi SSH session — and with it, this script. NetworkManager shared mode
-  # always puts the ego (the AP) at 10.42.0.1.
-  RELAY_HOST="${4:-10.42.0.1}"
-  echo "[lead] setting V2V params (relay host $RELAY_HOST)"
-  set_param HCCV2VEnabled 1
-  set_param HCCV2VOnly 0
-  set_param HCCV2VDeviceId hcc-lead
-  set_param HCCV2VRelayHost "$RELAY_HOST"
-  set_param HCCV2VRelayPort 19090
-
-  echo "[lead] joining hotspot SSID=$SSID — if you are SSHed in over WiFi,"
-  echo "[lead] your session will drop NOW. That is fine: setup is complete."
-  echo "[lead] Reconnect from a machine on the '$SSID' network."
-  if ! nmcli -t -f NAME connection show | grep -qx "hcc-hotspot-client"; then
-    nmcli connection add type wifi ifname wlan0 con-name hcc-hotspot-client ssid "$SSID" \
+if ! nmcli -t -f NAME connection show | grep -qx "$CONN_NAME"; then
+  if [ -n "$PSK" ]; then
+    nmcli connection add type wifi ifname wlan0 con-name "$CONN_NAME" ssid "$SSID" \
       wifi-sec.key-mgmt wpa-psk wifi-sec.psk "$PSK" autoconnect yes
+  else
+    # The VM's hotspot may be open (INET_PASS empty in its config.env).
+    nmcli connection add type wifi ifname wlan0 con-name "$CONN_NAME" ssid "$SSID" autoconnect yes
   fi
-  nmcli connection up hcc-hotspot-client
-  # Anything below may not run if SSH died with the network switch — keep it
-  # to best-effort verification only.
-  GATEWAY="$(ip -4 route | awk '/default/ {print $3; exit}')"
-  if [ -n "$GATEWAY" ] && [ "$GATEWAY" != "$RELAY_HOST" ]; then
-    echo "[lead] WARN: gateway is $GATEWAY but HCCV2VRelayHost=$RELAY_HOST — fix with:" >&2
-    echo "[lead]   python3 -c \"from openpilot.common.params import Params; Params().put('HCCV2VRelayHost','$GATEWAY')\"" >&2
+else
+  nmcli connection modify "$CONN_NAME" 802-11-wireless.ssid "$SSID"
+  if [ -n "$PSK" ]; then
+    nmcli connection modify "$CONN_NAME" wifi-sec.key-mgmt wpa-psk wifi-sec.psk "$PSK"
   fi
-  ping -c 2 -W 2 "$RELAY_HOST" || echo "[lead] WARN: ping failed; relay may not be reachable yet" >&2
+fi
+nmcli connection up "$CONN_NAME"
+
+# --- verify ------------------------------------------------------------------
+#
+# Best-effort: anything below may not run if the session died with the switch.
+sleep 3
+ADDR="$(ip -4 -o addr show wlan0 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | head -n1)"
+GATEWAY="$(ip -4 route 2>/dev/null | awk '/default/ {print $3; exit}')"
+echo "[ego] address $ADDR, gateway $GATEWAY"
+
+if [ -n "$GATEWAY" ] && [ "$GATEWAY" != "$RELAY_HOST" ]; then
+  echo "[ego] WARN: gateway $GATEWAY != relay host $RELAY_HOST — check which is right" >&2
+fi
+
+if ping -c 2 -W 2 "$RELAY_HOST" >/dev/null 2>&1; then
+  echo "[ego] relay host reachable"
+else
+  echo "[ego] WARN: cannot reach $RELAY_HOST" >&2
+fi
+
+# Internet is the point of the new topology: it is what keeps the clock sane.
+if timeout 8 getent hosts github.com >/dev/null 2>&1; then
+  echo "[ego] internet reachable — NTP can keep this clock in sync"
+else
+  echo "[ego] WARN: no internet; the clock will drift and V2V packets will be dropped" >&2
 fi
 
 echo "done."

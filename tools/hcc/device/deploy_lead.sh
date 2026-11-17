@@ -76,8 +76,9 @@ ln -s ../tools "$STAGE/openpilot/tools"
 
 echo "staged $(find "$STAGE" -type f | wc -l | tr -d ' ') files ($(du -sh "$STAGE" | cut -f1))"
 
-ssh -o BatchMode=yes -o ConnectTimeout=6 "$TARGET" "mkdir -p \"$DEST\""
-rsync -az --delete --exclude='__pycache__' "$STAGE"/ "$TARGET:$DEST"/
+SSH_OPTS=(-o BatchMode=yes -o ConnectTimeout=6)
+ssh "${SSH_OPTS[@]}" "$TARGET" "rm -rf \"$DEST\" && mkdir -p \"$DEST\""
+tar -C "$STAGE" -cf - . | ssh "${SSH_OPTS[@]}" "$TARGET" "tar -C \"$DEST\" -xf -"
 
 echo "deployed to $TARGET:$DEST"
 

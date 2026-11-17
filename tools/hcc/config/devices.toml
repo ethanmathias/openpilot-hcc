@@ -9,8 +9,12 @@
 # cannot be reproduced from the repo is not reproducible.
 
 [network]
-# The relay binds on the ego device. Peers send here; the ego's hotspot is the
-# network, so this is the ego's own hotspot address.
+# The relay runs on the machine that serves the hotspot. Since 2026-11-18 that
+# is the Linux VM in LinkLab/wn722n-ap driving a USB radio on the Mac, not the
+# ego. 10.42.0.1 is the VM's wlan0 address and the subnet's gateway.
+#
+# The pedal publisher runs on the Mac, which is NOT on this subnet, and reaches
+# the relay through the VM's UDP forward on 127.0.0.1:19090 instead.
 relay_host = "10.42.0.1"
 relay_port = 19090
 send_hz = 50.0
