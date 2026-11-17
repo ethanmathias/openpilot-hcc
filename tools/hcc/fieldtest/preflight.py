@@ -16,12 +16,17 @@ from openpilot.tools.hcc.common import Settings
 from openpilot.tools.hcc.fieldtest.remote import (
   CheckFailure,
   measure_clock_skew_ms,
+  measure_rtt_ms,
   remote_py_prefix,
   ssh,
   ssh_ok,
 )
 
 # The subscriber and relay reject packets beyond 500 ms of skew, silently.
+class _SkewUnreliable(Exception):
+  """The link is too slow for a midpoint estimate to mean anything."""
+
+
 CLOCK_SKEW_WARN_MS = 150.0
 CLOCK_SKEW_FAIL_MS = 400.0
 
@@ -184,6 +189,12 @@ def preflight(settings: Settings, lead_host: str, check_pedal: bool = False) -> 
   # --- clocks
   try:
     skew_ms = measure_clock_skew_ms(ego.user, ego.host, lead_host, lead.user)
+    rtt_ms = max(measure_rtt_ms(ego.user, ego.host), measure_rtt_ms(lead.user, lead_host))
+    if rtt_ms > 300.0:
+      # The estimate cannot be better than the asymmetry it cannot see.
+      report("WARN", f"clock skew measured over a {rtt_ms:.0f} ms link — too noisy to trust; "
+                     f"compare chrony/timesyncd offsets on the devices instead")
+      raise _SkewUnreliable
     if abs(skew_ms) >= CLOCK_SKEW_FAIL_MS:
       report("FAIL", f"lead-ego clock skew {skew_ms:+.0f} ms (limit 500) — V2V packets WILL be "
                      f"rejected, silently. Give the lead internet briefly, or from the lead: "
@@ -191,7 +202,9 @@ def preflight(settings: Settings, lead_host: str, check_pedal: bool = False) -> 
     elif abs(skew_ms) >= CLOCK_SKEW_WARN_MS:
       report("WARN", f"lead-ego clock skew {skew_ms:+.0f} ms — works, but close to the 500 ms limit")
     else:
-      report("PASS", f"lead-ego clock skew {skew_ms:+.0f} ms")
+      report("PASS", f"lead-ego clock skew {skew_ms:+.0f} ms (rtt {rtt_ms:.0f} ms)")
+  except _SkewUnreliable:
+    pass
   except (CheckFailure, subprocess.TimeoutExpired, ValueError) as exc:
     report("WARN", f"could not measure clock skew ({exc})")
 

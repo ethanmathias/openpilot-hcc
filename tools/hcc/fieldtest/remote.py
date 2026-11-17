@@ -7,10 +7,19 @@ from __future__ import annotations
 
 import select
 import subprocess
+import tempfile
 import time
 from pathlib import Path
 
-SSH_OPTS = ["-o", "BatchMode=yes", "-o", "ConnectTimeout=6", "-o", "StrictHostKeyChecking=accept-new"]
+# ControlMaster keeps one connection open per host for the life of a command
+# run. Beyond being faster, it is what makes the clock-skew measurement
+# meaningful: without it every probe includes a fresh handshake, which is
+# asymmetric and swamps the quantity being measured.
+_CONTROL_DIR = Path(tempfile.gettempdir()) / "hcc-ssh"
+_CONTROL_DIR.mkdir(exist_ok=True)
+SSH_OPTS = ["-o", "BatchMode=yes", "-o", "ConnectTimeout=6", "-o", "StrictHostKeyChecking=accept-new",
+            "-o", "ControlMaster=auto", "-o", f"ControlPath={_CONTROL_DIR}/%r@%h:%p",
+            "-o", "ControlPersist=30s"]
 
 
 class CheckFailure(Exception):
@@ -109,12 +118,44 @@ def remote_py_prefix(user: str, host: str, remote_dir: str, override: str = "") 
   return f"cd {remote_dir} && PYTHONPATH={remote_dir} {py}"
 
 
-def device_time_us(user: str, host: str) -> tuple[float, float]:
-  """(device_wall_time_us, pc_mid_wall_time_us) sampled around one SSH round trip."""
-  t0 = time.time_ns() / 1000.0
-  out = ssh_ok(user, host, "date +%s%N")
-  t1 = time.time_ns() / 1000.0
-  return int(out) / 1000.0, (t0 + t1) / 2.0
+def device_time_us(user: str, host: str, samples: int = 5) -> tuple[float, float]:
+  """(device_wall_time_us, pc_mid_wall_time_us) for the LOWEST-latency sample.
+
+  Taking the midpoint of one round trip assumes the latency is symmetric. SSH
+  badly violates that: connection setup happens before the command runs, so
+  `date` executes late in the window and the midpoint is biased by roughly
+  RTT/2. Measured 2026-11-18: a direct hop showed +91 ms apparent skew at
+  131 ms RTT, and the same device through a ProxyJump showed +359 ms at 636 ms
+  RTT -- both almost exactly half the round trip, and both pure artifact.
+
+  Two corrections. The connection is multiplexed, so only the first sample pays
+  for setup; and of several samples the one with the smallest RTT is kept,
+  which is the standard NTP trick -- least delay means least room for
+  asymmetry.
+  """
+  best_rtt = float("inf")
+  best: tuple[float, float] | None = None
+  for _ in range(max(1, samples)):
+    t0 = time.time_ns() / 1000.0
+    out = ssh_ok(user, host, "date +%s%N")
+    t1 = time.time_ns() / 1000.0
+    rtt = t1 - t0
+    if rtt < best_rtt:
+      best_rtt = rtt
+      best = (int(out) / 1000.0, (t0 + t1) / 2.0)
+  assert best is not None
+  return best
+
+
+def measure_rtt_ms(user: str, host: str, samples: int = 5) -> float:
+  """Smallest observed SSH round trip, in ms. Reported next to a skew figure so
+  a measurement too noisy to trust is visible rather than silently believed."""
+  best = float("inf")
+  for _ in range(max(1, samples)):
+    t0 = time.time_ns() / 1000.0
+    ssh_ok(user, host, "true")
+    best = min(best, (time.time_ns() / 1000.0 - t0) / 1000.0)
+  return best
 
 
 def measure_clock_skew_ms(user: str, ego_host: str, other_host: str,
