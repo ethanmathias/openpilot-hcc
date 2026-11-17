@@ -100,10 +100,15 @@ def preflight(settings: Settings, lead_host: str, check_pedal: bool = False) -> 
       return report.failures
 
   # --- the relay
-  active = ssh(ego.user, ego.host, "systemctl is-active hcc-v2v-relay").stdout.strip() == "active"
-  report.ok(active, "ego: hcc-v2v-relay service active",
-            "ego: relay not running — on the ego, "
-            "`sudo tools/hcc/device/setup_network.sh ego`")
+  #
+  # It runs on whatever machine serves the hotspot, which since 2026-11-18 is
+  # the AP VM rather than the ego. Checking systemd on the ego would now always
+  # fail. The lead is on the hotspot, so ask it whether the relay host answers.
+  relay_up = ssh(lead.user, lead_host,
+                 f"ping -c 1 -W 2 {settings.relay_host}").returncode == 0
+  report.ok(relay_up, f"relay host {settings.relay_host} reachable from the lead",
+            f"relay host {settings.relay_host} unreachable — is the AP VM up? "
+            f"(LinkLab/wn722n-ap: scripts/run-vm.sh --bg)")
 
   # --- log directory ownership. The relay runs as root and creates the
   # directory root-owned if it gets there first; every later comma-user launch
@@ -128,10 +133,10 @@ def preflight(settings: Settings, lead_host: str, check_pedal: bool = False) -> 
                 f"re-run setup_network.sh, or set it in the developer settings")
 
     relay_host = values.get("HCCV2VRelayHost", "")
-    report.ok(relay_host in ("127.0.0.1", "localhost"),
-              f"ego: HCCV2VRelayHost={relay_host} (on-device relay)",
-              f"ego: HCCV2VRelayHost={relay_host!r} — expected 127.0.0.1 for in-car testing",
-              fail_status="WARN")
+    report.ok(relay_host == settings.relay_host,
+              f"ego: HCCV2VRelayHost={relay_host}",
+              f"ego: HCCV2VRelayHost={relay_host!r} but devices.toml says "
+              f"{settings.relay_host!r} — the ego will send to the wrong place")
 
     # The pedal term is the point of the Fall-26 configuration, so its state is
     # reported either way rather than only when it is being used.
@@ -178,7 +183,7 @@ def preflight(settings: Settings, lead_host: str, check_pedal: bool = False) -> 
 
   # --- clocks
   try:
-    skew_ms = measure_clock_skew_ms(ego.user, ego.host, lead_host)
+    skew_ms = measure_clock_skew_ms(ego.user, ego.host, lead_host, lead.user)
     if abs(skew_ms) >= CLOCK_SKEW_FAIL_MS:
       report("FAIL", f"lead-ego clock skew {skew_ms:+.0f} ms (limit 500) — V2V packets WILL be "
                      f"rejected, silently. Give the lead internet briefly, or from the lead: "

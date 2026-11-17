@@ -34,8 +34,9 @@ from openpilot.tools.hcc.common import load_settings
 def main() -> None:
   settings = load_settings()
   parser = argparse.ArgumentParser(description=__doc__)
-  parser.add_argument("--relay_host", default="127.0.0.1",
-                      help="The relay runs on this device, so loopback by default")
+  parser.add_argument("--relay_host", default=settings.relay_host,
+                      help="Relay address (default from devices.toml). The relay no longer "
+                           "runs on this device, so loopback would reach nothing.")
   parser.add_argument("--relay_port", type=int, default=settings.relay_port)
   parser.add_argument("--device_id", default="bench-ego")
   args = parser.parse_args()

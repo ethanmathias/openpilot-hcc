@@ -157,15 +157,20 @@ def run(settings: Settings, options: RunOptions) -> int:
     # No car: the real ego subscriber lives inside controlsd and never starts
     # offroad, so the relay would have no ego peer to forward to.
     ego_py = remote_python(ego.user, ego.host, ego.repo, ego.python)
+    bench_flags = (f"{BENCH_EGO} --relay_host {settings.relay_host}"
+                   f" --relay_port {settings.relay_port}")
     bench_pid = ssh_launch(ego.user, ego.host,
-                           launch_cmd(ego.repo, log_dir, ego_py, BENCH_EGO, remote["bench_log"]),
+                           launch_cmd(ego.repo, log_dir, ego_py, bench_flags, remote["bench_log"]),
                            timeout=30)
     print(f"ego: BENCH subscriber started (pid {bench_pid}) — never use --bench with a real car")
 
-  relay_remote = ssh(ego.user, ego.host,
-                     f"ls -t {log_dir}/relay_*.csv 2>/dev/null | head -1").stdout.strip()
+  # The relay runs on the machine serving the hotspot, not on the ego.
+  relay_peer = settings.relay_peer
+  relay_remote = ssh(relay_peer.user, relay_peer.host,
+                     f"ls -t {relay_peer.log_dir}/relay_*.csv 2>/dev/null | head -1").stdout.strip()
   if not relay_remote:
-    print("WARNING: no relay CSV on the ego — is relay logging active? Continuing without it.")
+    print(f"WARNING: no relay CSV at {relay_peer.host}:{relay_peer.log_dir} — "
+          f"is relay logging active? Continuing without it.")
 
   # Run bounds on the EGO's clock, because relay rows are stamped with it.
   t_start_us = int(ssh_ok(ego.user, ego.host, "date +%s%N")) // 1000
@@ -291,7 +296,8 @@ def collect_artifacts(settings: Settings, lead_host: str, run_dir: Path, relay_r
 
   if relay_remote:
     full = run_dir / "relay_full.csv"
-    if scp_from(ego.user, ego.host, relay_remote, full):
+    relay_peer = settings.relay_peer
+    if scp_from(relay_peer.user, relay_peer.host, relay_remote, full):
       rows = extract_relay_slice(full, run_dir / "relay.csv",
                                  t_start_us - COLLECT_MARGIN_US, t_end_us + COLLECT_MARGIN_US)
       full.unlink()
@@ -339,8 +345,9 @@ def collect(settings: Settings, lead_host: str, run_id: str) -> int:
     print("no metadata.json — pulling the full relay log instead of a time slice")
 
   log_dir = settings.remote_log_dir
-  relay_remote = ssh(settings.ego.user, settings.ego.host,
-                     f"ls -t {log_dir}/relay_*.csv 2>/dev/null | head -1").stdout.strip()
+  relay_peer = settings.relay_peer
+  relay_remote = ssh(relay_peer.user, relay_peer.host,
+                     f"ls -t {relay_peer.log_dir}/relay_*.csv 2>/dev/null | head -1").stdout.strip()
   lead_log_dir = settings.lead.log_dir or log_dir
   collected = collect_artifacts(settings, lead_host, run_dir, relay_remote, t_start_us, t_end_us, {
     "sent_csv": f"{lead_log_dir}/sent_{run_id}.csv",

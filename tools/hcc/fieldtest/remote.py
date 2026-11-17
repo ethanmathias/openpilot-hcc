@@ -117,7 +117,8 @@ def device_time_us(user: str, host: str) -> tuple[float, float]:
   return int(out) / 1000.0, (t0 + t1) / 2.0
 
 
-def measure_clock_skew_ms(user: str, ego_host: str, other_host: str) -> float:
+def measure_clock_skew_ms(user: str, ego_host: str, other_host: str,
+                          other_user: str = "") -> float:
   """Other-minus-ego clock offset in ms (positive: the other clock is ahead).
 
   Matters because the subscriber and relay silently reject packets whose sender
@@ -126,5 +127,5 @@ def measure_clock_skew_ms(user: str, ego_host: str, other_host: str) -> float:
   that has been on NTP all morning is the same trap from the other direction.
   """
   ego_dev, ego_pc = device_time_us(user, ego_host)
-  other_dev, other_pc = device_time_us(user, other_host)
+  other_dev, other_pc = device_time_us(other_user or user, other_host)
   return ((other_dev - other_pc) - (ego_dev - ego_pc)) / 1000.0

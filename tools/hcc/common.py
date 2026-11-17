@@ -58,6 +58,7 @@ class Settings:
   send_hz: float
   ego: Peer
   lead: Peer
+  relay_peer: Peer
   pedal_device_id: str
   pedal_stale_ms: int
   pedal_throttle_axis: int
@@ -100,6 +101,7 @@ def load_settings(path: str | Path | None = None) -> Settings:
     send_hz=float(network.get("send_hz", 50.0)),
     ego=_peer(raw.get("ego", {}), "hcc-ego", default_log_dir),
     lead=_peer(raw.get("lead", {}), "hcc-lead", default_log_dir),
+    relay_peer=_peer(raw.get("relay", {}), "hcc-relay", default_log_dir),
     pedal_device_id=str(pedal.get("device_id", "hcc-pedals")),
     pedal_stale_ms=int(pedal.get("stale_ms", 150)),
     pedal_throttle_axis=int(pedal.get("throttle_axis", 1)),
