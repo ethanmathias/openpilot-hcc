@@ -39,9 +39,15 @@ log_dir = "/home/pi/hcc-logs"
 
 [pedal]
 # The laptop reading the pedal rig. It has no SSH role -- it runs the publisher
-# locally -- so only its identity on the wire is configured here.
+# locally -- so only its identity on the wire and its axis mapping live here.
+#
+# A 3-pedal rig exposes several axes in no documented order, and a swapped
+# throttle and brake still produces a plausible-looking trace. Measure the
+# mapping with `hcc pedal --identify` and record it here.
 device_id = "hcc-pedals"
 stale_ms = 150
+throttle_axis = 1
+brake_axis = 2
 
 [run]
 # Defaults for `hcc run`; override per run with flags.

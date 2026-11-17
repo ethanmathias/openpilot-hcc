@@ -122,6 +122,58 @@ class JoystickPedalSource(PedalSource):
     self._pygame.quit()
 
 
+def identify_axes(source: "JoystickPedalSource", hold_s: float = 3.0,
+                  prompt=print, settle_s: float = 1.0) -> dict:
+  """Work out which axis is which by watching the subject press each pedal.
+
+  A 3-pedal rig exposes several axes with no documented order, and guessing
+  wrong is not obvious from the data afterwards -- a swapped throttle and
+  brake still produces a plausible-looking trace. So the mapping is measured
+  once, by deviation from rest, and written into devices.toml.
+
+  Returns {"rest": [...], "throttle": idx, "brake": idx, "moved": {...}}.
+  """
+  n = source.num_axes
+
+  def capture(seconds: float) -> list[float]:
+    lo = [9e9] * n
+    hi = [-9e9] * n
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+      values = source.all_axes()
+      for i, v in enumerate(values):
+        lo[i] = min(lo[i], v)
+        hi[i] = max(hi[i], v)
+      time.sleep(0.01)
+    # the extreme furthest from rest is what a held pedal looks like
+    return [lo, hi]
+
+  prompt(f"Identifying axes on {source.device_name!r} ({n} axes).")
+  prompt(f"  Feet OFF the pedals for {settle_s:.0f} s...")
+  lo, hi = capture(settle_s)
+  rest = [(lo[i] + hi[i]) / 2.0 for i in range(n)]
+  prompt("  rest: " + "  ".join(f"[{i}] {v:+.3f}" for i, v in enumerate(rest)))
+
+  result = {"rest": rest, "moved": {}}
+  for name in ("throttle", "brake"):
+    prompt(f"  Press and HOLD the {name.upper()} pedal to full travel ({hold_s:.0f} s)...")
+    lo, hi = capture(hold_s)
+    # deviation from rest, in whichever direction the axis actually travels
+    deviation = [max(abs(lo[i] - rest[i]), abs(hi[i] - rest[i])) for i in range(n)]
+    best = max(range(n), key=lambda i: deviation[i])
+    result[name] = best
+    result["moved"][name] = {i: round(deviation[i], 3) for i in range(n) if deviation[i] > 0.05}
+    travel = hi[best] if abs(hi[best] - rest[best]) > abs(lo[best] - rest[best]) else lo[best]
+    prompt(f"    -> axis {best}  (rest {rest[best]:+.3f} -> {travel:+.3f}, deviation {deviation[best]:.3f})")
+    if deviation[best] < 0.1:
+      prompt(f"    WARNING: nothing moved more than 0.1. Was the {name} pedal pressed?")
+
+  if result["throttle"] == result["brake"]:
+    prompt("  WARNING: throttle and brake resolved to the SAME axis. Re-run and "
+           "press only one pedal at a time.")
+  return result
+
+
 def build_source(kind: str, throttle_axis: int = 1, brake_axis: int = 2,
                  period_s: float = 20.0, amplitude: float = 0.6) -> PedalSource:
   if kind == "synthetic":

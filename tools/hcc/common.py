@@ -60,6 +60,8 @@ class Settings:
   lead: Peer
   pedal_device_id: str
   pedal_stale_ms: int
+  pedal_throttle_axis: int
+  pedal_brake_axis: int
   scenario: int
   max_speed_mph: float
   monitor_hz: float
@@ -100,6 +102,8 @@ def load_settings(path: str | Path | None = None) -> Settings:
     lead=_peer(raw.get("lead", {}), "hcc-lead", default_log_dir),
     pedal_device_id=str(pedal.get("device_id", "hcc-pedals")),
     pedal_stale_ms=int(pedal.get("stale_ms", 150)),
+    pedal_throttle_axis=int(pedal.get("throttle_axis", 1)),
+    pedal_brake_axis=int(pedal.get("brake_axis", 2)),
     scenario=int(run.get("scenario", 48)),
     max_speed_mph=float(run.get("max_speed_mph", 35.0)),
     monitor_hz=float(run.get("monitor_hz", 10.0)),

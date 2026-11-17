@@ -38,6 +38,7 @@ from openpilot.tools.hcc.publishers.pedal_source import (
   AxisCalibration,
   JoystickPedalSource,
   build_source,
+  identify_axes,
 )
 from openpilot.tools.hcc.publishers.publisher import Publisher
 from openpilot.selfdrive.controls.lib.hcc.transport.protocol import (
@@ -60,6 +61,26 @@ class PedalPublisher(Publisher):
                             throttle_raw=float(throttle_raw), brake_raw=float(brake_raw))
     self._send(encode_pedal_packet(packet))
     return packet
+
+
+def identify(args) -> int:
+  """Guided axis identification; prints the devices.toml lines to record."""
+  source = JoystickPedalSource(throttle_axis=0, brake_axis=0)
+  try:
+    result = identify_axes(source, hold_s=args.hold_seconds)
+  finally:
+    source.close()
+
+  print("\nRecord this in tools/hcc/config/devices.toml under [pedal]:\n")
+  print(f"  throttle_axis = {result['throttle']}")
+  print(f"  brake_axis    = {result['brake']}")
+  if any(len(moved) > 1 for moved in result["moved"].values()):
+    print("\nNote: more than one axis moved during a capture —")
+    for name, moved in result["moved"].items():
+      if len(moved) > 1:
+        print(f"  {name}: {moved}")
+    print("A 3-pedal rig can register the clutch too. Re-run if the result looks wrong.")
+  return 0
 
 
 def list_axes(args) -> int:
@@ -124,8 +145,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
   p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
   p.add_argument("--source", choices=("joystick", "synthetic"), default="joystick")
   p.add_argument("--list-axes", action="store_true", help="Print live axis values and exit")
-  p.add_argument("--throttle_axis", type=int, default=1)
-  p.add_argument("--brake_axis", type=int, default=2)
+  p.add_argument("--identify", action="store_true",
+                 help="Work out which axis is throttle and which is brake, then exit")
+  p.add_argument("--hold_seconds", type=float, default=3.0,
+                 help="How long to hold each pedal during --identify")
+  p.add_argument("--throttle_axis", type=int, default=settings.pedal_throttle_axis)
+  p.add_argument("--brake_axis", type=int, default=settings.pedal_brake_axis)
   p.add_argument("--relay_host", default=settings.relay_host)
   p.add_argument("--relay_port", type=int, default=settings.relay_port)
   p.add_argument("--device_id", default=settings.pedal_device_id)
@@ -141,6 +166,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
   args = parse_args(argv)
+  if args.identify:
+    return identify(args)
   if args.list_axes:
     return list_axes(args)
 

@@ -87,6 +87,8 @@ def build_parser() -> argparse.ArgumentParser:
   p_pedal = sub.add_parser("pedal", help="Run only the pedal publisher")
   p_pedal.add_argument("--source", choices=("joystick", "synthetic"), default="joystick")
   p_pedal.add_argument("--list-axes", action="store_true", help="Print live axis values and exit")
+  p_pedal.add_argument("--identify", action="store_true",
+                       help="Work out which axis is throttle and which is brake, then exit")
   p_pedal.add_argument("rest", nargs=argparse.REMAINDER,
                        help="Further flags passed through to publishers/pedal.py")
 
@@ -118,6 +120,8 @@ def _pedal(args) -> int:
   from openpilot.tools.hcc.publishers import pedal
 
   argv = ["--source", args.source]
+  if args.identify:
+    argv.append("--identify")
   if args.list_axes:
     argv.append("--list-axes")
   argv += [a for a in (args.rest or []) if a != "--"]
