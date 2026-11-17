@@ -46,8 +46,12 @@ log_dir = "/home/pi/hcc-logs"
 # mapping with `hcc pedal --identify` and record it here.
 device_id = "hcc-pedals"
 stale_ms = 150
-throttle_axis = 1
-brake_axis = 2
+# PROVISIONAL, from the 2026-11-17 bring-up: the throttle reached a clean
+# +1.000 on axis 0, and axis 1 moved to roughly +0.664 during the brake press
+# (a load cell under normal foot force). Confirm with `hcc pedal --identify`
+# before any run that matters -- a reversed mapping is invisible in the data.
+throttle_axis = 0
+brake_axis = 1
 
 [run]
 # Defaults for `hcc run`; override per run with flags.

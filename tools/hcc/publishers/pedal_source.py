@@ -122,55 +122,117 @@ class JoystickPedalSource(PedalSource):
     self._pygame.quit()
 
 
-def identify_axes(source: "JoystickPedalSource", hold_s: float = 3.0,
-                  prompt=print, settle_s: float = 1.0) -> dict:
-  """Work out which axis is which by watching the subject press each pedal.
+def _snapshot(source, seconds: float, poll_s: float = 0.02) -> list[float]:
+  """Mean of each axis over a short window."""
+  totals = [0.0] * source.num_axes
+  count = 0
+  deadline = time.monotonic() + seconds
+  while time.monotonic() < deadline:
+    for i, v in enumerate(source.all_axes()):
+      totals[i] += v
+    count += 1
+    time.sleep(poll_s)
+  count = max(count, 1)
+  return [total / count for total in totals]
 
-  A 3-pedal rig exposes several axes with no documented order, and guessing
-  wrong is not obvious from the data afterwards -- a swapped throttle and
-  brake still produces a plausible-looking trace. So the mapping is measured
-  once, by deviation from rest, and written into devices.toml.
 
-  Returns {"rest": [...], "throttle": idx, "brake": idx, "moved": {...}}.
+def _wait_for_rest(source, rest: list[float], tolerance: float, timeout_s: float,
+                   poll_s: float = 0.02) -> bool:
+  """Block until every axis is back near rest. True if it got there."""
+  deadline = time.monotonic() + timeout_s
+  while time.monotonic() < deadline:
+    values = source.all_axes()
+    if all(abs(v - rest[i]) <= tolerance for i, v in enumerate(values)):
+      return True
+    time.sleep(poll_s)
+  return False
+
+
+def _wait_for_press(source, rest: list[float], min_deviation: float, stable_s: float,
+                    timeout_s: float, poll_s: float = 0.02):
+  """Block until some axis is deviating from rest and holding steady.
+
+  Waiting for the pedal to settle is what makes this reliable: a timed window
+  catches the previous pedal on its way back up, which is exactly how the
+  first version mis-resolved throttle and brake onto the same axis.
+
+  Returns (axis, held_values) or (None, held_values) on timeout.
+  """
+  deadline = time.monotonic() + timeout_s
+  steady_since = None
+  steady_values: list[float] | None = None
+
+  while time.monotonic() < deadline:
+    values = source.all_axes()
+    deviations = [abs(v - rest[i]) for i, v in enumerate(values)]
+    peak = max(deviations)
+
+    if peak >= min_deviation:
+      moved = all(abs(values[i] - steady_values[i]) < 0.05 for i in range(len(values))) \
+          if steady_values is not None else False
+      if steady_values is not None and moved:
+        if time.monotonic() - steady_since >= stable_s:
+          return deviations.index(peak), values
+      else:
+        steady_values = list(values)
+        steady_since = time.monotonic()
+    else:
+      steady_values = None
+      steady_since = None
+    time.sleep(poll_s)
+
+  return None, (steady_values or source.all_axes())
+
+
+def identify_axes(source, prompt=print, min_deviation: float = 0.3,
+                  stable_s: float = 0.4, rest_tolerance: float = 0.15,
+                  timeout_s: float = 30.0, settle_s: float = 0.8) -> dict:
+  """Work out which axis is throttle and which is brake.
+
+  A 3-pedal rig exposes several axes in no documented order, and guessing
+  wrong is not visible in the data afterwards -- a swapped throttle and brake
+  still produces a plausible trace, and the run is only found to be useless
+  when the acceleration goes the wrong way.
+
+  Each step waits for the rig to physically reach the expected state rather
+  than sampling a fixed window, so releasing a pedal slowly cannot bleed into
+  the next measurement.
+
+  Returns {"rest": [...], "throttle": idx, "brake": idx, "held": {...},
+           "deviations": {...}}.
   """
   n = source.num_axes
-
-  def capture(seconds: float) -> list[float]:
-    lo = [9e9] * n
-    hi = [-9e9] * n
-    deadline = time.monotonic() + seconds
-    while time.monotonic() < deadline:
-      values = source.all_axes()
-      for i, v in enumerate(values):
-        lo[i] = min(lo[i], v)
-        hi[i] = max(hi[i], v)
-      time.sleep(0.01)
-    # the extreme furthest from rest is what a held pedal looks like
-    return [lo, hi]
-
   prompt(f"Identifying axes on {source.device_name!r} ({n} axes).")
-  prompt(f"  Feet OFF the pedals for {settle_s:.0f} s...")
-  lo, hi = capture(settle_s)
-  rest = [(lo[i] + hi[i]) / 2.0 for i in range(n)]
+  prompt("  Feet OFF the pedals...")
+  rest = _snapshot(source, settle_s)
   prompt("  rest: " + "  ".join(f"[{i}] {v:+.3f}" for i, v in enumerate(rest)))
 
-  result = {"rest": rest, "moved": {}}
+  result: dict = {"rest": rest, "held": {}, "deviations": {}}
   for name in ("throttle", "brake"):
-    prompt(f"  Press and HOLD the {name.upper()} pedal to full travel ({hold_s:.0f} s)...")
-    lo, hi = capture(hold_s)
-    # deviation from rest, in whichever direction the axis actually travels
-    deviation = [max(abs(lo[i] - rest[i]), abs(hi[i] - rest[i])) for i in range(n)]
-    best = max(range(n), key=lambda i: deviation[i])
-    result[name] = best
-    result["moved"][name] = {i: round(deviation[i], 3) for i in range(n) if deviation[i] > 0.05}
-    travel = hi[best] if abs(hi[best] - rest[best]) > abs(lo[best] - rest[best]) else lo[best]
-    prompt(f"    -> axis {best}  (rest {rest[best]:+.3f} -> {travel:+.3f}, deviation {deviation[best]:.3f})")
-    if deviation[best] < 0.1:
-      prompt(f"    WARNING: nothing moved more than 0.1. Was the {name} pedal pressed?")
+    if not _wait_for_rest(source, rest, rest_tolerance, timeout_s):
+      prompt(f"  WARNING: pedals did not return to rest before the {name} step.")
+    prompt(f"  Press and HOLD the {name.upper()} pedal, firmly, until it reads...")
 
-  if result["throttle"] == result["brake"]:
-    prompt("  WARNING: throttle and brake resolved to the SAME axis. Re-run and "
-           "press only one pedal at a time.")
+    axis, values = _wait_for_press(source, rest, min_deviation, stable_s, timeout_s)
+    deviations = {i: round(abs(values[i] - rest[i]), 3) for i in range(n)}
+    result["deviations"][name] = deviations
+
+    if axis is None:
+      prompt(f"    nothing held steady within {timeout_s:.0f} s — was the {name} pressed?")
+      result[name] = None
+      continue
+
+    result[name] = axis
+    result["held"][name] = round(values[axis], 3)
+    others = {i: d for i, d in deviations.items() if i != axis and d >= min_deviation}
+    prompt(f"    -> axis {axis}  (rest {rest[axis]:+.3f} -> held {values[axis]:+.3f}, "
+           f"deviation {deviations[axis]:.3f})")
+    if others:
+      prompt(f"       also moved: {others} — a 3-pedal rig can register the clutch")
+
+  if result.get("throttle") is not None and result["throttle"] == result.get("brake"):
+    prompt("  WARNING: throttle and brake resolved to the SAME axis. Release fully "
+           "between steps and press only one pedal at a time.")
   return result
 
 

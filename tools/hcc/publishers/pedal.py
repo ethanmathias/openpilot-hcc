@@ -67,7 +67,7 @@ def identify(args) -> int:
   """Guided axis identification; prints the devices.toml lines to record."""
   source = JoystickPedalSource(throttle_axis=0, brake_axis=0)
   try:
-    result = identify_axes(source, hold_s=args.hold_seconds)
+    result = identify_axes(source, timeout_s=args.identify_timeout)
   finally:
     source.close()
 
@@ -147,8 +147,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
   p.add_argument("--list-axes", action="store_true", help="Print live axis values and exit")
   p.add_argument("--identify", action="store_true",
                  help="Work out which axis is throttle and which is brake, then exit")
-  p.add_argument("--hold_seconds", type=float, default=3.0,
-                 help="How long to hold each pedal during --identify")
+  p.add_argument("--identify_timeout", type=float, default=30.0,
+                 help="How long --identify waits for each pedal to be held")
   p.add_argument("--throttle_axis", type=int, default=settings.pedal_throttle_axis)
   p.add_argument("--brake_axis", type=int, default=settings.pedal_brake_axis)
   p.add_argument("--relay_host", default=settings.relay_host)
