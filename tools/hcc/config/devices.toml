@@ -38,19 +38,17 @@ repo = "/data/openpilot"
 device_id = "hcc-ego"
 
 [lead]
-# BENCH STAND-IN (2026-11-18): the lead publisher is running on the AP VM until
-# the Raspberry Pi arrives. "linklab-ap" is an ssh alias from
-# wn722n-ap/ssh_config, which ~/.ssh/config includes -- it resolves to
-# 127.0.0.1:2222 with the VM's key.
-#
-# For a real Pi: host = its hotspot address, user = "pi",
-# repo = "/home/pi/hcc-lead", log_dir = "/home/pi/hcc-logs".
-host = "linklab-ap"
-user = "ap"
-repo = "/home/ap/hcc-lead"
+# The lead-vehicle publisher: a Raspberry Pi on the hotspot. It does NOT run
+# openpilot -- `repo` is the ~100 KB bundle that device/deploy_lead.sh ships,
+# pure stdlib, no devices.toml of its own. This file stays the single source
+# of truth; `hcc run` passes the relay address, port, device id and rate as
+# flags.
+host = "10.57.0.90"
+user = "linklab"
+repo = "/home/linklab/hcc-lead"
 device_id = "hcc-lead"
 python = "python3"
-log_dir = "/home/ap/hcc-logs"
+log_dir = "/home/linklab/hcc-logs"
 
 
 [pedal]

@@ -181,10 +181,16 @@ def preflight(settings: Settings, lead_host: str, check_pedal: bool = False) -> 
   report.ok(imports, "lead: publisher imports",
             f"lead: publisher will not import from {lead.repo} — re-run deploy_lead.sh")
 
-  can_ping = ssh(lead.user, lead_host, f"ping -c 1 -W 2 {ego.host}").returncode == 0
-  report.ok(can_ping, f"lead: can reach ego at {ego.host}",
-            "lead: cannot ping the ego — is the lead on the hotspot? "
-            "`sudo tools/hcc/device/setup_network.sh lead`")
+  # Peers never talk to each other directly: every packet goes through the
+  # relay, which is the access point itself. Checking lead->ego was a leftover
+  # from when the ego WAS the access point, and it fails on the current setup
+  # for a harmless reason -- the AP's forward chain permits clients out to the
+  # internet but not to each other. What actually has to hold is that each peer
+  # can reach the relay.
+  ego_to_relay = ssh(ego.user, ego.host,
+                     f"ping -c 1 -W 2 {settings.relay_host}").returncode == 0
+  report.ok(ego_to_relay, f"ego: can reach the relay at {settings.relay_host}",
+            f"ego: cannot reach the relay at {settings.relay_host} — is it on the hotspot?")
 
   # --- clocks
   try:
