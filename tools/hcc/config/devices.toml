@@ -11,11 +11,15 @@
 [network]
 # The relay runs on the machine that serves the hotspot. Since 2026-11-18 that
 # is the Linux VM in LinkLab/wn722n-ap driving a USB radio on the Mac, not the
-# ego. 10.42.0.1 is the VM's wlan0 address and the subnet's gateway.
+# ego. 10.57.0.1 is the VM's wlan0 address and the subnet's gateway.
 #
 # The pedal publisher runs on the Mac, which is NOT on this subnet, and reaches
 # the relay through the VM's UDP forward on 127.0.0.1:19090 instead.
-relay_host = "10.42.0.1"
+#
+# The subnet moved from 10.42.0.0/24 to 10.57.0.0/24 on 2026-11-18: the phone
+# hotspot "iphone2" also hands out 10.42.0.0/24 with gateway .1, so the two
+# networks were indistinguishable by address.
+relay_host = "10.57.0.1"
 relay_port = 19090
 send_hz = 50.0
 
@@ -28,7 +32,7 @@ user = "ap"
 log_dir = "/home/ap/hcc-logs"
 
 [ego]
-host = "10.42.0.198"
+host = "10.57.0.198"
 user = "comma"
 repo = "/data/openpilot"
 device_id = "hcc-ego"
